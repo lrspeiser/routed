@@ -34,3 +34,19 @@ export async function pushToSockets(userId: string, payload: any): Promise<boole
   if (sent > 0) console.log(`[SOCKET] pushed to user=${userId} sockets=${sent}`);
   return sent > 0;
 }
+
+export async function broadcastToAll(payload: any): Promise<number> {
+  let total = 0;
+  for (const [userId, arr] of sockets.entries()) {
+    for (const s of arr) {
+      if (s.ws.readyState === s.ws.OPEN) {
+        try {
+          s.ws.send(JSON.stringify(payload));
+          total++;
+        } catch {}
+      }
+    }
+  }
+  console.log(`[SOCKET] broadcast sent to ${total} sockets`);
+  return total;
+}

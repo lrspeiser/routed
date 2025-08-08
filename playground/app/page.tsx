@@ -5,6 +5,8 @@ export default function Page() {
   const [sandbox, setSandbox] = useState<any>(null);
   const [log, setLog] = useState<string>('');
   const [channelCode, setChannelCode] = useState<string>('');
+  const [quickTitle, setQuickTitle] = useState('Test ✅');
+  const [quickBody, setQuickBody] = useState('Hello from Playground');
 
   async function createSandbox() {
     try {
@@ -36,6 +38,19 @@ export default function Page() {
       setLog(`POST /v1/messages → ${res.status} ${JSON.stringify(j)}`);
     } catch (e: any) {
       setLog(`Send failed: ${e.message || e}`);
+    }
+  }
+
+  async function quickBroadcast() {
+    try {
+      const res = await fetch('/api/dev/quick-test', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: quickTitle, body: quickBody }),
+      });
+      const j = await res.json();
+      setLog(`Quick broadcast → ${res.status} ${JSON.stringify(j)}`);
+    } catch (e: any) {
+      setLog(`Quick broadcast failed: ${e.message || e}`);
     }
   }
 
@@ -91,6 +106,18 @@ export default function Page() {
           </div>
         </div>
       )}
+
+      <div style={{ marginTop: 24 }}>
+        <h3>Quick Test (no keys):</h3>
+        <div>
+          <input value={quickTitle} onChange={(e) => setQuickTitle(e.target.value)} placeholder="Title" />
+        </div>
+        <div>
+          <input value={quickBody} onChange={(e) => setQuickBody(e.target.value)} placeholder="Body" />
+        </div>
+        <button onClick={quickBroadcast}>Broadcast via Hub /dev/broadcast</button>
+        <div style={{ fontSize: 12, opacity: 0.7 }}>Open {`{HUB_URL}/dev/client`} to receive</div>
+      </div>
 
       <h3 style={{ marginTop: 24 }}>Log</h3>
       <pre style={{ background: '#111', color: '#0f0', padding: 12, borderRadius: 8 }}>{log}</pre>
