@@ -1,0 +1,27 @@
+{
+  "name": "notification-receiver",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Desktop receiver for Notification Hub (enter channel code, receive via WebSocket)",
+  "main": "main.js",
+  "scripts": {
+    "dev": "electron .",
+    "dist": "electron-builder --mac dmg"
+  },
+  "build": {
+    "appId": "com.routed.notification.receiver",
+    "productName": "Notification Receiver",
+    "mac": {
+      "category": "public.app-category.utilities",
+      "target": ["dmg"],
+      "hardenedRuntime": false,
+      "entitlements": null
+    }
+  },
+  "dependencies": {
+    "electron": "^31.3.1"
+  },
+  "devDependencies": {
+    "electron-builder": "^24.13.3"
+  }
+}

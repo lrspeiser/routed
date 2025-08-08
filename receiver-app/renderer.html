@@ -1,0 +1,60 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Notification Receiver</title>
+  <style>
+    body { font-family: -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial; margin: 16px; }
+    input, button { font-size: 14px; padding: 8px; margin: 4px 0; width: 100%; }
+    #log { white-space: pre-wrap; height: 240px; overflow: auto; background: #111; color: #0f0; padding: 8px; border-radius: 6px; }
+    .row { margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <h2>Notification Receiver</h2>
+  <div class="row">
+    <label>Channel Code</label>
+    <textarea id="code" placeholder="Paste channel code" style="width:100%;height:100px;"></textarea>
+  </div>
+  <div class="row">
+    <label>Playground Resolve URL</label>
+    <input id="resolveUrl" placeholder="https://playground.example.com" />
+  </div>
+  <button id="connectBtn">Connect</button>
+
+  <h3>Log</h3>
+  <div id="log"></div>
+
+  <script>
+    const logEl = document.getElementById('log');
+    function log(msg) { logEl.textContent += '\n' + new Date().toISOString() + ' ' + msg; logEl.scrollTop = logEl.scrollHeight; }
+
+    let ws;
+    async function connect() {
+      const code = document.getElementById('code').value.trim();
+      const resolveUrl = document.getElementById('resolveUrl').value.trim();
+      if (!code || !resolveUrl) { alert('Enter code and resolve URL'); return; }
+      const desc = await window.receiver.resolveCode(code, resolveUrl);
+      if (!desc) return;
+      log('Resolved: ' + JSON.stringify(desc));
+      const base = desc.base_url;
+      const wsProto = base.startsWith('https') ? 'wss' : 'ws';
+      const url = new URL(base);
+      const sockUrl = `${wsProto}://${url.host}/v1/socket?user_id=${encodeURIComponent(desc.user_id)}`;
+      ws = new WebSocket(sockUrl);
+      ws.onopen = () => log('WS open');
+      ws.onmessage = (ev) => {
+        log('WS message: ' + ev.data);
+        try {
+          const data = JSON.parse(ev.data);
+          if (data && data.title) window.receiver.showNotification(data);
+        } catch {}
+      };
+      ws.onclose = () => log('WS closed');
+      ws.onerror = (e) => log('WS error: ' + (e.message || e));
+    }
+
+    document.getElementById('connectBtn').addEventListener('click', connect);
+  </script>
+</body>
+</html>
