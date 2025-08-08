@@ -2,19 +2,14 @@
 import { useState } from 'react';
 
 export default function Page() {
-  const [adminToken, setAdminToken] = useState('');
-  const [hubUrl, setHubUrl] = useState('http://localhost:8080');
   const [sandbox, setSandbox] = useState<any>(null);
   const [log, setLog] = useState<string>('');
+  const [channelCode, setChannelCode] = useState<string>('');
 
   async function createSandbox() {
     try {
       setLog('');
-      const res = await fetch(new URL('/v1/admin/sandbox/provision', hubUrl).toString(), {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      });
+      const res = await fetch('/api/dev/create', { method: 'POST' });
       const data = await res.json();
       if (!res.ok) throw new Error(JSON.stringify(data));
       setSandbox(data);
@@ -27,7 +22,7 @@ export default function Page() {
   async function sendTest() {
     if (!sandbox) return;
     try {
-      const res = await fetch(new URL('/v1/messages', hubUrl).toString(), {
+      const res = await fetch(new URL('/v1/messages', sandbox.hubUrl).toString(), {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${sandbox.apiKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -44,7 +39,20 @@ export default function Page() {
     }
   }
 
-  const clientLink = sandbox ? `${hubUrl}/?tenantId=${sandbox.tenantId}&userId=${sandbox.userId}` : '';
+  async function createChannel() {
+    if (!sandbox) return;
+    setLog('');
+    const res = await fetch('/api/channel/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hubUrl: sandbox.hubUrl, tenantId: sandbox.tenantId, userId: sandbox.userId, topic: 'runs.finished' }),
+    });
+    const j = await res.json();
+    if (!res.ok) { setLog(`Create channel failed: ${JSON.stringify(j)}`); return; }
+    setChannelCode(j.code);
+  }
+
+  const clientLink = sandbox ? `${sandbox.hubUrl}/?tenantId=${sandbox.tenantId}&userId=${sandbox.userId}` : '';
 
   return (
     <div>
@@ -52,9 +60,7 @@ export default function Page() {
       <p>Point to a running hub and create a sandbox tenant/publisher/user.</p>
 
       <div style={{ display: 'grid', gap: 8, maxWidth: 640 }}>
-        <label>Hub URL <input value={hubUrl} onChange={(e) => setHubUrl(e.target.value)} placeholder="http://localhost:8080" /></label>
-        <label>Admin Token <input value={adminToken} onChange={(e) => setAdminToken(e.target.value)} placeholder="HUB_ADMIN_TOKEN" /></label>
-        <button onClick={createSandbox}>Create Sandbox</button>
+        <button onClick={createSandbox}>Create Developer Key</button>
       </div>
 
       {sandbox && (
@@ -67,6 +73,21 @@ export default function Page() {
           </div>
           <div style={{ marginTop: 8 }}>
             <button onClick={sendTest}>Send Test Message</button>
+          </div>
+          <div style={{ marginTop: 8 }}>
+            <button onClick={createChannel}>Create Channel</button>
+            {channelCode && (
+              <div style={{ marginTop: 8 }}>
+                <div>Channel Code:</div>
+                <textarea readOnly value={channelCode} style={{ width: '100%', height: 100 }} />
+                <div style={{ marginTop: 8 }}>
+                  <a href="#" onClick={(e) => { e.preventDefault(); navigator.clipboard.writeText(channelCode); }}>Copy code</a>
+                </div>
+                <div style={{ marginTop: 8 }}>
+                  <a href="https://example.com/downloads/receiver.dmg" target="_blank">Download Mac app (DMG)</a>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
