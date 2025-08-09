@@ -1,13 +1,24 @@
-const { app, BrowserWindow, Notification, dialog, ipcMain } = require('electron');
+const { app, BrowserWindow, Notification, dialog, ipcMain, Tray, Menu } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 
 let mainWindow;
+let tray;
+const DEFAULT_RESOLVE_URL = 'https://routed-gbiz.onrender.com';
+const storePath = () => path.join(app.getPath('userData'), 'subscriptions.json');
+
+function loadStore() {
+  try { return JSON.parse(fs.readFileSync(storePath(), 'utf8')); } catch { return { subscriptions: [] }; }
+}
+function saveStore(data) {
+  try { fs.writeFileSync(storePath(), JSON.stringify(data, null, 2)); } catch {}
+}
 
 async function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 420,
-    height: 560,
+    width: 520,
+    height: 640,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
     },
@@ -15,19 +26,55 @@ async function createWindow() {
   });
 
   await mainWindow.loadFile('renderer.html');
+  mainWindow.on('close', (e) => { e.preventDefault(); mainWindow.hide(); });
 }
 
-app.whenReady().then(createWindow);
+function createTray() {
+  tray = new Tray(process.platform === 'darwin' ? path.join(__dirname, 'iconTemplate.png') : path.join(__dirname, 'icon.png'));
+  const contextMenu = Menu.buildFromTemplate([
+    { label: 'Open Settings', click: () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } } },
+    { type: 'separator' },
+    { label: 'Quit', click: () => { app.exit(0); } },
+  ]);
+  tray.setToolTip('Routed Receiver');
+  tray.setContextMenu(contextMenu);
+  tray.on('click', () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } });
+}
+
+app.whenReady().then(async () => {
+  await createWindow();
+  createTray();
+});
 
 app.on('window-all-closed', () => {
+  // Keep app running in tray on macOS
   if (process.platform !== 'darwin') app.quit();
 });
 
-ipcMain.handle('resolve-code', async (_evt, code, resolveUrl) => {
+ipcMain.handle('subscriptions:list', async () => {
+  return loadStore().subscriptions || [];
+});
+
+ipcMain.handle('subscriptions:add', async (_evt, sub) => {
+  const store = loadStore();
+  const exists = (store.subscriptions || []).some((s) => s.id === sub.id);
+  if (!exists) {
+    store.subscriptions = [...(store.subscriptions || []), { id: sub.id, resolveUrl: sub.resolveUrl || DEFAULT_RESOLVE_URL }];
+    saveStore(store);
+  }
+  return store.subscriptions;
+});
+
+ipcMain.handle('subscriptions:remove', async (_evt, id) => {
+  const store = loadStore();
+  store.subscriptions = (store.subscriptions || []).filter((s) => s.id !== id);
+  saveStore(store);
+  return store.subscriptions;
+});
+
+ipcMain.handle('resolve-channel', async (_evt, id, resolveBaseUrl) => {
   try {
-    const res = await fetch(new URL('/api/resolve', resolveUrl).toString(), {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code })
-    });
+    const res = await fetch(new URL(`/api/channel/resolve/${encodeURIComponent(id)}`, resolveBaseUrl || DEFAULT_RESOLVE_URL).toString(), { cache: 'no-store' });
     if (!res.ok) throw new Error(`resolve failed ${res.status}`);
     return await res.json();
   } catch (e) {

@@ -14,6 +14,7 @@ function parseCookie(header: string | null): Record<string, string> {
 }
 
 export async function GET(req: Request) {
+  console.log('[API] GET /api/devinit');
   const cookies = parseCookie(req.headers.get('cookie'));
   const existing = cookies['DEV_ID'];
   const devId = existing || crypto.randomUUID();

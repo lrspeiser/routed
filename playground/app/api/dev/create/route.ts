@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { setLatestTenantId } from '../../../lib/state';
 
 export async function POST() {
+  console.log('[API] POST /api/dev/create');
   const HUB_URL = process.env.HUB_URL || 'http://localhost:8080';
   const HUB_ADMIN_TOKEN = process.env.HUB_ADMIN_TOKEN || '';
   if (!HUB_ADMIN_TOKEN) return NextResponse.json({ error: 'HUB_ADMIN_TOKEN not configured' }, { status: 500 });

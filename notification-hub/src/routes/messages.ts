@@ -14,11 +14,12 @@ async function authPublisher(apiKey?: string) {
 
 export default async function routes(fastify: FastifyInstance) {
   fastify.post('/v1/messages', async (req, reply) => {
-    console.log('[HTTP] POST /v1/messages');
+    const ip = (req.headers['x-forwarded-for'] as string) || (req as any).ip;
+    console.log('[HTTP] POST /v1/messages', { ip });
     const apiKey = (req.headers.authorization || '').replace('Bearer ', '');
     const pub = await authPublisher(apiKey);
     if (!pub) {
-      console.warn('[AUTH] Invalid publisher key');
+      console.warn('[AUTH] Invalid publisher key', { ip });
       return reply.status(401).send({ error: 'unauthorized' });
     }
 
@@ -54,7 +55,9 @@ export default async function routes(fastify: FastifyInstance) {
           `,
           [pub.tenant_id, topicId, pub.id, title, body, payload ?? null, ttl, dedupe_key ?? null]
         );
-        return { messageId: msg.rows[0].id };
+        const messageId = msg.rows[0].id;
+        console.log('[MSG] Inserted', { messageId, tenantId: pub.tenant_id, topic, title: String(title).slice(0, 120) });
+        return { messageId };
       });
 
       await fanoutQueue.add('fanout', { messageId: result.messageId }, { removeOnComplete: 1000, removeOnFail: 1000 });
@@ -62,7 +65,7 @@ export default async function routes(fastify: FastifyInstance) {
       return reply.status(202).send({ message_id: result.messageId });
     } catch (e: any) {
       if (String(e.message).includes('duplicate key value violates unique constraint') && dedupe_key) {
-        console.warn('[DEDUPE] Duplicate dedupe_key; returning 200 with existing reference');
+        console.warn('[DEDUPE] Duplicate dedupe_key; returning 200 with existing reference', { tenantId: pub.tenant_id, dedupe_key });
         const { rows } = await pool.query(
           `select id from messages where tenant_id=$1 and dedupe_key=$2`,
           [pub.tenant_id, dedupe_key]

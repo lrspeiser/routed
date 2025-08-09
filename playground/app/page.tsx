@@ -66,7 +66,7 @@ export default function Page() {
     const res = await fetch('/api/channel/new', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ hubUrl: sandbox.hubUrl, tenantId: sandbox.tenantId, userId: sandbox.userId, topic: 'runs.finished' }),
+      body: JSON.stringify({ hubUrl: sandbox.hubUrl, tenantId: sandbox.tenantId, userId: sandbox.userId, apiKey: sandbox.apiKey, topic: 'runs.finished' }),
     });
     const j = await res.json();
     if (!res.ok) { setLog(`Create channel failed: ${JSON.stringify(j)}`); return; }
@@ -89,6 +89,7 @@ export default function Page() {
         const res = await fetch('/api/devinit', { cache: 'no-store' });
         const j = await res.json();
         setDeveloperId(j.developerId || '');
+        try { localStorage.setItem('DEV_ID', j.developerId); } catch {}
       } catch {}
     })();
   }, []);
@@ -109,76 +110,83 @@ export default function Page() {
   }
 
   return (
-    <div>
-      <h1>Notification Playground</h1>
-      <div style={{ opacity: 0.8, marginBottom: 6 }}>
-        {developerId ? <span>Developer ID: <code>{developerId}</code></span> : null}
-      </div>
-      <p>Point to a running hub and create a sandbox tenant/publisher/user.</p>
-
-      <div style={{ display: 'grid', gap: 8, maxWidth: 640 }}>
-        <button onClick={createSandbox}>Create Developer Key</button>
+    <div style={{ display: 'grid', gap: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <h1 style={{ margin: 0 }}>Routed Playground</h1>
+        <div style={{ opacity: 0.8 }}>
+          {developerId ? <span>Developer ID: <code>{developerId}</code></span> : null}
+        </div>
       </div>
 
-      {sandbox && (
-        <div style={{ marginTop: 16 }}>
-          <div>tenantId: <code>{sandbox.tenantId}</code></div>
-          <div>userId: <code>{sandbox.userId}</code></div>
-          <div>apiKey: <code>{sandbox.apiKey}</code></div>
-          <div style={{ marginTop: 8 }}>
-            <a href={clientLink} target="_blank">Open client with prefilled IDs</a>
-          </div>
-          <div style={{ marginTop: 8 }}>
-            <button onClick={sendTest}>Send Test Message</button>
-          </div>
-          <div style={{ marginTop: 8 }}>
-            <div>Add an email allowed to receive notifications (Mac app will only ask for email)</div>
-            <input value={allowedEmail} onChange={(e) => setAllowedEmail(e.target.value)} placeholder="you@example.com" />
-            <button onClick={allowEmail}>Allow Email</button>
-          </div>
-          <div style={{ marginTop: 8 }}>
-            <button onClick={createChannel}>Create Channel</button>
-            {channelId && (
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+        <div style={{ background: '#0b1020', color: '#e6e9f5', padding: 16, borderRadius: 12 }}>
+          <h3>Create Sandbox</h3>
+          <p style={{ opacity: 0.8, marginTop: -8 }}>Provision a tenant, publisher and user linked to your Developer ID.</p>
+          <button onClick={createSandbox}>Create Developer Key</button>
+          {sandbox && (
+            <div style={{ marginTop: 12, fontSize: 14, lineHeight: 1.6 }}>
+              <div>tenantId: <code>{sandbox.tenantId}</code></div>
+              <div>userId: <code>{sandbox.userId}</code></div>
+              <div>apiKey: <code>{sandbox.apiKey}</code></div>
               <div style={{ marginTop: 8 }}>
-                <div>Subscription ID: <code>{channelId}</code></div>
-                <div style={{ marginTop: 8 }}>
-                  <a href="#" onClick={(e) => { e.preventDefault(); navigator.clipboard.writeText(channelId); }}>Copy ID</a>
-                </div>
-                <div style={{ marginTop: 8 }}>
-                  <a href="https://example.com/downloads/receiver.dmg" target="_blank">Download Mac app (DMG)</a>
-                </div>
-                <div style={{ marginTop: 8 }}>
-                  Client link: <a href={`${sandbox.hubUrl}/dev/client`} target="_blank">{`${sandbox.hubUrl}/dev/client`}</a>
-                </div>
-                <div style={{ marginTop: 8 }}>
-                  Resolve API: <code>/api/channel/resolve/{channelId}</code>
-                </div>
-                {apiSnippet && (
-                  <div style={{ marginTop: 8 }}>
-                    <div>Send via API:</div>
-                    <pre style={{ background:'#111', color:'#0f0', padding:8, borderRadius:6 }}>{apiSnippet}</pre>
-                  </div>
-                )}
+                <button onClick={sendTest}>Send Test Message</button>
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
-      )}
 
-      <div style={{ marginTop: 24 }}>
-        <h3>Quick Test (no keys):</h3>
-        <div>
-          <input value={quickTitle} onChange={(e) => setQuickTitle(e.target.value)} placeholder="Title" />
+        <div style={{ background: '#0b1020', color: '#e6e9f5', padding: 16, borderRadius: 12 }}>
+          <h3>Create Channel</h3>
+          <p style={{ opacity: 0.8, marginTop: -8 }}>Generate a short Subscription ID to share with your Mac client.</p>
+          <button onClick={createChannel} disabled={!sandbox}>Create Channel</button>
+          {channelId && sandbox && (
+            <div style={{ marginTop: 12, fontSize: 14, lineHeight: 1.6 }}>
+              <div>Subscription ID: <code>{channelId}</code></div>
+              <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
+                <button onClick={() => navigator.clipboard.writeText(channelId)}>Copy ID</button>
+                <a href={`/channel/${channelId}`} target="_blank">Open Channel Page</a>
+              </div>
+              <div style={{ marginTop: 8 }}>Receiver app: <a href="https://example.com/downloads/receiver.dmg" target="_blank">Download DMG</a></div>
+              <div style={{ marginTop: 8 }}>Client page: <a href={`${sandbox.hubUrl}/dev/client`} target="_blank">{`${sandbox.hubUrl}/dev/client`}</a></div>
+              <div style={{ marginTop: 8 }}>
+                <div>Channel API:</div>
+                <pre style={{ background:'#111', color:'#0f0', padding:8, borderRadius:6 }}>{`curl -s -X POST '${typeof window !== 'undefined' ? new URL(`/api/channel/${channelId}/send`, window.location.origin).toString() : ''}' \\
+  -H 'Content-Type: application/json' \\
+  -d '{"title":"Hello","body":"From Channel","payload":{"k":"v"}}'`}</pre>
+              </div>
+              {apiSnippet && (
+                <div style={{ marginTop: 8 }}>
+                  <div>Direct Hub API:</div>
+                  <pre style={{ background:'#111', color:'#0f0', padding:8, borderRadius:6 }}>{apiSnippet}</pre>
+                </div>
+              )}
+            </div>
+          )}
         </div>
-        <div>
-          <input value={quickBody} onChange={(e) => setQuickBody(e.target.value)} placeholder="Body" />
-        </div>
-        <button onClick={quickBroadcast}>Broadcast via Hub /dev/broadcast</button>
-        <div style={{ fontSize: 12, opacity: 0.7 }}>Open {`{HUB_URL}/dev/client`} to receive</div>
       </div>
 
-      <h3 style={{ marginTop: 24 }}>Log</h3>
-      <pre style={{ background: '#111', color: '#0f0', padding: 12, borderRadius: 8 }}>{log}</pre>
+      <div style={{ background: '#0b1020', color: '#e6e9f5', padding: 16, borderRadius: 12 }}>
+        <h3>Allow Email (optional)</h3>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input value={allowedEmail} onChange={(e) => setAllowedEmail(e.target.value)} placeholder="you@example.com" />
+          <button onClick={allowEmail} disabled={!sandbox}>Allow</button>
+        </div>
+      </div>
+
+      <div style={{ background: '#0b1020', color: '#e6e9f5', padding: 16, borderRadius: 12 }}>
+        <h3>Quick Broadcast</h3>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input value={quickTitle} onChange={(e) => setQuickTitle(e.target.value)} placeholder="Title" />
+          <input value={quickBody} onChange={(e) => setQuickBody(e.target.value)} placeholder="Body" />
+          <button onClick={quickBroadcast}>Broadcast</button>
+        </div>
+        <div style={{ fontSize: 12, opacity: 0.7, marginTop: 6 }}>Open {`{HUB_URL}/dev/client`} to receive</div>
+      </div>
+
+      <div>
+        <h3>Log</h3>
+        <pre style={{ background: '#111', color: '#0f0', padding: 12, borderRadius: 8 }}>{log}</pre>
+      </div>
     </div>
   );
 }

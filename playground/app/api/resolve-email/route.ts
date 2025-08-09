@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 export async function POST(req: Request) {
+  console.log('[API] POST /api/resolve-email');
   const HUB_URL = process.env.HUB_URL || '';
   const HUB_ADMIN_TOKEN = process.env.HUB_ADMIN_TOKEN || '';
   if (!HUB_URL || !HUB_ADMIN_TOKEN) return NextResponse.json({ error: 'server_not_configured' }, { status: 500 });

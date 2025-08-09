@@ -11,16 +11,22 @@
   </style>
 </head>
 <body>
-  <h2>Notification Receiver</h2>
+  <h2>Routed Receiver • Settings</h2>
   <div class="row">
-    <label>Your Email</label>
-    <input id="email" placeholder="you@example.com" />
+    <label>Subscription ID</label>
+    <input id="subId" placeholder="e.g. abc123" />
   </div>
   <div class="row">
-    <label>Playground Resolve URL</label>
-    <input id="resolveUrl" placeholder="https://playground.example.com" value="https://routed-gbiz.onrender.com" />
+    <details>
+      <summary>Advanced</summary>
+      <label>Resolve Base URL</label>
+      <input id="resolveUrl" placeholder="https://playground.example.com" value="https://routed-gbiz.onrender.com" />
+    </details>
   </div>
-  <button id="connectBtn">Connect</button>
+  <button id="addBtn">Add Subscription</button>
+
+  <h3>Subscriptions</h3>
+  <div id="subs"></div>
 
   <h3>Log</h3>
   <div id="log"></div>
@@ -29,39 +35,67 @@
     const logEl = document.getElementById('log');
     function log(msg) { logEl.textContent += '\n' + new Date().toISOString() + ' ' + msg; logEl.scrollTop = logEl.scrollHeight; }
 
-    let ws;
-    async function connect() {
-      const email = document.getElementById('email').value.trim();
-      const resolveUrl = document.getElementById('resolveUrl').value.trim();
-      if (!email || !resolveUrl) { alert('Enter email and resolve URL'); return; }
-      // Resolve flow: GET /api/channel/resolve/{id}?email=... in future; for now, call playground /api/resolve by looking up a code by email
-      // Simplified: ask playground devinit to show developer ID and rely on admin to have ensured subscription
-      // Keep using resolveCode path for now if needed
-      const desc = await fetch(new URL('/api/resolve-email', resolveUrl).toString(), {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email })
-      }).then(r=>r.json()).catch(()=>null);
-      if (!desc) return;
-      log('Resolved: ' + JSON.stringify(desc));
-      const base = desc.base_url;
-      const wsProto = base.startsWith('https') ? 'wss' : 'ws';
-      const url = new URL(base);
-      const sockUrl = `${wsProto}://${url.host}/v1/socket?user_id=${encodeURIComponent(desc.user_id)}`;
-      ws = new WebSocket(sockUrl);
-      ws.onopen = () => log('WS open');
-      ws.onmessage = (ev) => {
-        log('WS message: ' + ev.data);
-        try {
-          const data = JSON.parse(ev.data);
-          if (data && data.title) window.receiver.showNotification(data);
-        } catch {}
-      };
-      ws.onclose = (e) => log(`WS closed code=${e.code} reason=${e.reason}`);
-      ws.onerror = (e) => {
-        try { log('WS error: ' + (e.message || JSON.stringify(e))); } catch { log('WS error'); }
-      };
+    const sockets = new Map();
+    async function connectOne(sub) {
+      try {
+        const desc = await window.receiver.resolveChannel(sub.id, sub.resolveUrl);
+        if (!desc) return;
+        const base = desc.base_url;
+        const wsProto = base.startsWith('https') ? 'wss' : 'ws';
+        const url = new URL(base);
+        const sockUrl = `${wsProto}://${url.host}/v1/socket?user_id=${encodeURIComponent(desc.user_id)}`;
+        const ws = new WebSocket(sockUrl);
+        sockets.set(sub.id, ws);
+        ws.onopen = () => log(`[${sub.id}] WS open`);
+        ws.onmessage = (ev) => {
+          log(`[${sub.id}] ${ev.data}`);
+          try {
+            const data = JSON.parse(ev.data);
+            if (data && data.title) window.receiver.showNotification(data);
+          } catch {}
+        };
+        ws.onclose = (e) => {
+          log(`[${sub.id}] WS closed code=${e.code} reason=${e.reason}`);
+          sockets.delete(sub.id);
+        };
+        ws.onerror = (e) => {
+          try { log(`[${sub.id}] WS error: ` + (e.message || JSON.stringify(e))); } catch { log('WS error'); }
+        };
+      } catch (e) {
+        log('Connect failed: ' + e);
+      }
     }
 
-    document.getElementById('connectBtn').addEventListener('click', connect);
+    async function refreshSubs() {
+      const subs = await window.receiver.listSubscriptions();
+      const subsEl = document.getElementById('subs');
+      subsEl.innerHTML = '';
+      subs.forEach((s) => {
+        const row = document.createElement('div');
+        row.className = 'row';
+        row.textContent = `${s.id}`;
+        const del = document.createElement('button');
+        del.textContent = 'Delete';
+        del.onclick = async () => { await window.receiver.removeSubscription(s.id); await refreshSubs(); };
+        const conn = document.createElement('button');
+        conn.textContent = 'Connect';
+        conn.onclick = () => connectOne(s);
+        row.appendChild(del);
+        row.appendChild(conn);
+        subsEl.appendChild(row);
+      });
+    }
+
+    document.getElementById('addBtn').addEventListener('click', async () => {
+      const id = document.getElementById('subId').value.trim();
+      const resolveUrl = document.getElementById('resolveUrl').value.trim();
+      if (!id) { alert('Enter Subscription ID'); return; }
+      await window.receiver.addSubscription(id, resolveUrl);
+      document.getElementById('subId').value = '';
+      await refreshSubs();
+    });
+
+    refreshSubs();
   </script>
 </body>
 </html>
