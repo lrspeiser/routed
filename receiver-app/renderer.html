@@ -17,11 +17,13 @@
     <img src="arrow-icon-routed.png" alt="Routed" />
     <h2 style="margin:0">Routed • Settings</h2>
   </header>
+  <div class="row" style="opacity:.7">Before connecting, we check your server health.</div>
+  <div class="row" id="health">Checking server…</div>
   <div class="row">
     <label>Your Email</label>
     <input id="email" placeholder="you@example.com" />
   </div>
-  <button id="connectBtn">Connect</button>
+  <button id="connectBtn" disabled>Connect</button>
 
   <h3>Status</h3>
   <div id="status">Disconnected</div>
@@ -34,6 +36,30 @@
     function log(msg) { logEl.textContent += '\n' + new Date().toISOString() + ' ' + msg; logEl.scrollTop = logEl.scrollHeight; }
 
     const RESOLVE_BASE = 'https://routed-gbiz.onrender.com';
+    const healthEl = document.getElementById('health');
+    const connectBtn = document.getElementById('connectBtn');
+
+    async function checkHealth() {
+      try {
+        const res = await fetch(new URL('/api/healthz', RESOLVE_BASE).toString(), { cache: 'no-store' });
+        const j = await res.json();
+        if (res.ok && j && j.ok) {
+          if (j.hub_ok) {
+            healthEl.innerHTML = `Server: <span style="color:#22c55e">OK</span> (${j.hub_url || 'not set'})`;
+            connectBtn.disabled = false;
+          } else {
+            healthEl.innerHTML = `Server: <span style="color:#ef4444">UNREACHABLE</span> ${j.hub_error ? '(' + j.hub_error + ')' : ''}. Check HUB_URL on playground/server.`;
+            connectBtn.disabled = true;
+          }
+        } else {
+          healthEl.textContent = `Health check failed. Status ${res.status}`;
+          connectBtn.disabled = true;
+        }
+      } catch (e) {
+        healthEl.textContent = `Health check error: ${e && e.message ? e.message : e}`;
+        connectBtn.disabled = true;
+      }
+    }
     let ws;
     async function connectWithEmail(email) {
       try {
@@ -73,11 +99,13 @@
       await connectWithEmail(email);
     });
 
-    // Auto-connect if email is saved
-    try {
-      const saved = localStorage.getItem('ROUTED_EMAIL');
-      if (saved) { document.getElementById('email').value = saved; connectWithEmail(saved); }
-    } catch {}
+    (async () => {
+      await checkHealth();
+      try {
+        const saved = localStorage.getItem('ROUTED_EMAIL');
+        if (saved && !connectBtn.disabled) { document.getElementById('email').value = saved; connectWithEmail(saved); }
+      } catch {}
+    })();
   </script>
 </body>
 </html>
