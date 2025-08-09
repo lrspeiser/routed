@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 
 export default function ChannelPage({ params }: { params: { id: string } }) {
   const { id } = params;
-  const [title, setTitle] = useState('Hello from Channel');
+  const [title, setTitle] = useState('Hello from Routed');
   const [body, setBody] = useState('This message was sent via the channel API');
   const [payload, setPayload] = useState('{"k":"v"}');
   const [log, setLog] = useState('');

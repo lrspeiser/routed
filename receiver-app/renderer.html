@@ -2,16 +2,21 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>Notification Receiver</title>
+  <title>Routed Receiver</title>
   <style>
     body { font-family: -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial; margin: 16px; }
+    header { display:flex; align-items:center; gap:8px; }
+    header img { width: 18px; height: 18px; }
     input, button { font-size: 14px; padding: 8px; margin: 4px 0; width: 100%; }
     #log { white-space: pre-wrap; height: 240px; overflow: auto; background: #111; color: #0f0; padding: 8px; border-radius: 6px; }
     .row { margin-top: 8px; }
   </style>
 </head>
 <body>
-  <h2>Routed Receiver • Settings</h2>
+  <header>
+    <img src="arrow-icon-routed.png" alt="Routed" />
+    <h2 style="margin:0">Routed • Settings</h2>
+  </header>
   <div class="row">
     <label>Subscription ID</label>
     <input id="subId" placeholder="e.g. abc123" />

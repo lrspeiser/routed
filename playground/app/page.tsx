@@ -112,7 +112,7 @@ export default function Page() {
   return (
     <div style={{ display: 'grid', gap: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <h1 style={{ margin: 0 }}>Routed Playground</h1>
+        <h1 style={{ margin: 0 }}>Routed</h1>
         <div style={{ opacity: 0.8 }}>
           {developerId ? <span>Developer ID: <code>{developerId}</code></span> : null}
         </div>
@@ -120,7 +120,7 @@ export default function Page() {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         <div style={{ background: '#0b1020', color: '#e6e9f5', padding: 16, borderRadius: 12 }}>
-          <h3>Create Sandbox</h3>
+          <h3>Create Sandbox (Routed)</h3>
           <p style={{ opacity: 0.8, marginTop: -8 }}>Provision a tenant, publisher and user linked to your Developer ID.</p>
           <button onClick={createSandbox}>Create Developer Key</button>
           {sandbox && (
@@ -136,7 +136,7 @@ export default function Page() {
         </div>
 
         <div style={{ background: '#0b1020', color: '#e6e9f5', padding: 16, borderRadius: 12 }}>
-          <h3>Create Channel</h3>
+          <h3>Create Channel (Routed)</h3>
           <p style={{ opacity: 0.8, marginTop: -8 }}>Generate a short Subscription ID to share with your Mac client.</p>
           <button onClick={createChannel} disabled={!sandbox}>Create Channel</button>
           {channelId && sandbox && (
@@ -166,7 +166,7 @@ export default function Page() {
       </div>
 
       <div style={{ background: '#0b1020', color: '#e6e9f5', padding: 16, borderRadius: 12 }}>
-        <h3>Allow Email (optional)</h3>
+        <h3>Allow Email (Routed)</h3>
         <div style={{ display: 'flex', gap: 8 }}>
           <input value={allowedEmail} onChange={(e) => setAllowedEmail(e.target.value)} placeholder="you@example.com" />
           <button onClick={allowEmail} disabled={!sandbox}>Allow</button>
@@ -174,7 +174,7 @@ export default function Page() {
       </div>
 
       <div style={{ background: '#0b1020', color: '#e6e9f5', padding: 16, borderRadius: 12 }}>
-        <h3>Quick Broadcast</h3>
+        <h3>Quick Broadcast (Routed)</h3>
         <div style={{ display: 'flex', gap: 8 }}>
           <input value={quickTitle} onChange={(e) => setQuickTitle(e.target.value)} placeholder="Title" />
           <input value={quickBody} onChange={(e) => setQuickBody(e.target.value)} placeholder="Body" />

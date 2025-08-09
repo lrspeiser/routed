@@ -22,7 +22,8 @@ async function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
     },
-    title: 'Notification Receiver'
+    title: 'Routed Receiver',
+    icon: path.join(__dirname, 'arrow-icon-routed.png'),
   });
 
   await mainWindow.loadFile('renderer.html');
@@ -30,18 +31,22 @@ async function createWindow() {
 }
 
 function createTray() {
-  tray = new Tray(process.platform === 'darwin' ? path.join(__dirname, 'iconTemplate.png') : path.join(__dirname, 'icon.png'));
+  const trayIcon = path.join(__dirname, 'arrow-icon-routed.png');
+  tray = new Tray(trayIcon);
   const contextMenu = Menu.buildFromTemplate([
     { label: 'Open Settings', click: () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } } },
     { type: 'separator' },
     { label: 'Quit', click: () => { app.exit(0); } },
   ]);
-  tray.setToolTip('Routed Receiver');
+  tray.setToolTip('Routed');
   tray.setContextMenu(contextMenu);
   tray.on('click', () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } });
 }
 
 app.whenReady().then(async () => {
+  if (process.platform === 'darwin') {
+    try { app.dock.setIcon(path.join(__dirname, 'arrow-icon-routed.png')); } catch {}
+  }
   await createWindow();
   createTray();
 });
