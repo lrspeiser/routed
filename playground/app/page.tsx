@@ -11,6 +11,7 @@ export default function Page() {
   const [channelId, setChannelId] = useState<string>('');
   const [hubUrl, setHubUrl] = useState<string>('');
   const [apiSnippet, setApiSnippet] = useState<string>('');
+  const [allowedEmail, setAllowedEmail] = useState<string>('');
 
   async function createSandbox() {
     try {
@@ -92,6 +93,21 @@ export default function Page() {
     })();
   }, []);
 
+  async function allowEmail() {
+    if (!sandbox || !allowedEmail) return;
+    try {
+      const res = await fetch('/api/resolve-email', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: allowedEmail, tenantId: sandbox.tenantId, topic: 'runs.finished' }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(JSON.stringify(j));
+      setLog(`Email allowed → userId=${j.user_id} topic=${j.topic}`);
+    } catch (e: any) {
+      setLog(`Allow email failed: ${e.message || e}`);
+    }
+  }
+
   return (
     <div>
       <h1>Notification Playground</h1>
@@ -114,6 +130,11 @@ export default function Page() {
           </div>
           <div style={{ marginTop: 8 }}>
             <button onClick={sendTest}>Send Test Message</button>
+          </div>
+          <div style={{ marginTop: 8 }}>
+            <div>Add an email allowed to receive notifications (Mac app will only ask for email)</div>
+            <input value={allowedEmail} onChange={(e) => setAllowedEmail(e.target.value)} placeholder="you@example.com" />
+            <button onClick={allowEmail}>Allow Email</button>
           </div>
           <div style={{ marginTop: 8 }}>
             <button onClick={createChannel}>Create Channel</button>
