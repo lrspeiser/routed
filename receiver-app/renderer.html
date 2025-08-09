@@ -50,8 +50,10 @@
           if (data && data.title) window.receiver.showNotification(data);
         } catch {}
       };
-      ws.onclose = () => log('WS closed');
-      ws.onerror = (e) => log('WS error: ' + (e.message || e));
+      ws.onclose = (e) => log(`WS closed code=${e.code} reason=${e.reason}`);
+      ws.onerror = (e) => {
+        try { log('WS error: ' + (e.message || JSON.stringify(e))); } catch { log('WS error'); }
+      };
     }
 
     document.getElementById('connectBtn').addEventListener('click', connect);

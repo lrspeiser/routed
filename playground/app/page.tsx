@@ -7,6 +7,8 @@ export default function Page() {
   const [channelCode, setChannelCode] = useState<string>('');
   const [quickTitle, setQuickTitle] = useState('Test ✅');
   const [quickBody, setQuickBody] = useState('Hello from Playground');
+  const [developerId, setDeveloperId] = useState<string>('');
+  const [channelId, setChannelId] = useState<string>('');
 
   async function createSandbox() {
     try {
@@ -57,14 +59,14 @@ export default function Page() {
   async function createChannel() {
     if (!sandbox) return;
     setLog('');
-    const res = await fetch('/api/channel/create', {
+    const res = await fetch('/api/channel/new', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ hubUrl: sandbox.hubUrl, tenantId: sandbox.tenantId, userId: sandbox.userId, topic: 'runs.finished' }),
     });
     const j = await res.json();
     if (!res.ok) { setLog(`Create channel failed: ${JSON.stringify(j)}`); return; }
-    setChannelCode(j.code);
+    setChannelId(j.channelId);
   }
 
   const clientLink = sandbox ? `${sandbox.hubUrl}/?tenantId=${sandbox.tenantId}&userId=${sandbox.userId}` : '';
@@ -72,6 +74,9 @@ export default function Page() {
   return (
     <div>
       <h1>Notification Playground</h1>
+      <div style={{ opacity: 0.8, marginBottom: 6 }}>
+        {developerId ? <span>Developer ID: <code>{developerId}</code></span> : null}
+      </div>
       <p>Point to a running hub and create a sandbox tenant/publisher/user.</p>
 
       <div style={{ display: 'grid', gap: 8, maxWidth: 640 }}>
@@ -91,15 +96,20 @@ export default function Page() {
           </div>
           <div style={{ marginTop: 8 }}>
             <button onClick={createChannel}>Create Channel</button>
-            {channelCode && (
+            {channelId && (
               <div style={{ marginTop: 8 }}>
-                <div>Channel Code:</div>
-                <textarea readOnly value={channelCode} style={{ width: '100%', height: 100 }} />
+                <div>Subscription ID: <code>{channelId}</code></div>
                 <div style={{ marginTop: 8 }}>
-                  <a href="#" onClick={(e) => { e.preventDefault(); navigator.clipboard.writeText(channelCode); }}>Copy code</a>
+                  <a href="#" onClick={(e) => { e.preventDefault(); navigator.clipboard.writeText(channelId); }}>Copy ID</a>
                 </div>
                 <div style={{ marginTop: 8 }}>
                   <a href="https://example.com/downloads/receiver.dmg" target="_blank">Download Mac app (DMG)</a>
+                </div>
+                <div style={{ marginTop: 8 }}>
+                  Client link: <a href={`${sandbox.hubUrl}/dev/client`} target="_blank">{`${sandbox.hubUrl}/dev/client`}</a>
+                </div>
+                <div style={{ marginTop: 8 }}>
+                  Resolve API: <code>/api/channel/resolve/{channelId}</code>
                 </div>
               </div>
             )}
