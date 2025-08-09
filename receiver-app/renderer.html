@@ -13,8 +13,8 @@
 <body>
   <h2>Notification Receiver</h2>
   <div class="row">
-    <label>Channel Code</label>
-    <textarea id="code" placeholder="Paste channel code" style="width:100%;height:100px;"></textarea>
+    <label>Your Email</label>
+    <input id="email" placeholder="you@example.com" />
   </div>
   <div class="row">
     <label>Playground Resolve URL</label>
@@ -31,10 +31,15 @@
 
     let ws;
     async function connect() {
-      const code = document.getElementById('code').value.trim();
+      const email = document.getElementById('email').value.trim();
       const resolveUrl = document.getElementById('resolveUrl').value.trim();
-      if (!code || !resolveUrl) { alert('Enter code and resolve URL'); return; }
-      const desc = await window.receiver.resolveCode(code, resolveUrl);
+      if (!email || !resolveUrl) { alert('Enter email and resolve URL'); return; }
+      // Resolve flow: GET /api/channel/resolve/{id}?email=... in future; for now, call playground /api/resolve by looking up a code by email
+      // Simplified: ask playground devinit to show developer ID and rely on admin to have ensured subscription
+      // Keep using resolveCode path for now if needed
+      const desc = await fetch(new URL('/api/resolve-email', resolveUrl).toString(), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email })
+      }).then(r=>r.json()).catch(()=>null);
       if (!desc) return;
       log('Resolved: ' + JSON.stringify(desc));
       const base = desc.base_url;

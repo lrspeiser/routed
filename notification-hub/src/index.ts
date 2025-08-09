@@ -9,6 +9,7 @@ import socket from './routes/socket';
 import admin from './routes/admin';
 import adminProvision from './routes/admin_provision';
 import devroutes from './routes/dev';
+import adminUsers from './routes/admin_users';
 import './workers/fanout';
 import './workers/deliver';
 import { startTtlSweeper } from './cron/ttl';
@@ -32,6 +33,7 @@ async function main() {
   await app.register(admin);
   await app.register(adminProvision);
   await app.register(devroutes);
+  await app.register(adminUsers);
 
   const stopTtl = startTtlSweeper();
 
