@@ -22,40 +22,49 @@ export default async function routes(fastify: FastifyInstance) {
     const { tenant_id, name, topic_name, short_id } = (req.body ?? {}) as any;
     if (!tenant_id || !name || !topic_name) return reply.status(400).send({ error: 'missing tenant_id/name/topic_name' });
 
-    const result = await withTxn(async (c) => {
-      // ensure topic
-      const tr = await c.query(
-        `insert into topics (tenant_id, name) values ($1,$2)
-         on conflict (tenant_id,name) do update set name=excluded.name
-         returning id`,
-        [tenant_id, topic_name]
-      );
-      const topicId = tr.rows[0].id;
+    try {
+      const result = await withTxn(async (c) => {
+        // ensure topic
+        const tr = await c.query(
+          `insert into topics (tenant_id, name) values ($1,$2)
+           on conflict (tenant_id,name) do update set name=excluded.name
+           returning id`,
+          [tenant_id, topic_name]
+        );
+        const topicId = tr.rows[0].id;
 
-      let sid = (short_id as string) || makeShortId();
-      // ensure unique short id per tenant
-      // If collision, regenerate
-      let ok = false;
-      for (let i = 0; i < 5 && !ok; i++) {
-        try {
-          const ins = await c.query(
-            `insert into channels (tenant_id, topic_id, name, short_id) values ($1,$2,$3,$4) returning id, short_id`,
-            [tenant_id, topicId, name, sid]
-          );
-          ok = true;
-          sid = ins.rows[0].short_id;
-        } catch (e: any) {
-          if (String(e.message).includes('unique') || String(e.message).includes('duplicate')) {
-            sid = makeShortId();
-          } else {
-            throw e;
+        let sid = (short_id as string) || makeShortId();
+        // ensure unique short id per tenant
+        // If collision, regenerate
+        let ok = false;
+        for (let i = 0; i < 5 && !ok; i++) {
+          try {
+            const ins = await c.query(
+              `insert into channels (tenant_id, topic_id, name, short_id) values ($1,$2,$3,$4) returning id, short_id`,
+              [tenant_id, topicId, name, sid]
+            );
+            ok = true;
+            sid = ins.rows[0].short_id;
+          } catch (e: any) {
+            const msg = String(e.message || e);
+            if (msg.includes('unique') || msg.includes('duplicate')) {
+              sid = makeShortId();
+            } else {
+              throw e;
+            }
           }
         }
-      }
-      return { topicId, short_id: sid };
-    });
+        return { topicId, short_id: sid };
+      });
 
-    return reply.send({ ok: true, short_id: result.short_id });
+      return reply.send({ ok: true, short_id: result.short_id });
+    } catch (e: any) {
+      const msg = String(e?.message || e);
+      if (msg.includes('relation') && msg.includes('channels')) {
+        return reply.status(500).send({ error: 'channels_table_missing', hint: 'Apply latest SQL migrations to create channels table.' });
+      }
+      reply.status(500).send({ error: 'internal_error', detail: msg });
+    }
   });
 
   // List channels for a tenant

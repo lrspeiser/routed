@@ -15,8 +15,12 @@ export async function POST(req: Request) {
     body: JSON.stringify({ tenant_id: tenantId, email, topic }),
     cache: 'no-store',
   });
-  const j = await res.json().catch(() => ({}));
-  return NextResponse.json(j, { status: res.status });
+  let payload: any = {};
+  try { payload = await res.json(); } catch { payload = { error: 'invalid_json' }; }
+  if (!res.ok) {
+    return NextResponse.json({ error: 'hub_error', status: res.status, hub: payload }, { status: 500 });
+  }
+  return NextResponse.json(payload);
 }
 
 
