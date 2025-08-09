@@ -19,7 +19,7 @@ export default function Page() {
   const [sendBody, setSendBody] = useState<string>('This is a test message');
   const [sendPayload, setSendPayload] = useState<string>('{"k":"v"}');
 
-  async function createSandbox() {
+  async function createSandbox(): Promise<any | null> {
     try {
       setLog('');
       const res = await fetch('/api/dev/create', { method: 'POST' });
@@ -28,8 +28,10 @@ export default function Page() {
       setSandbox(data);
       setLog(`Sandbox created. tenantId=${data.tenantId} userId=${data.userId} apiKey=${data.apiKey}`);
       setHubUrl(data.hubUrl);
+      return data;
     } catch (e: any) {
       setLog(`Create failed: ${e.message || e}`);
+      return null;
     }
   }
 
@@ -67,14 +69,22 @@ export default function Page() {
   }
 
   async function createChannel() {
-    if (!sandbox) return;
     if (!channelName) { setLog('Please enter a channel name.'); return; }
     setLog('');
+    // Ensure sandbox exists (auto-provision if needed)
+    let sb = sandbox;
+    if (!sb) {
+      sb = await createSandbox();
+    }
+    if (!sb) {
+      setLog('Provision failed. Ensure HUB_URL and HUB_ADMIN_TOKEN are configured on the playground server.');
+      return;
+    }
     // Create server-side channel for persistence & association
     try {
       const resp = await fetch('/api/admin/channels/create', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tenantId: sandbox.tenantId, name: channelName, topic: 'runs.finished' }),
+        body: JSON.stringify({ tenantId: sb.tenantId, name: channelName, topic: 'runs.finished' }),
       });
       const jr = await resp.json();
       if (!resp.ok) { setLog(`Channel DB create failed: ${JSON.stringify(jr)}`); }
@@ -83,15 +93,15 @@ export default function Page() {
     const res = await fetch('/api/channel/new', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ hubUrl: sandbox.hubUrl, tenantId: sandbox.tenantId, userId: sandbox.userId, apiKey: sandbox.apiKey, topic: 'runs.finished', channelName }),
+      body: JSON.stringify({ hubUrl: sb.hubUrl, tenantId: sb.tenantId, userId: sb.userId, apiKey: sb.apiKey, topic: 'runs.finished', channelName }),
     });
     const j = await res.json();
     if (!res.ok) { setLog(`Create channel failed: ${JSON.stringify(j)}`); return; }
     setChannelId(j.channelId);
-    if (sandbox) {
-      const url = new URL('/v1/messages', sandbox.hubUrl).toString();
+    if (sb) {
+      const url = new URL('/v1/messages', sb.hubUrl).toString();
       const snippet = `curl -s -X POST '${url}' \
-  -H 'Authorization: Bearer ${sandbox.apiKey}' \
+  -H 'Authorization: Bearer ${sb.apiKey}' \
   -H 'Content-Type: application/json' \
   -d '{"topic":"runs.finished","title":"Hello","body":"From API","payload":{"k":"v"}}'`;
       setApiSnippet(snippet);
@@ -171,7 +181,7 @@ export default function Page() {
     const t = setInterval(refreshEmails, 3000);
     refreshEmails();
     return () => clearInterval(t);
-  }, [sandbox?.tenantId]);
+  }, [sandbox?.tenantId, channelShortId]);
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
