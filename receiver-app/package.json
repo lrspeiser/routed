@@ -2,7 +2,8 @@
   "name": "notification-receiver",
   "version": "0.1.0",
   "private": true,
-  "description": "Desktop receiver for Notification Hub (enter channel code, receive via WebSocket)",
+  "author": "Routed",
+  "description": "Desktop receiver for Notification Hub",
   "main": "main.js",
   "scripts": {
     "dev": "electron .",
@@ -11,17 +12,23 @@
   "build": {
     "appId": "com.routed.notification.receiver",
     "productName": "Notification Receiver",
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer.html",
+      "package.json"
+    ],
     "mac": {
       "category": "public.app-category.utilities",
       "target": ["dmg"],
-      "hardenedRuntime": false,
-      "entitlements": null
+      "identity": null
     }
   },
   "dependencies": {
-    "electron": "^31.3.1"
+    "node-fetch": "^3.3.2"
   },
   "devDependencies": {
+    "electron": "^31.3.1",
     "electron-builder": "^24.13.3"
   }
 }
