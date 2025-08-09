@@ -23,19 +23,31 @@ export default async function routes(fastify: FastifyInstance) {
     try {
       await client.query('BEGIN');
 
-      // ensure user
-      const ur = await client.query(
-        `insert into users (tenant_id, email) values ($1,$2)
-         on conflict (tenant_id, email) do update set email=excluded.email
-         returning id`,
-        [tenant_id, email]
-      );
-      let userId: string;
-      if (ur.rows[0]?.id) userId = ur.rows[0].id;
-      else {
-        const f = await client.query(`select id from users where tenant_id=$1 and email=$2`, [tenant_id, email]);
-        userId = f.rows[0].id;
+      // ensure user (support DBs without the unique constraint by falling back)
+      let userId: string | null = null;
+      try {
+        const ur = await client.query(
+          `insert into users (tenant_id, email) values ($1,$2)
+           on conflict (tenant_id, email) do update set email=excluded.email
+           returning id`,
+          [tenant_id, email]
+        );
+        userId = ur.rows[0]?.id ?? null;
+      } catch (e: any) {
+        // Fallback if ON CONFLICT target isn't available
+        const ur2 = await client.query(
+          `insert into users (tenant_id, email) values ($1,$2)
+           on conflict do nothing
+           returning id`,
+          [tenant_id, email]
+        );
+        userId = ur2.rows[0]?.id ?? null;
       }
+      if (!userId) {
+        const f = await client.query(`select id from users where tenant_id=$1 and email=$2`, [tenant_id, email]);
+        userId = f.rows[0]?.id ?? null;
+      }
+      if (!userId) throw new Error('failed_to_ensure_user');
 
       // ensure topic
       const tr = await client.query(
@@ -58,7 +70,7 @@ export default async function routes(fastify: FastifyInstance) {
     } catch (e) {
       await client.query('ROLLBACK');
       fastify.log.error(e);
-      return reply.status(500).send({ error: 'internal_error' });
+      return reply.status(500).send({ error: 'internal_error', detail: String((e as any)?.message || e) });
     } finally {
       client.release();
     }
