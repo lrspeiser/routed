@@ -1,7 +1,12 @@
 import { Pool } from 'pg';
 import { ENV } from './env';
 
-export const pool = new Pool({ connectionString: ENV.DATABASE_URL });
+// Render/managed Postgres often requires TLS. Enable SSL by default; allow override.
+const shouldUseSSL = (process.env.DATABASE_SSL ?? 'true').toLowerCase() !== 'false';
+export const pool = new Pool({
+  connectionString: ENV.DATABASE_URL,
+  ssl: shouldUseSSL ? { rejectUnauthorized: false } : undefined,
+});
 
 pool.on('error', (err: unknown) => {
   console.error('[DB] Pool error (will crash):', err);
