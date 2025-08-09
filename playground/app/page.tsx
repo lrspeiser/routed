@@ -14,6 +14,7 @@ export default function Page() {
   const [allowedEmail, setAllowedEmail] = useState<string>('');
   const [emails, setEmails] = useState<Array<{ email: string; user_id: string; online: boolean }>>([]);
   const [channelName, setChannelName] = useState<string>('');
+  const [channelShortId, setChannelShortId] = useState<string>('');
   const [sendTitle, setSendTitle] = useState<string>('Hello from Routed');
   const [sendBody, setSendBody] = useState<string>('This is a test message');
   const [sendPayload, setSendPayload] = useState<string>('{"k":"v"}');
@@ -77,6 +78,7 @@ export default function Page() {
       });
       const jr = await resp.json();
       if (!resp.ok) { setLog(`Channel DB create failed: ${JSON.stringify(jr)}`); }
+      if (jr.short_id) setChannelShortId(jr.short_id);
     } catch {}
     const res = await fetch('/api/channel/new', {
       method: 'POST',
@@ -137,12 +139,18 @@ export default function Page() {
   async function refreshEmails() {
     if (!sandbox) return;
     try {
-      const url = new URL('/api/admin/emails/list', window.location.origin);
-      url.searchParams.set('tenantId', sandbox.tenantId);
-      url.searchParams.set('topic', 'runs.finished');
-      const res = await fetch(url.toString(), { cache: 'no-store' });
-      const j = await res.json();
-      setEmails(j.users || []);
+      if (channelShortId) {
+        const res = await fetch(`/api/admin/channels/users/${encodeURIComponent(channelShortId)}`, { cache: 'no-store' });
+        const j = await res.json();
+        setEmails(j.users || []);
+      } else {
+        const url = new URL('/api/admin/emails/list', window.location.origin);
+        url.searchParams.set('tenantId', sandbox.tenantId);
+        url.searchParams.set('topic', 'runs.finished');
+        const res = await fetch(url.toString(), { cache: 'no-store' });
+        const j = await res.json();
+        setEmails(j.users || []);
+      }
     } catch {}
   }
 
@@ -183,6 +191,9 @@ export default function Page() {
           {channelId && sandbox && (
             <div style={{ marginTop: 12, fontSize: 14, lineHeight: 1.6 }}>
               <div>Subscription ID: <code>{channelId}</code></div>
+              {channelShortId ? (
+                <div>Channel Short ID: <code>{channelShortId}</code></div>
+              ) : null}
               <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
                 <button onClick={() => navigator.clipboard.writeText(channelId)}>Copy ID</button>
                 <a href={`/channel/${channelId}`} target="_blank">Open Channel Page</a>
@@ -238,6 +249,19 @@ export default function Page() {
               setLog(`Channel send failed: ${e.message || e}`);
             }
           }}>Send</button>
+          <button disabled={!sandbox} onClick={async () => {
+            try {
+              const payload = sendPayload ? JSON.parse(sendPayload) : null;
+              const res = await fetch('/api/admin/test-message', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tenantId: sandbox?.tenantId, topic: 'runs.finished', title: sendTitle, body: sendBody, payload })
+              });
+              const j = await res.json();
+              setLog(`Admin test message → ${res.status} ${JSON.stringify(j)}`);
+            } catch (e: any) {
+              setLog(`Admin test failed: ${e.message || e}`);
+            }
+          }}>Send Admin Test</button>
         </div>
       </div>
 
