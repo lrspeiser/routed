@@ -50,3 +50,11 @@ export async function broadcastToAll(payload: any): Promise<number> {
   console.log(`[SOCKET] broadcast sent to ${total} sockets`);
   return total;
 }
+
+export function isUserOnline(userId: string): boolean {
+  const arr = sockets.get(userId) ?? [];
+  for (const s of arr) {
+    if (s.ws.readyState === s.ws.OPEN) return true;
+  }
+  return false;
+}

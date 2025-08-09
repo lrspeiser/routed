@@ -12,6 +12,11 @@ export default function Page() {
   const [hubUrl, setHubUrl] = useState<string>('');
   const [apiSnippet, setApiSnippet] = useState<string>('');
   const [allowedEmail, setAllowedEmail] = useState<string>('');
+  const [emails, setEmails] = useState<Array<{ email: string; user_id: string; online: boolean }>>([]);
+  const [channelName, setChannelName] = useState<string>('');
+  const [sendTitle, setSendTitle] = useState<string>('Hello from Routed');
+  const [sendBody, setSendBody] = useState<string>('This is a test message');
+  const [sendPayload, setSendPayload] = useState<string>('{"k":"v"}');
 
   async function createSandbox() {
     try {
@@ -62,11 +67,12 @@ export default function Page() {
 
   async function createChannel() {
     if (!sandbox) return;
+    if (!channelName) { setLog('Please enter a channel name.'); return; }
     setLog('');
     const res = await fetch('/api/channel/new', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ hubUrl: sandbox.hubUrl, tenantId: sandbox.tenantId, userId: sandbox.userId, apiKey: sandbox.apiKey, topic: 'runs.finished' }),
+      body: JSON.stringify({ hubUrl: sandbox.hubUrl, tenantId: sandbox.tenantId, userId: sandbox.userId, apiKey: sandbox.apiKey, topic: 'runs.finished', channelName }),
     });
     const j = await res.json();
     if (!res.ok) { setLog(`Create channel failed: ${JSON.stringify(j)}`); return; }
@@ -97,17 +103,50 @@ export default function Page() {
   async function allowEmail() {
     if (!sandbox || !allowedEmail) return;
     try {
-      const res = await fetch('/api/resolve-email', {
+      const res = await fetch('/api/admin/emails/add', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: allowedEmail, tenantId: sandbox.tenantId, topic: 'runs.finished' }),
       });
       const j = await res.json();
       if (!res.ok) throw new Error(JSON.stringify(j));
-      setLog(`Email allowed → userId=${j.user_id} topic=${j.topic}`);
+      setLog(`Email allowed → userId=${j.userId || j.user_id} topic=${j.topic || 'runs.finished'}`);
+      setAllowedEmail('');
+      await refreshEmails();
     } catch (e: any) {
       setLog(`Allow email failed: ${e.message || e}`);
     }
   }
+
+  async function refreshEmails() {
+    if (!sandbox) return;
+    try {
+      const url = new URL('/api/admin/emails/list', window.location.origin);
+      url.searchParams.set('tenantId', sandbox.tenantId);
+      url.searchParams.set('topic', 'runs.finished');
+      const res = await fetch(url.toString(), { cache: 'no-store' });
+      const j = await res.json();
+      setEmails(j.users || []);
+    } catch {}
+  }
+
+  async function removeEmail(email: string) {
+    if (!sandbox) return;
+    try {
+      const res = await fetch('/api/admin/emails/remove', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tenantId: sandbox.tenantId, email, topic: 'runs.finished' }),
+      });
+      if (!res.ok) throw new Error('remove failed');
+      await refreshEmails();
+    } catch {}
+  }
+
+  useEffect(() => {
+    if (!sandbox) return;
+    const t = setInterval(refreshEmails, 3000);
+    refreshEmails();
+    return () => clearInterval(t);
+  }, [sandbox?.tenantId]);
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
@@ -136,8 +175,9 @@ export default function Page() {
         </div>
 
         <div style={{ background: '#0b1020', color: '#e6e9f5', padding: 16, borderRadius: 12 }}>
-          <h3>Create Channel (Routed)</h3>
-          <p style={{ opacity: 0.8, marginTop: -8 }}>Generate a short Subscription ID to share with your Mac client.</p>
+          <h3>1) Create Channel (Routed)</h3>
+          <p style={{ opacity: 0.8, marginTop: -8 }}>Name your channel and generate a short Subscription ID to share with your Mac client.</p>
+          <input value={channelName} onChange={(e) => setChannelName(e.target.value)} placeholder="Channel name (e.g., Leon's Laptop)" />
           <button onClick={createChannel} disabled={!sandbox}>Create Channel</button>
           {channelId && sandbox && (
             <div style={{ marginTop: 12, fontSize: 14, lineHeight: 1.6 }}>
@@ -166,21 +206,40 @@ export default function Page() {
       </div>
 
       <div style={{ background: '#0b1020', color: '#e6e9f5', padding: 16, borderRadius: 12 }}>
-        <h3>Allow Email (Routed)</h3>
+        <h3>2) Add Email (Routed)</h3>
         <div style={{ display: 'flex', gap: 8 }}>
           <input value={allowedEmail} onChange={(e) => setAllowedEmail(e.target.value)} placeholder="you@example.com" />
-          <button onClick={allowEmail} disabled={!sandbox}>Allow</button>
+          <button onClick={allowEmail} disabled={!sandbox}>Add</button>
+        </div>
+        <div style={{ marginTop: 12 }}>
+          {emails.map((u) => (
+            <div key={u.user_id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+              <span style={{ width: 8, height: 8, borderRadius: 9999, background: u.online ? '#22c55e' : '#ef4444', display: 'inline-block' }} />
+              <code style={{ flex: 1 }}>{u.email}</code>
+              <button onClick={() => removeEmail(u.email)}>Remove</button>
+            </div>
+          ))}
         </div>
       </div>
 
       <div style={{ background: '#0b1020', color: '#e6e9f5', padding: 16, borderRadius: 12 }}>
-        <h3>Quick Broadcast (Routed)</h3>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <input value={quickTitle} onChange={(e) => setQuickTitle(e.target.value)} placeholder="Title" />
-          <input value={quickBody} onChange={(e) => setQuickBody(e.target.value)} placeholder="Body" />
-          <button onClick={quickBroadcast}>Broadcast</button>
+        <h3>3) Send Message (Routed)</h3>
+        <div style={{ display: 'grid', gap: 8 }}>
+          <input value={sendTitle} onChange={(e) => setSendTitle(e.target.value)} placeholder="Title" />
+          <input value={sendBody} onChange={(e) => setSendBody(e.target.value)} placeholder="Body" />
+          <textarea value={sendPayload} onChange={(e) => setSendPayload(e.target.value)} placeholder='Payload JSON {"k":"v"}' rows={3} />
+          <button disabled={!channelId} onClick={async () => {
+            if (!channelId) return;
+            try {
+              const payload = sendPayload ? JSON.parse(sendPayload) : null;
+              const res = await fetch(`/api/channel/${channelId}/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: sendTitle, body: sendBody, payload }) });
+              const j = await res.json();
+              setLog(`Channel send → ${res.status} ${JSON.stringify(j)}`);
+            } catch (e: any) {
+              setLog(`Channel send failed: ${e.message || e}`);
+            }
+          }}>Send</button>
         </div>
-        <div style={{ fontSize: 12, opacity: 0.7, marginTop: 6 }}>Open {`{HUB_URL}/dev/client`} to receive</div>
       </div>
 
       <div>

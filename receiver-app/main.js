@@ -31,8 +31,9 @@ async function createWindow() {
 }
 
 function createTray() {
-  const trayIcon = nativeImage.createFromPath(path.join(__dirname, 'arrow-icon-routed.png'));
-  tray = new Tray(trayIcon);
+  const trayImg = nativeImage.createFromPath(path.join(__dirname, 'arrow-icon-routed.png'));
+  try { trayImg.setTemplateImage(false); } catch {}
+  tray = new Tray(trayImg);
   const contextMenu = Menu.buildFromTemplate([
     { label: 'Settings', click: () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } } },
     { type: 'separator' },
