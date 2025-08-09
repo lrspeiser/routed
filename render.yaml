@@ -1,0 +1,49 @@
+services:
+  - type: web
+    name: hub
+    env: docker
+    rootDir: notification-hub
+    plan: free
+    autoDeploy: true
+    healthCheckPath: /healthz
+    envVars:
+      - key: PORT
+        value: 8080
+      - key: DATABASE_URL
+        fromDatabase:
+          name: routed-postgres
+          property: connectionString
+      - key: REDIS_URL
+        value: "" # set this to your Upstash rediss:// URL after deploy
+      - key: DEFAULT_TTL_SEC
+        value: "86400"
+      - key: HUB_ADMIN_TOKEN
+        value: "" # set a random secret
+      - key: VAPID_PUBLIC
+        value: "" # set your VAPID public key
+      - key: VAPID_PRIVATE
+        value: "" # set your VAPID private key
+      - key: BASE_URL
+        value: "" # set to the hub's public URL after deploy
+      - key: APPLY_SCHEMA_ON_BOOT
+        value: "true"
+
+  - type: web
+    name: playground
+    env: node
+    rootDir: playground
+    plan: free
+    autoDeploy: true
+    buildCommand: "npm install && npm run build"
+    startCommand: "npm start"
+    envVars:
+      - key: HUB_URL
+        value: "" # set to the hub's public URL after deploy
+      - key: HUB_ADMIN_TOKEN
+        value: "" # set same as hub to enable developer key creation
+
+databases:
+  - name: routed-postgres
+    plan: free
+    databaseName: notification_hub
+    user: routed_user
