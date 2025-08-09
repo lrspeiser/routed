@@ -21,14 +21,7 @@
     <label>Subscription ID</label>
     <input id="subId" placeholder="e.g. abc123" />
   </div>
-  <div class="row">
-    <details>
-      <summary>Advanced</summary>
-      <label>Resolve Base URL</label>
-      <input id="resolveUrl" placeholder="https://playground.example.com" value="https://routed-gbiz.onrender.com" />
-    </details>
-  </div>
-  <button id="addBtn">Add Subscription</button>
+  <button id="addBtn">Connect</button>
 
   <h3>Subscriptions</h3>
   <div id="subs"></div>
@@ -82,20 +75,17 @@
         const del = document.createElement('button');
         del.textContent = 'Delete';
         del.onclick = async () => { await window.receiver.removeSubscription(s.id); await refreshSubs(); };
-        const conn = document.createElement('button');
-        conn.textContent = 'Connect';
-        conn.onclick = () => connectOne(s);
         row.appendChild(del);
-        row.appendChild(conn);
         subsEl.appendChild(row);
       });
+      // Autoconnect to all saved subscriptions
+      for (const s of subs) connectOne(s);
     }
 
     document.getElementById('addBtn').addEventListener('click', async () => {
       const id = document.getElementById('subId').value.trim();
-      const resolveUrl = document.getElementById('resolveUrl').value.trim();
       if (!id) { alert('Enter Subscription ID'); return; }
-      await window.receiver.addSubscription(id, resolveUrl);
+      await window.receiver.addSubscription(id);
       document.getElementById('subId').value = '';
       await refreshSubs();
     });

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Notification, dialog, ipcMain, Tray, Menu } = require('electron');
+const { app, BrowserWindow, Notification, dialog, ipcMain, Tray, Menu, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
@@ -22,7 +22,7 @@ async function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
     },
-    title: 'Routed Receiver',
+    title: 'Routed',
     icon: path.join(__dirname, 'arrow-icon-routed.png'),
   });
 
@@ -31,12 +31,12 @@ async function createWindow() {
 }
 
 function createTray() {
-  const trayIcon = path.join(__dirname, 'arrow-icon-routed.png');
+  const trayIcon = nativeImage.createFromPath(path.join(__dirname, 'arrow-icon-routed.png'));
   tray = new Tray(trayIcon);
   const contextMenu = Menu.buildFromTemplate([
-    { label: 'Open Settings', click: () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } } },
+    { label: 'Settings', click: () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } } },
     { type: 'separator' },
-    { label: 'Quit', click: () => { app.exit(0); } },
+    { label: 'Quit Routed', click: () => { app.exit(0); } },
   ]);
   tray.setToolTip('Routed');
   tray.setContextMenu(contextMenu);
@@ -44,6 +44,7 @@ function createTray() {
 }
 
 app.whenReady().then(async () => {
+  try { app.setName('Routed'); } catch {}
   if (process.platform === 'darwin') {
     try { app.dock.setIcon(path.join(__dirname, 'arrow-icon-routed.png')); } catch {}
   }

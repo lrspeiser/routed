@@ -1,27 +1,29 @@
 {
-  "name": "notification-receiver",
+  "name": "routed",
   "version": "0.1.0",
   "private": true,
   "author": "Routed",
-  "description": "Desktop receiver for Notification Hub",
+  "description": "Routed desktop receiver",
   "main": "main.js",
   "scripts": {
     "dev": "electron .",
     "dist": "electron-builder --mac dmg"
   },
   "build": {
-    "appId": "com.routed.notification.receiver",
-    "productName": "Notification Receiver",
+    "appId": "com.routed.app",
+    "productName": "Routed",
     "files": [
       "main.js",
       "preload.js",
       "renderer.html",
-      "package.json"
+      "package.json",
+      "arrow-icon-routed.png"
     ],
     "mac": {
       "category": "public.app-category.utilities",
       "target": ["dmg"],
-      "identity": null
+      "identity": null,
+      "icon": "arrow-icon-routed.png"
     }
   },
   "dependencies": {
