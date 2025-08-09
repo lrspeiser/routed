@@ -35,29 +35,45 @@
     const logEl = document.getElementById('log');
     function log(msg) { logEl.textContent += '\n' + new Date().toISOString() + ' ' + msg; logEl.scrollTop = logEl.scrollHeight; }
 
-    const RESOLVE_BASE = 'https://routed-notify.onrender.com';
+    // Default to your playground origin (has /api/* helpers)
+    const RESOLVE_BASE = 'https://routed-gbiz.onrender.com';
     const healthEl = document.getElementById('health');
     const connectBtn = document.getElementById('connectBtn');
 
     async function checkHealth() {
+      // First try playground proxy /api/healthz
       try {
-        const res = await fetch(new URL('/api/healthz', RESOLVE_BASE).toString(), { cache: 'no-store' });
-        const j = await res.json();
-        if (res.ok && j && j.ok) {
-          if (j.hub_ok) {
-            healthEl.innerHTML = `Server: <span style="color:#22c55e">OK</span> (${j.hub_url || 'not set'})`;
-            connectBtn.disabled = false;
-          } else {
-            healthEl.innerHTML = `Server: <span style="color:#ef4444">UNREACHABLE</span> ${j.hub_error ? '(' + j.hub_error + ')' : ''}. Check HUB_URL on playground/server.`;
-            connectBtn.disabled = true;
-          }
-        } else {
-          healthEl.textContent = `Health check failed. Status ${res.status}`;
-          connectBtn.disabled = true;
+        let url = new URL('/api/healthz', RESOLVE_BASE).toString();
+        let res = await fetch(url, { cache: 'no-store' });
+        let json = null;
+        const ct = (res.headers.get('content-type') || '').toLowerCase();
+        if (ct.includes('application/json')) {
+          try { json = await res.json(); } catch {}
         }
+        if (res.ok && json && json.ok) {
+          if (json.hub_ok) {
+            healthEl.innerHTML = `Server: <span style="color:#22c55e">OK</span> (${json.hub_url || 'not set'})`;
+            connectBtn.disabled = false;
+            return;
+          } else {
+            healthEl.innerHTML = `Server: <span style="color:#ef4444">UNREACHABLE</span> ${json.hub_error ? '(' + json.hub_error + ')' : ''}. Check HUB_URL on playground/server.`;
+            connectBtn.disabled = false; // still allow trying to connect
+            return;
+          }
+        }
+        // Fallback: try hub /healthz
+        url = new URL('/healthz', RESOLVE_BASE).toString();
+        res = await fetch(url, { cache: 'no-store' });
+        if (res.ok) {
+          healthEl.innerHTML = `Server (direct): <span style="color:#22c55e">OK</span>`;
+          connectBtn.disabled = false;
+          return;
+        }
+        healthEl.textContent = `Health check failed. Status ${res.status}`;
+        connectBtn.disabled = false; // allow manual connect attempt anyway
       } catch (e) {
         healthEl.textContent = `Health check error: ${e && e.message ? e.message : e}`;
-        connectBtn.disabled = true;
+        connectBtn.disabled = false; // allow manual connect attempt anyway
       }
     }
     let ws;
