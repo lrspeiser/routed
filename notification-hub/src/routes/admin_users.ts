@@ -103,7 +103,8 @@ export default async function routes(fastify: FastifyInstance) {
       }
       const userId = u.rows[0].id;
       const t = await client.query(`select id from topics where tenant_id=$1 and name=$2`, [tenant_id, topicName]);
-      if (t.rowCount > 0) {
+      const topicRowCount = (t.rowCount ?? 0);
+      if (topicRowCount > 0 && t.rows.length > 0) {
         const topicId = t.rows[0].id;
         await client.query(`delete from subscriptions where tenant_id=$1 and user_id=$2 and topic_id=$3`, [tenant_id, userId, topicId]);
       }

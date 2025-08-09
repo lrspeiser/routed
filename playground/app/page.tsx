@@ -97,7 +97,15 @@ export default function Page() {
         setDeveloperId(j.developerId || '');
         try { localStorage.setItem('DEV_ID', j.developerId); } catch {}
       } catch {}
+      // Auto-provision sandbox (idempotent for local session)
+      try {
+        if (!sandbox && !sessionStorage.getItem('SANDBOX_READY')) {
+          await createSandbox();
+          sessionStorage.setItem('SANDBOX_READY', '1');
+        }
+      } catch {}
     })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function allowEmail() {
@@ -159,22 +167,6 @@ export default function Page() {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         <div style={{ background: '#0b1020', color: '#e6e9f5', padding: 16, borderRadius: 12 }}>
-          <h3>Create Sandbox (Routed)</h3>
-          <p style={{ opacity: 0.8, marginTop: -8 }}>Provision a tenant, publisher and user linked to your Developer ID.</p>
-          <button onClick={createSandbox}>Create Developer Key</button>
-          {sandbox && (
-            <div style={{ marginTop: 12, fontSize: 14, lineHeight: 1.6 }}>
-              <div>tenantId: <code>{sandbox.tenantId}</code></div>
-              <div>userId: <code>{sandbox.userId}</code></div>
-              <div>apiKey: <code>{sandbox.apiKey}</code></div>
-              <div style={{ marginTop: 8 }}>
-                <button onClick={sendTest}>Send Test Message</button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div style={{ background: '#0b1020', color: '#e6e9f5', padding: 16, borderRadius: 12 }}>
           <h3>1) Create Channel (Routed)</h3>
           <p style={{ opacity: 0.8, marginTop: -8 }}>Name your channel and generate a short Subscription ID to share with your Mac client.</p>
           <input value={channelName} onChange={(e) => setChannelName(e.target.value)} placeholder="Channel name (e.g., Leon's Laptop)" />
@@ -186,8 +178,6 @@ export default function Page() {
                 <button onClick={() => navigator.clipboard.writeText(channelId)}>Copy ID</button>
                 <a href={`/channel/${channelId}`} target="_blank">Open Channel Page</a>
               </div>
-              <div style={{ marginTop: 8 }}>Receiver app: <a href="https://example.com/downloads/receiver.dmg" target="_blank">Download DMG</a></div>
-              <div style={{ marginTop: 8 }}>Client page: <a href={`${sandbox.hubUrl}/dev/client`} target="_blank">{`${sandbox.hubUrl}/dev/client`}</a></div>
               <div style={{ marginTop: 8 }}>
                 <div>Channel API:</div>
                 <pre style={{ background:'#111', color:'#0f0', padding:8, borderRadius:6 }}>{`curl -s -X POST '${typeof window !== 'undefined' ? new URL(`/api/channel/${channelId}/send`, window.location.origin).toString() : ''}' \\

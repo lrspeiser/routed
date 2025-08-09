@@ -18,13 +18,13 @@
     <h2 style="margin:0">Routed • Settings</h2>
   </header>
   <div class="row">
-    <label>Subscription ID</label>
-    <input id="subId" placeholder="e.g. abc123" />
+    <label>Your Email</label>
+    <input id="email" placeholder="you@example.com" />
   </div>
-  <button id="addBtn">Connect</button>
+  <button id="connectBtn">Connect</button>
 
-  <h3>Subscriptions</h3>
-  <div id="subs"></div>
+  <h3>Status</h3>
+  <div id="status">Disconnected</div>
 
   <h3>Log</h3>
   <div id="log"></div>
@@ -33,64 +33,51 @@
     const logEl = document.getElementById('log');
     function log(msg) { logEl.textContent += '\n' + new Date().toISOString() + ' ' + msg; logEl.scrollTop = logEl.scrollHeight; }
 
-    const sockets = new Map();
-    async function connectOne(sub) {
+    const RESOLVE_BASE = 'https://routed-gbiz.onrender.com';
+    let ws;
+    async function connectWithEmail(email) {
       try {
-        const desc = await window.receiver.resolveChannel(sub.id, sub.resolveUrl);
-        if (!desc) return;
+        const desc = await fetch(new URL('/api/resolve-email', RESOLVE_BASE).toString(), {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email })
+        }).then(r=>r.json());
+        if (!desc || !desc.base_url || !desc.user_id) { log('Resolve failed'); return; }
         const base = desc.base_url;
         const wsProto = base.startsWith('https') ? 'wss' : 'ws';
         const url = new URL(base);
         const sockUrl = `${wsProto}://${url.host}/v1/socket?user_id=${encodeURIComponent(desc.user_id)}`;
-        const ws = new WebSocket(sockUrl);
-        sockets.set(sub.id, ws);
-        ws.onopen = () => log(`[${sub.id}] WS open`);
+        ws = new WebSocket(sockUrl);
+        ws.onopen = () => { log('WS open'); document.getElementById('status').textContent = 'Connected'; };
         ws.onmessage = (ev) => {
-          log(`[${sub.id}] ${ev.data}`);
+          log(ev.data);
           try {
             const data = JSON.parse(ev.data);
             if (data && data.title) window.receiver.showNotification(data);
           } catch {}
         };
         ws.onclose = (e) => {
-          log(`[${sub.id}] WS closed code=${e.code} reason=${e.reason}`);
-          sockets.delete(sub.id);
+          log(`WS closed code=${e.code} reason=${e.reason}`);
+          document.getElementById('status').textContent = 'Disconnected';
         };
         ws.onerror = (e) => {
-          try { log(`[${sub.id}] WS error: ` + (e.message || JSON.stringify(e))); } catch { log('WS error'); }
+          try { log('WS error: ' + (e.message || JSON.stringify(e))); } catch { log('WS error'); }
         };
       } catch (e) {
         log('Connect failed: ' + e);
       }
     }
 
-    async function refreshSubs() {
-      const subs = await window.receiver.listSubscriptions();
-      const subsEl = document.getElementById('subs');
-      subsEl.innerHTML = '';
-      subs.forEach((s) => {
-        const row = document.createElement('div');
-        row.className = 'row';
-        row.textContent = `${s.id}`;
-        const del = document.createElement('button');
-        del.textContent = 'Delete';
-        del.onclick = async () => { await window.receiver.removeSubscription(s.id); await refreshSubs(); };
-        row.appendChild(del);
-        subsEl.appendChild(row);
-      });
-      // Autoconnect to all saved subscriptions
-      for (const s of subs) connectOne(s);
-    }
-
-    document.getElementById('addBtn').addEventListener('click', async () => {
-      const id = document.getElementById('subId').value.trim();
-      if (!id) { alert('Enter Subscription ID'); return; }
-      await window.receiver.addSubscription(id);
-      document.getElementById('subId').value = '';
-      await refreshSubs();
+    document.getElementById('connectBtn').addEventListener('click', async () => {
+      const email = document.getElementById('email').value.trim();
+      if (!email) { alert('Enter your email'); return; }
+      try { localStorage.setItem('ROUTED_EMAIL', email); } catch {}
+      await connectWithEmail(email);
     });
 
-    refreshSubs();
+    // Auto-connect if email is saved
+    try {
+      const saved = localStorage.getItem('ROUTED_EMAIL');
+      if (saved) { document.getElementById('email').value = saved; connectWithEmail(saved); }
+    } catch {}
   </script>
 </body>
 </html>
