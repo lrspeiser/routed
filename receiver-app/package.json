@@ -19,11 +19,15 @@
       "package.json",
       "arrow-icon-routed.png"
     ],
+    "icon": "build/icon.icns",
     "mac": {
       "category": "public.app-category.utilities",
       "target": ["dmg"],
       "identity": null,
-      "icon": "arrow-icon-routed.png"
+      "icon": "build/icon.icns"
+    },
+    "dmg": {
+      "icon": "build/icon.icns"
     }
   },
   "dependencies": {
