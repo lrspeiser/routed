@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { setLatestTenantId } from '../../../lib/state';
 
 export async function POST() {
   const HUB_URL = process.env.HUB_URL || 'http://localhost:8080';
@@ -12,5 +13,6 @@ export async function POST() {
   });
   const data = await res.json();
   if (!res.ok) return NextResponse.json(data, { status: res.status });
+  setLatestTenantId(data.tenantId);
   return NextResponse.json({ ...data, hubUrl: HUB_URL });
 }
