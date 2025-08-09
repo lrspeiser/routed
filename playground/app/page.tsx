@@ -137,7 +137,7 @@ export default function Page() {
         body: JSON.stringify({ email: allowedEmail, tenantId: sandbox.tenantId, topic: 'runs.finished' }),
       });
       const j = await res.json();
-      if (!res.ok) throw new Error(JSON.stringify(j));
+      if (!res.ok) throw new Error(j?.error || JSON.stringify(j));
       setLog(`Email allowed → userId=${j.userId || j.user_id} topic=${j.topic || 'runs.finished'}`);
       setAllowedEmail('');
       await refreshEmails();

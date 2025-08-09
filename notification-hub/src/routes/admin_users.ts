@@ -78,6 +78,8 @@ export default async function routes(fastify: FastifyInstance) {
        join subscriptions s on s.user_id=u.id and s.tenant_id=u.tenant_id
        join topics t on t.id=s.topic_id and t.tenant_id=u.tenant_id and t.name=$2
        where u.tenant_id=$1
+         and u.email is not null
+         and length(trim(u.email)) > 0
        order by lower(u.email) asc`,
       [tenantId, topic]
     );

@@ -6,6 +6,7 @@ export async function POST(req: Request) {
   if (!HUB_URL || !HUB_ADMIN_TOKEN) return NextResponse.json({ error: 'server_not_configured' }, { status: 500 });
 
   const { email, tenantId, topic = 'runs.finished' } = await req.json().catch(() => ({}));
+  if (!email || !String(email).trim()) return NextResponse.json({ error: 'invalid email' }, { status: 400 });
   if (!email || !tenantId) return NextResponse.json({ error: 'missing email/tenantId' }, { status: 400 });
 
   const res = await fetch(new URL('/v1/admin/users/ensure', HUB_URL).toString(), {
