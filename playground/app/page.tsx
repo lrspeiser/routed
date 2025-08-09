@@ -69,6 +69,15 @@ export default function Page() {
     if (!sandbox) return;
     if (!channelName) { setLog('Please enter a channel name.'); return; }
     setLog('');
+    // Create server-side channel for persistence & association
+    try {
+      const resp = await fetch('/api/admin/channels/create', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tenantId: sandbox.tenantId, name: channelName, topic: 'runs.finished' }),
+      });
+      const jr = await resp.json();
+      if (!resp.ok) { setLog(`Channel DB create failed: ${JSON.stringify(jr)}`); }
+    } catch {}
     const res = await fetch('/api/channel/new', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

@@ -31,6 +31,18 @@ create table if not exists users (
   created_at timestamptz not null default now()
 );
 
+-- Ensure a single user per tenant/email
+do $$ begin
+  if not exists (
+    select 1 from pg_indexes where schemaname = current_schema() and indexname = 'users_tenant_email_unique'
+  ) then
+    alter table users add constraint users_tenant_email_unique unique (tenant_id, email);
+  end if;
+exception when others then
+  -- ignore if already exists or running on limited permissions
+  null;
+end $$;
+
 create table if not exists subscriptions (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references tenants(id) on delete cascade,
@@ -40,6 +52,17 @@ create table if not exists subscriptions (
   wants_socket boolean not null default true,
   created_at timestamptz not null default now(),
   unique(user_id, topic_id)
+);
+
+-- Channels group a tenant's topic under a friendly name and short id
+create table if not exists channels (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenants(id) on delete cascade,
+  topic_id uuid not null references topics(id) on delete cascade,
+  name text not null,
+  short_id text not null,
+  created_at timestamptz not null default now(),
+  unique(tenant_id, short_id)
 );
 
 create table if not exists devices (

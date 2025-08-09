@@ -26,7 +26,7 @@ export default async function routes(fastify: FastifyInstance) {
       // ensure user
       const ur = await client.query(
         `insert into users (tenant_id, email) values ($1,$2)
-         on conflict do nothing
+         on conflict (tenant_id, email) do update set email=excluded.email
          returning id`,
         [tenant_id, email]
       );

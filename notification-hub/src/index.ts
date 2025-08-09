@@ -10,6 +10,8 @@ import admin from './routes/admin';
 import adminProvision from './routes/admin_provision';
 import devroutes from './routes/dev';
 import adminUsers from './routes/admin_users';
+import adminTest from './routes/admin_test';
+import adminChannels from './routes/admin_channels';
 import './workers/fanout';
 import './workers/deliver';
 import { startTtlSweeper } from './cron/ttl';
@@ -34,6 +36,8 @@ async function main() {
   await app.register(adminProvision);
   await app.register(devroutes);
   await app.register(adminUsers);
+  await app.register(adminTest);
+  await app.register(adminChannels);
 
   const stopTtl = startTtlSweeper();
 
