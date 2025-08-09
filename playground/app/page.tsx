@@ -1,5 +1,5 @@
 "use client";
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 export default function Page() {
   const [sandbox, setSandbox] = useState<any>(null);
@@ -9,6 +9,8 @@ export default function Page() {
   const [quickBody, setQuickBody] = useState('Hello from Playground');
   const [developerId, setDeveloperId] = useState<string>('');
   const [channelId, setChannelId] = useState<string>('');
+  const [hubUrl, setHubUrl] = useState<string>('');
+  const [apiSnippet, setApiSnippet] = useState<string>('');
 
   async function createSandbox() {
     try {
@@ -18,6 +20,7 @@ export default function Page() {
       if (!res.ok) throw new Error(JSON.stringify(data));
       setSandbox(data);
       setLog(`Sandbox created. tenantId=${data.tenantId} userId=${data.userId} apiKey=${data.apiKey}`);
+      setHubUrl(data.hubUrl);
     } catch (e: any) {
       setLog(`Create failed: ${e.message || e}`);
     }
@@ -67,9 +70,27 @@ export default function Page() {
     const j = await res.json();
     if (!res.ok) { setLog(`Create channel failed: ${JSON.stringify(j)}`); return; }
     setChannelId(j.channelId);
+    if (sandbox) {
+      const url = new URL('/v1/messages', sandbox.hubUrl).toString();
+      const snippet = `curl -s -X POST '${url}' \
+  -H 'Authorization: Bearer ${sandbox.apiKey}' \
+  -H 'Content-Type: application/json' \
+  -d '{"topic":"runs.finished","title":"Hello","body":"From API","payload":{"k":"v"}}'`;
+      setApiSnippet(snippet);
+    }
   }
 
   const clientLink = sandbox ? `${sandbox.hubUrl}/?tenantId=${sandbox.tenantId}&userId=${sandbox.userId}` : '';
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/devinit', { cache: 'no-store' });
+        const j = await res.json();
+        setDeveloperId(j.developerId || '');
+      } catch {}
+    })();
+  }, []);
 
   return (
     <div>
@@ -111,6 +132,12 @@ export default function Page() {
                 <div style={{ marginTop: 8 }}>
                   Resolve API: <code>/api/channel/resolve/{channelId}</code>
                 </div>
+                {apiSnippet && (
+                  <div style={{ marginTop: 8 }}>
+                    <div>Send via API:</div>
+                    <pre style={{ background:'#111', color:'#0f0', padding:8, borderRadius:6 }}>{apiSnippet}</pre>
+                  </div>
+                )}
               </div>
             )}
           </div>
