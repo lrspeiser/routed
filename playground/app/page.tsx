@@ -194,10 +194,10 @@ export default function Page() {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         <div style={{ background: '#0b1020', color: '#e6e9f5', padding: 16, borderRadius: 12 }}>
-          <h3>1) Create Channel (Routed)</h3>
-          <p style={{ opacity: 0.8, marginTop: -8 }}>Name your channel and generate a short Subscription ID to share with your Mac client.</p>
+          <h3>1) Create Channel</h3>
+          <p style={{ opacity: 0.8, marginTop: -8 }}>Developer ID: <code>{developerId || '…'}</code></p>
           <input value={channelName} onChange={(e) => setChannelName(e.target.value)} placeholder="Channel name (e.g., Leon's Laptop)" />
-          <button onClick={createChannel} disabled={!sandbox}>Create Channel</button>
+          <button onClick={createChannel} disabled={!channelName}>Submit</button>
           {channelId && sandbox && (
             <div style={{ marginTop: 12, fontSize: 14, lineHeight: 1.6 }}>
               <div>Subscription ID: <code>{channelId}</code></div>
