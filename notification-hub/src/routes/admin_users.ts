@@ -25,6 +25,7 @@ export default async function routes(fastify: FastifyInstance) {
 
       // ensure user (support DBs without the unique constraint by falling back)
       let userId: string | null = null;
+      await client.query('SAVEPOINT ensure_user');
       try {
         const ur = await client.query(
           `insert into users (tenant_id, email) values ($1,$2)
@@ -34,7 +35,8 @@ export default async function routes(fastify: FastifyInstance) {
         );
         userId = ur.rows[0]?.id ?? null;
       } catch (e: any) {
-        // Fallback if ON CONFLICT target isn't available
+        // Clear error state for this transaction scope and run fallback path
+        await client.query('ROLLBACK TO SAVEPOINT ensure_user');
         const ur2 = await client.query(
           `insert into users (tenant_id, email) values ($1,$2)
            on conflict do nothing
@@ -50,20 +52,36 @@ export default async function routes(fastify: FastifyInstance) {
       if (!userId) throw new Error('failed_to_ensure_user');
 
       // ensure topic
-      const tr = await client.query(
-        `insert into topics (tenant_id, name) values ($1,$2)
-         on conflict (tenant_id,name) do update set name=excluded.name
-         returning id`,
-        [tenant_id, topicName]
-      );
-      const topicId: string = tr.rows[0].id;
+      await client.query('SAVEPOINT ensure_topic');
+      let topicId: string;
+      try {
+        const tr = await client.query(
+          `insert into topics (tenant_id, name) values ($1,$2)
+           on conflict (tenant_id,name) do update set name=excluded.name
+           returning id`,
+          [tenant_id, topicName]
+        );
+        topicId = tr.rows[0].id;
+      } catch (e: any) {
+        await client.query('ROLLBACK TO SAVEPOINT ensure_topic');
+        const tr2 = await client.query(`select id from topics where tenant_id=$1 and name=$2`, [tenant_id, topicName]);
+        if (tr2.rowCount > 0) topicId = tr2.rows[0].id; else {
+          const ins = await client.query(`insert into topics (tenant_id, name) values ($1,$2) returning id`, [tenant_id, topicName]);
+          topicId = ins.rows[0].id;
+        }
+      }
 
       // ensure subscription
-      await client.query(
-        `insert into subscriptions (tenant_id, user_id, topic_id) values ($1,$2,$3)
-         on conflict do nothing`,
-        [tenant_id, userId, topicId]
-      );
+      await client.query('SAVEPOINT ensure_sub');
+      try {
+        await client.query(
+          `insert into subscriptions (tenant_id, user_id, topic_id) values ($1,$2,$3)
+           on conflict do nothing`,
+          [tenant_id, userId, topicId]
+        );
+      } catch (e: any) {
+        await client.query('ROLLBACK TO SAVEPOINT ensure_sub');
+      }
 
       await client.query('COMMIT');
       return reply.send({ userId, topicId });
