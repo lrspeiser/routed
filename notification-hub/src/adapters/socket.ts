@@ -28,6 +28,7 @@ export async function pushToSockets(userId: string, payload: any): Promise<boole
         sent++;
       } catch (e) {
         console.warn('[SOCKET] send failed; will drop socket:', e);
+        try { s.ws.terminate(); } catch {}
       }
     }
   }

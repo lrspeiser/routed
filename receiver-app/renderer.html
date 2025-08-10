@@ -98,7 +98,11 @@
           log(ev.data);
           try {
             const data = JSON.parse(ev.data);
-            if (data && data.title) window.receiver.showNotification(data);
+            if (data && data.type === 'hello') {
+              // handshake ok
+            } else if (data && data.title) {
+              window.receiver.showNotification(data);
+            }
           } catch {}
         };
         ws.onclose = (e) => {
