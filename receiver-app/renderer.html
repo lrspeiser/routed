@@ -88,10 +88,12 @@
           log('Resolve failed' + (res ? ` (status=${res.status})` : '') + (desc ? ` ${JSON.stringify(desc)}` : ''));
           return;
         }
+        log(`Resolved: base_url=${desc.base_url} user_id=${desc.user_id}`);
         const base = desc.base_url;
         const wsProto = base.startsWith('https') ? 'wss' : 'ws';
         const url = new URL(base);
         const sockUrl = `${wsProto}://${url.host}/v1/socket?user_id=${encodeURIComponent(desc.user_id)}`;
+        log(`Connecting to ${sockUrl}`);
         ws = new WebSocket(sockUrl);
         ws.onopen = () => { log('WS open'); document.getElementById('status').textContent = 'Connected'; };
         ws.onmessage = (ev) => {
