@@ -10,7 +10,8 @@
     "start": "node dist/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "seed": "ts-node scripts/seed.ts",
-    "register:host": "ts-node scripts/register_with_registry.ts"
+    "register:host": "ts-node scripts/register_with_registry.ts",
+    "test:integration": "ts-node scripts/integration.ts"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",
