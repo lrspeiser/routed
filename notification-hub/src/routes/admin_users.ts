@@ -65,7 +65,8 @@ export default async function routes(fastify: FastifyInstance) {
       } catch (e: any) {
         await client.query('ROLLBACK TO SAVEPOINT ensure_topic');
         const tr2 = await client.query(`select id from topics where tenant_id=$1 and name=$2`, [tenant_id, topicName]);
-        if (tr2.rowCount > 0) topicId = tr2.rows[0].id; else {
+        const hasExisting = (tr2.rowCount ?? 0) > 0 && tr2.rows.length > 0;
+        if (hasExisting) topicId = tr2.rows[0].id; else {
           const ins = await client.query(`insert into topics (tenant_id, name) values ($1,$2) returning id`, [tenant_id, topicName]);
           topicId = ins.rows[0].id;
         }
