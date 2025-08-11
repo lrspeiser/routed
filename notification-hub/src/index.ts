@@ -22,6 +22,9 @@ async function main() {
 
   await app.register(fastifyCors, { origin: true });
 
+  // Register websocket routes BEFORE static to avoid any proxy/static interception on GET Upgrade
+  await app.register(socket);
+
   await app.register(fastifyStatic, {
     root: path.join(__dirname, '..', 'public'),
     prefix: '/',
@@ -31,7 +34,6 @@ async function main() {
 
   await app.register(messages);
   await app.register(webpush);
-  await app.register(socket);
   await app.register(admin);
   await app.register(adminProvision);
   await app.register(devroutes);
