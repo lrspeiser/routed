@@ -22,7 +22,9 @@
     "icon": "build/icon.icns",
     "mac": {
       "category": "public.app-category.utilities",
-      "target": ["dmg"],
+      "target": [
+        "dmg"
+      ],
       "identity": null,
       "icon": "build/icon.icns"
     },
@@ -31,7 +33,8 @@
     }
   },
   "dependencies": {
-    "node-fetch": "^3.3.2"
+    "node-fetch": "^3.3.2",
+    "wscat": "^6.1.0"
   },
   "devDependencies": {
     "electron": "^31.3.1",
