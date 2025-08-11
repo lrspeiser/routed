@@ -205,6 +205,20 @@ export default function Page() {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         <div style={{ background: '#0b1020', color: '#e6e9f5', padding: 16, borderRadius: 12 }}>
+          <h3>0) Connection Self-Test</h3>
+          <p style={{ opacity: 0.8, marginTop: -8 }}>Verifies hub admin, WS and delivery before enabling inputs.</p>
+          <button onClick={async () => {
+            setLog('');
+            try {
+              const res = await fetch('/api/self-test', { cache: 'no-store' });
+              const j = await res.json();
+              setLog(`Self-test → ${res.status} ${JSON.stringify(j)}`);
+            } catch (e: any) {
+              setLog(`Self-test failed: ${e.message || e}`);
+            }
+          }}>Run Self-Test</button>
+        </div>
+        <div style={{ background: '#0b1020', color: '#e6e9f5', padding: 16, borderRadius: 12 }}>
           <h3>1) Create Channel</h3>
           <p style={{ opacity: 0.8, marginTop: -8 }}>Developer ID: <code>{developerId || '…'}</code></p>
           <input value={channelName} onChange={(e) => setChannelName(e.target.value)} placeholder="Channel name (e.g., Leon's Laptop)" />
