@@ -1,14 +1,19 @@
 import { WebSocket } from 'ws';
+import { EventEmitter } from 'events';
 
 type SocketRecord = { ws: WebSocket; userId: string; updatedAt: number };
 
 const sockets = new Map<string, SocketRecord[]>();
+
+// Presence events: emits { userId: string, online: boolean }
+export const presenceBus = new EventEmitter();
 
 export function addSocket(userId: string, ws: WebSocket) {
   const arr = sockets.get(userId) ?? [];
   arr.push({ ws, userId, updatedAt: Date.now() });
   sockets.set(userId, arr);
   console.log(`[SOCKET] user=${userId} online sockets=${arr.length}`);
+  if (arr.length === 1) presenceBus.emit('presence', { userId, online: true });
 }
 
 export function removeSocket(userId: string, ws: WebSocket) {
@@ -16,6 +21,7 @@ export function removeSocket(userId: string, ws: WebSocket) {
   if (arr.length === 0) sockets.delete(userId);
   else sockets.set(userId, arr);
   console.log(`[SOCKET] user=${userId} disconnected; remaining=${arr.length}`);
+  if (arr.length === 0) presenceBus.emit('presence', { userId, online: false });
 }
 
 export async function pushToSockets(userId: string, payload: any): Promise<boolean> {

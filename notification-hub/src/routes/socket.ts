@@ -1,9 +1,28 @@
 import { FastifyInstance } from 'fastify';
 import fastifyWebsocket from '@fastify/websocket';
-import { addSocket, removeSocket } from '../adapters/socket';
+import { addSocket, removeSocket, presenceBus } from '../adapters/socket';
 
 export default async function routes(fastify: FastifyInstance) {
   fastify.register(fastifyWebsocket);
+  // Presence SSE channel for admin UI: /v1/presence/stream?topic=runs.finished&tenant_id=...
+  fastify.get('/v1/presence', async (req, reply) => {
+    const url = new URL(req.url ?? '', 'http://localhost');
+    const userId = url.searchParams.get('user_id');
+    if (!userId) return reply.status(400).send({ error: 'missing user_id' });
+    return reply.send({ user_id: userId, online: true });
+  });
+  fastify.get('/v1/presence/stream', async (req, reply) => {
+    reply.raw.setHeader('Content-Type', 'text/event-stream');
+    reply.raw.setHeader('Cache-Control', 'no-cache');
+    reply.raw.setHeader('Connection', 'keep-alive');
+    reply.raw.flushHeaders();
+    const onPresence = (ev: any) => {
+      reply.raw.write(`event: presence\n`);
+      reply.raw.write(`data: ${JSON.stringify(ev)}\n\n`);
+    };
+    presenceBus.on('presence', onPresence);
+    req.raw.on('close', () => presenceBus.off('presence', onPresence));
+  });
   fastify.get('/v1/socket', { websocket: true }, (connection, req) => {
     const url = new URL(req.url ?? '', 'http://localhost');
     const userId = url.searchParams.get('user_id') ?? 'demo-user';

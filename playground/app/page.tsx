@@ -181,17 +181,17 @@ export default function Page() {
 
   useEffect(() => {
     if (!sandbox) return;
-    let interval: any = null;
-    const start = () => {
-      if (interval) return;
-      interval = setInterval(() => { if (!document.hidden) refreshEmails(); }, 30000);
+    let es: EventSource | null = null;
+    const begin = async () => {
+      try {
+        es = new EventSource('/api/presence/stream');
+        es.addEventListener('presence', () => refreshEmails());
+        es.onerror = () => { try { es?.close(); } catch {} };
+      } catch {}
     };
-    const stop = () => { if (interval) { clearInterval(interval); interval = null; } };
-    const onVis = () => { if (document.hidden) stop(); else start(); };
-    document.addEventListener('visibilitychange', onVis);
+    begin();
     refreshEmails();
-    start();
-    return () => { document.removeEventListener('visibilitychange', onVis); stop(); };
+    return () => { try { es?.close(); } catch {} };
   }, [sandbox?.tenantId, channelShortId]);
 
   return (
