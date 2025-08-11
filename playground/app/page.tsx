@@ -289,6 +289,9 @@ export default function Page() {
       <div>
         <h3>Log</h3>
         <pre style={{ background: '#111', color: '#0f0', padding: 12, borderRadius: 8 }}>{log}</pre>
+        <div style={{ marginTop: 8 }}>
+          <a href="/api/debug/env" target="_blank" style={{ fontSize: 12, opacity: 0.8 }}>View server env (masked)</a>
+        </div>
       </div>
     </div>
   );
