@@ -77,6 +77,12 @@
       }
     }
     let ws;
+    function makeWsUrl(base, userId, path) {
+      const url = new URL(base);
+      const wsProto = url.protocol === 'https:' ? 'wss' : 'ws';
+      return `${wsProto}://${url.host}${path}?user_id=${encodeURIComponent(userId)}`;
+    }
+
     async function connectWithEmail(email) {
       try {
         const res = await fetch(new URL('/api/resolve-email', RESOLVE_BASE).toString(), {
@@ -90,30 +96,50 @@
         }
         log(`Resolved: base_url=${desc.base_url} user_id=${desc.user_id}`);
         const base = desc.base_url;
-        const wsProto = base.startsWith('https') ? 'wss' : 'ws';
-        const url = new URL(base);
-        const sockUrl = `${wsProto}://${url.host}/v1/socket?user_id=${encodeURIComponent(desc.user_id)}`;
-        log(`Connecting to ${sockUrl}`);
-        ws = new WebSocket(sockUrl);
-        ws.onopen = () => { log('WS open'); document.getElementById('status').textContent = 'Connected'; };
-        ws.onmessage = (ev) => {
-          log(ev.data);
-          try {
-            const data = JSON.parse(ev.data);
-            if (data && data.type === 'hello') {
-              // handshake ok
-            } else if (data && data.title) {
-              window.receiver.showNotification(data);
-            }
-          } catch {}
-        };
-        ws.onclose = (e) => {
-          log(`WS closed code=${e.code} reason=${e.reason}`);
-          document.getElementById('status').textContent = 'Disconnected';
-        };
-        ws.onerror = (e) => {
-          try { log('WS error: ' + (e.message || JSON.stringify(e))); } catch { log('WS error'); }
-        };
+        const urlV1 = makeWsUrl(base, desc.user_id, '/v1/socket');
+        const urlAlt = makeWsUrl(base, desc.user_id, '/socket');
+
+        async function tryConnect(urls) {
+          if (!urls.length) { log('All WS endpoints failed'); return; }
+          const next = urls[0];
+          log(`Connecting to ${next}`);
+          return new Promise((resolve) => {
+            let opened = false;
+            const candidate = new WebSocket(next);
+            candidate.onopen = () => {
+              opened = true;
+              ws = candidate;
+              log('WS open');
+              document.getElementById('status').textContent = 'Connected';
+              resolve(null);
+            };
+            candidate.onmessage = (ev) => {
+              log(ev.data);
+              try {
+                const data = JSON.parse(ev.data);
+                if (data && data.type === 'hello') {
+                  // handshake ok
+                } else if (data && data.title) {
+                  window.receiver.showNotification(data);
+                }
+              } catch {}
+            };
+            candidate.onclose = (e) => {
+              if (!opened) {
+                log(`WS close before open (${next}) code=${e.code}`);
+                tryConnect(urls.slice(1)).then(resolve);
+              } else {
+                log(`WS closed code=${e.code} reason=${e.reason}`);
+                document.getElementById('status').textContent = 'Disconnected';
+              }
+            };
+            candidate.onerror = (e) => {
+              try { log(`WS error on ${next}: ` + (e.message || JSON.stringify(e))); } catch { log('WS error'); }
+            };
+          });
+        }
+
+        await tryConnect([urlAlt, urlV1]);
       } catch (e) {
         log('Connect failed: ' + e);
       }
