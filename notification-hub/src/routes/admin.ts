@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { deliverDlq, deliverQueue, deliverJobOpts } from '../queues';
 import { ENV } from '../env';
+import { snapshotSockets } from '../adapters/socket';
 
 export default async function routes(fastify: FastifyInstance) {
   // Public config for client bootstrapping
@@ -20,5 +21,11 @@ export default async function routes(fastify: FastifyInstance) {
       moved++;
     }
     return reply.send({ moved });
+  });
+
+  // Debug sockets snapshot
+  fastify.get('/v1/admin/debug/sockets', async (_req, reply) => {
+    const snap = snapshotSockets();
+    return reply.send({ sockets: snap, ts: Date.now() });
   });
 }

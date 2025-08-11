@@ -59,3 +59,13 @@ export function isUserOnline(userId: string): boolean {
   }
   return false;
 }
+
+export function snapshotSockets(): Array<{ userId: string; count: number; updatedAt: number }> {
+  const out: Array<{ userId: string; count: number; updatedAt: number }> = [];
+  for (const [userId, arr] of sockets.entries()) {
+    const open = arr.filter((s) => s.ws.readyState === s.ws.OPEN);
+    const latest = open.reduce((acc, s) => Math.max(acc, s.updatedAt), 0);
+    out.push({ userId, count: open.length, updatedAt: latest });
+  }
+  return out.sort((a, b) => b.updatedAt - a.updatedAt);
+}
