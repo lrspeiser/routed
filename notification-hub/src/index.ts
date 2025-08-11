@@ -6,6 +6,7 @@ import { ENV } from './env';
 import messages from './routes/messages';
 import webpush from './routes/webpush';
 import socket from './routes/socket';
+import { setupWs } from './ws';
 import admin from './routes/admin';
 import adminProvision from './routes/admin_provision';
 import devroutes from './routes/dev';
@@ -24,6 +25,8 @@ async function main() {
 
   // Register websocket routes BEFORE static to avoid any proxy/static interception on GET Upgrade
   await app.register(socket);
+  // Explicit WS upgrade handler sharing the same HTTP server
+  setupWs(app);
 
   await app.register(fastifyStatic, {
     root: path.join(__dirname, '..', 'public'),
