@@ -181,9 +181,17 @@ export default function Page() {
 
   useEffect(() => {
     if (!sandbox) return;
-    const t = setInterval(refreshEmails, 3000);
+    let interval: any = null;
+    const start = () => {
+      if (interval) return;
+      interval = setInterval(() => { if (!document.hidden) refreshEmails(); }, 30000);
+    };
+    const stop = () => { if (interval) { clearInterval(interval); interval = null; } };
+    const onVis = () => { if (document.hidden) stop(); else start(); };
+    document.addEventListener('visibilitychange', onVis);
     refreshEmails();
-    return () => clearInterval(t);
+    start();
+    return () => { document.removeEventListener('visibilitychange', onVis); stop(); };
   }, [sandbox?.tenantId, channelShortId]);
 
   return (

@@ -25,6 +25,9 @@ export default async function routes(fastify: FastifyInstance) {
 const uid = 'demo-user';
 const ws = new WebSocket((location.protocol==='https:'?'wss':'ws')+'://'+location.host+'/v1/socket?user_id='+uid);
 ws.onmessage = (ev)=>{ const d=JSON.parse(ev.data); const div=document.createElement('div'); div.textContent=JSON.stringify(d); document.body.appendChild(div); };
+ws.onopen = ()=>{ const div=document.createElement('div'); div.textContent='open'; document.body.appendChild(div); };
+ws.onerror = (e)=>{ const div=document.createElement('div'); div.textContent='error'; document.body.appendChild(div); };
+ws.onclose = (e)=>{ const div=document.createElement('div'); div.textContent='close'; document.body.appendChild(div); };
 </script>
 </body></html>`;
     reply.header('Content-Type', 'text/html');
