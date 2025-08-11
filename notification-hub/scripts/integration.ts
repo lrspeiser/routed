@@ -53,9 +53,9 @@ async function main() {
     method: 'POST', headers: { 'Authorization': `Bearer ${HUB_ADMIN_TOKEN}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ tenant_id: tenantId, email: testEmail, topic }),
   });
-  const ens = await ensRes.json();
+  const ens: any = await ensRes.json().catch(() => ({} as any));
   invariant(ensRes.ok, `ensure failed ${ensRes.status} ${JSON.stringify(ens)}`);
-  const targetUserId = ens.userId || ens.user_id || userId;
+  const targetUserId = (ens as any).userId || (ens as any).user_id || userId;
   console.log('[TEST] Ensured email', { email: testEmail, userId: targetUserId });
 
   // 4) Open WS
