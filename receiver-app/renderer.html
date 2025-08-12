@@ -148,14 +148,21 @@
 
     async function connectWithPhone(phone) {
       try {
-        const res = await fetch(new URL('/api/resolve-email', RESOLVE_BASE).toString(), {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: phone })
+        // Try phone-first resolve, fallback to legacy resolve-email
+        let res = await fetch(new URL('/api/resolve', RESOLVE_BASE).toString(), {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone })
         });
-        let desc = null;
-        try { desc = await res.json(); } catch {}
+        let desc = await res.json().catch(() => (null));
         if (!res.ok || !desc || !desc.base_url || !desc.user_id) {
-          log('Resolve failed' + (res ? ` (status=${res.status})` : '') + (desc ? ` ${JSON.stringify(desc)}` : ''));
-          return;
+          log('Phone resolve failed' + (res ? ` (status=${res.status})` : ''));
+          res = await fetch(new URL('/api/resolve-email', RESOLVE_BASE).toString(), {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: phone })
+          });
+          desc = await res.json().catch(() => (null));
+          if (!res.ok || !desc || !desc.base_url || !desc.user_id) {
+            log('Resolve failed' + (res ? ` (status=${res.status})` : '') + (desc ? ` ${JSON.stringify(desc)}` : ''));
+            return;
+          }
         }
         log(`Resolved: base_url=${desc.base_url} user_id=${desc.user_id}`);
         const base = desc.base_url;
@@ -205,8 +212,10 @@
         }
 
         await tryConnect([urlAlt, urlV1]);
+        try { await window.receiver.debugLog('autoconnect ok for phone ' + phone); } catch {}
       } catch (e) {
         log('Connect failed: ' + e);
+        try { await window.receiver.debugLog('connect error: ' + (e && e.message ? e.message : e)); } catch {}
       }
     }
 
@@ -283,11 +292,43 @@
       document.getElementById('messageText').value = '';
     });
 
+    async function ensureDevChannelForPhone(phone) {
+      try {
+        let d = await window.receiver.devGet();
+        if (!d) {
+          await window.receiver.devProvision();
+          d = await window.receiver.devGet();
+        }
+        if (!d || !d.tenantId) return;
+        let ch = await window.receiver.adminChannelsList(d.tenantId);
+        if (!Array.isArray(ch) || ch.length === 0) {
+          await window.receiver.adminChannelsCreate({ tenantId: d.tenantId, name: 'Default', topic: 'runs.finished' });
+          ch = await window.receiver.adminChannelsList(d.tenantId);
+        }
+        if (Array.isArray(ch) && ch.length > 0) {
+          const first = ch[0];
+          channelSelect.innerHTML = '';
+          const opt = document.createElement('option');
+          opt.value = JSON.stringify({ topic: first.topic });
+          opt.textContent = `${first.name} (${first.short_id})`;
+          channelSelect.appendChild(opt);
+          // Ensure phone is subscribed to the topic
+          await window.receiver.adminUsersEnsure({ tenantId: d.tenantId, phone, topic: first.topic });
+        }
+      } catch {}
+    }
+
     (async () => {
       await checkHealth();
       try {
         const saved = localStorage.getItem('ROUTED_PHONE');
-        if (saved && !connectBtn.disabled) { document.getElementById('phone').value = saved; await connectWithPhone(saved); }
+        if (saved) {
+          document.getElementById('phone').value = saved;
+          await connectWithPhone(saved);
+          await ensureDevChannelForPhone(saved);
+          showTab('dev');
+          try { document.getElementById('messageText')?.focus(); } catch {}
+        }
         // Debug: log sockets snapshot to help diagnose delivery
         try {
           const snap = await window.receiver.adminSockets();
