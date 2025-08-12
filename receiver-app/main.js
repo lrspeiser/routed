@@ -8,20 +8,21 @@ let tray;
 const DEFAULT_RESOLVE_URL = 'https://routed-gbiz.onrender.com';
 const storePath = () => path.join(app.getPath('userData'), 'subscriptions.json');
 const devStorePath = () => path.join(app.getPath('userData'), 'dev.json');
-const logFilePath = (() => {
+function resolveLogPath() {
   try {
-    if (process.env.NODE_ENV === 'production') return path.join(app.getPath('userData'), 'routed.log');
-    // In dev, write to project dir for easier access in repo
+    // In packaged app, always write to userData (writable)
+    if (app.isPackaged) return path.join(app.getPath('userData'), 'routed.log');
+    // In dev, write alongside sources for convenience
     return path.join(__dirname, 'routed.log');
   } catch {
     return path.join(process.cwd(), 'routed.log');
   }
-})();
+}
 
 function writeLog(line) {
   const ts = new Date().toISOString();
   const out = `[${ts}] ${line}\n`;
-  try { fs.appendFileSync(logFilePath, out); } catch {}
+  try { fs.appendFileSync(resolveLogPath(), out); } catch {}
   try { console.log(out.trim()); } catch {}
 }
 
