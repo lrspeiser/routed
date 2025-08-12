@@ -11,7 +11,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "seed": "ts-node scripts/seed.ts",
     "register:host": "ts-node scripts/register_with_registry.ts",
-    "test:integration": "ts-node scripts/integration.ts"
+    "test:integration": "ts-node scripts/integration.ts",
+    "test:redis": "ts-node scripts/redis_test.ts"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",
