@@ -27,7 +27,7 @@ async function createWindow() {
   mainWindow = new BrowserWindow({
     width: 560,
     height: 720,
-    show: false,
+    show: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
     },
@@ -60,13 +60,16 @@ app.whenReady().then(async () => {
   }
   await createWindow();
   createTray();
-  // Start minimized to tray
-  try { if (process.platform === 'darwin') app.dock.hide(); } catch {}
+  // Keep Dock icon visible so users can open the window
 });
 
 app.on('window-all-closed', () => {
   // Keep app running in tray on macOS
   if (process.platform !== 'darwin') app.quit();
+});
+
+app.on('activate', () => {
+  try { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } } catch {}
 });
 
 ipcMain.handle('subscriptions:list', async () => {
