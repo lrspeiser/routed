@@ -8,6 +8,22 @@ let tray;
 const DEFAULT_RESOLVE_URL = 'https://routed-gbiz.onrender.com';
 const storePath = () => path.join(app.getPath('userData'), 'subscriptions.json');
 const devStorePath = () => path.join(app.getPath('userData'), 'dev.json');
+const logFilePath = (() => {
+  try {
+    if (process.env.NODE_ENV === 'production') return path.join(app.getPath('userData'), 'routed.log');
+    // In dev, write to project dir for easier access in repo
+    return path.join(__dirname, 'routed.log');
+  } catch {
+    return path.join(process.cwd(), 'routed.log');
+  }
+})();
+
+function writeLog(line) {
+  const ts = new Date().toISOString();
+  const out = `[${ts}] ${line}\n`;
+  try { fs.appendFileSync(logFilePath, out); } catch {}
+  try { console.log(out.trim()); } catch {}
+}
 
 function loadStore() {
   try { return JSON.parse(fs.readFileSync(storePath(), 'utf8')); } catch { return { subscriptions: [] }; }
@@ -37,6 +53,7 @@ async function createWindow() {
 
   await mainWindow.loadFile('renderer.html');
   mainWindow.on('close', (e) => { e.preventDefault(); mainWindow.hide(); });
+  writeLog('Main window created');
 }
 
 function createTray() {
@@ -61,15 +78,18 @@ app.whenReady().then(async () => {
   await createWindow();
   createTray();
   // Keep Dock icon visible so users can open the window
+  writeLog('App ready');
 });
 
 app.on('window-all-closed', () => {
   // Keep app running in tray on macOS
   if (process.platform !== 'darwin') app.quit();
+  writeLog('All windows closed');
 });
 
 app.on('activate', () => {
   try { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } } catch {}
+  writeLog('App activated');
 });
 
 ipcMain.handle('subscriptions:list', async () => {
@@ -100,6 +120,7 @@ ipcMain.handle('resolve-channel', async (_evt, id, resolveBaseUrl) => {
     return await res.json();
   } catch (e) {
     dialog.showErrorBox('Resolve failed', String(e));
+    writeLog(`resolve-channel error: ${String(e)}`);
     return null;
   }
 });
@@ -112,11 +133,14 @@ ipcMain.on('show-notification', (_evt, payload) => {
     try { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } } catch {}
   });
   try { n.show(); } catch {}
+  writeLog(`Notification shown: ${title} :: ${body}`);
 });
 
 // Developer/Channels IPC
 ipcMain.handle('dev:get', async () => {
-  return loadDev();
+  const d = loadDev();
+  writeLog(`dev:get → ${d ? 'ok' : 'none'}`);
+  return d;
 });
 
 ipcMain.handle('dev:provision', async () => {
@@ -126,9 +150,11 @@ ipcMain.handle('dev:provision', async () => {
     if (!res.ok) throw new Error(`provision failed ${res.status} ${JSON.stringify(j)}`);
     const dev = { hubUrl: j.hubUrl, tenantId: j.tenantId, apiKey: j.apiKey, userId: j.userId };
     saveDev(dev);
+    writeLog(`dev:provision → success tenantId=${dev.tenantId}`);
     return dev;
   } catch (e) {
     dialog.showErrorBox('Provision failed', String(e));
+    writeLog(`dev:provision error: ${String(e)}`);
     return null;
   }
 });
@@ -139,9 +165,11 @@ ipcMain.handle('admin:channels:list', async (_evt, tenantId) => {
     const res = await fetch(url, { cache: 'no-store' });
     const j = await res.json();
     if (!res.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
+    writeLog(`channels:list → ${Array.isArray(j.channels)? j.channels.length: 0}`);
     return j.channels || [];
   } catch (e) {
     dialog.showErrorBox('List channels failed', String(e));
+    writeLog(`channels:list error: ${String(e)}`);
     return [];
   }
 });
@@ -154,9 +182,11 @@ ipcMain.handle('admin:channels:create', async (_evt, { tenantId, name, topic }) 
     });
     const j = await res.json();
     if (!res.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
+    writeLog(`channels:create → ok name=${name}`);
     return j;
   } catch (e) {
     dialog.showErrorBox('Create channel failed', String(e));
+    writeLog(`channels:create error: ${String(e)}`);
     return null;
   }
 });
@@ -166,24 +196,38 @@ ipcMain.handle('admin:channels:users', async (_evt, shortId) => {
     const res = await fetch(new URL(`/api/admin/channels/users/${encodeURIComponent(shortId)}`, DEFAULT_RESOLVE_URL).toString(), { cache: 'no-store' });
     const j = await res.json();
     if (!res.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
+    writeLog(`channels:users(${shortId}) → ${Array.isArray(j.users)? j.users.length: 0}`);
     return j.users || [];
   } catch (e) {
     dialog.showErrorBox('Fetch channel users failed', String(e));
+    writeLog(`channels:users error: ${String(e)}`);
     return [];
   }
 });
 
 ipcMain.handle('admin:users:ensure', async (_evt, { tenantId, phone, topic }) => {
   try {
-    const res = await fetch(new URL('/api/resolve', DEFAULT_RESOLVE_URL).toString(), {
+    // Try new phone-based endpoint first
+    let res = await fetch(new URL('/api/resolve', DEFAULT_RESOLVE_URL).toString(), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tenantId, phone, topic }), cache: 'no-store'
     });
-    const j = await res.json();
-    if (!res.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
+    let j = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      // Fallback to legacy resolve-email endpoint
+      writeLog(`users:ensure phone endpoint failed (${res.status} ${j && j.error}) → trying resolve-email`);
+      res = await fetch(new URL('/api/resolve-email', DEFAULT_RESOLVE_URL).toString(), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: phone }), cache: 'no-store'
+      });
+      j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
+    }
+    writeLog(`users:ensure → ok tenant=${tenantId} phone=${phone}`);
     return j;
   } catch (e) {
     dialog.showErrorBox('Add user failed', String(e));
+    writeLog(`users:ensure error: ${String(e)}`);
     return null;
   }
 });
@@ -200,9 +244,11 @@ ipcMain.handle('dev:sendMessage', async (_evt, { topic, title, body, payload }) 
     });
     const j = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
+    writeLog(`sendMessage → ok topic=${topic} title=${title}`);
     return j;
   } catch (e) {
     dialog.showErrorBox('Send failed', String(e));
+    writeLog(`sendMessage error: ${String(e)}`);
     return null;
   }
 });
