@@ -315,7 +315,8 @@ export default function Page() {
           <button disabled={!channelId} onClick={async () => {
             if (!channelId) return;
             try {
-              const payload = sendPayload ? JSON.parse(sendPayload) : null;
+              let payload: any = null;
+              try { payload = sendPayload ? JSON.parse(sendPayload) : null; } catch {}
               const res = await fetch(`/api/channel/${channelId}/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: sendTitle, body: sendBody, payload }) });
               const j = await res.json();
               setLog(`Channel send → ${res.status} ${JSON.stringify(j)}`);
@@ -325,7 +326,8 @@ export default function Page() {
           }}>Send</button>
           <button disabled={!sandbox} onClick={async () => {
             try {
-              const payload = sendPayload ? JSON.parse(sendPayload) : null;
+              let payload: any = null;
+              try { payload = sendPayload ? JSON.parse(sendPayload) : null; } catch {}
               const res = await fetch('/api/admin/test-message', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ tenantId: sandbox?.tenantId, topic: 'runs.finished', title: sendTitle, body: sendBody, payload })
