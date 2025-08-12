@@ -75,6 +75,14 @@
       <input id="messageText" placeholder="Type your message" />
       <button id="sendBtn">Send to Channel</button>
     </div>
+    <div class="row">
+      <h4 style="margin:8px 0 4px">Logs</h4>
+      <div style="display:flex; gap:8px; align-items:center; margin-bottom:6px">
+        <button id="clearLogsBtn">Clear</button>
+        <button id="copyLogsBtn">Copy</button>
+      </div>
+      <pre id="devlog" style="height:200px; overflow:auto; background:#0b0b0b; color:#9be37f; padding:8px; border-radius:8px"></pre>
+    </div>
   </div>
 
   <script>
@@ -90,6 +98,7 @@
       // First try playground proxy /api/healthz
       try {
         let url = new URL('/api/healthz', RESOLVE_BASE).toString();
+        devlog(`[health] GET ${url}`);
         let res = await fetch(url, { cache: 'no-store' });
         let json = null;
         const ct = (res.headers.get('content-type') || '').toLowerCase();
@@ -100,30 +109,44 @@
           if (json.hub_ok) {
             healthEl.innerHTML = `Server: <span style="color:#22c55e">OK</span> (${json.hub_url || 'not set'})`;
             connectBtn.disabled = false;
+            devlog('[health] ok via playground');
             return;
           } else {
             healthEl.innerHTML = `Server: <span style="color:#ef4444">UNREACHABLE</span> ${json.hub_error ? '(' + json.hub_error + ')' : ''}. Check HUB_URL on playground/server.`;
             connectBtn.disabled = false; // still allow trying to connect
+            devlog('[health] playground says hub unreachable');
             return;
           }
         }
         // Fallback: try hub /healthz
         url = new URL('/healthz', RESOLVE_BASE).toString();
+        devlog(`[health] GET ${url}`);
         res = await fetch(url, { cache: 'no-store' });
         if (res.ok) {
           healthEl.innerHTML = `Server (direct): <span style="color:#22c55e">OK</span>`;
           connectBtn.disabled = false;
+          devlog('[health] ok via hub direct');
           return;
         }
         healthEl.textContent = `Health check failed. Status ${res.status}`;
         connectBtn.disabled = false; // allow manual connect attempt anyway
+        devlog(`[health] failed status=${res.status}`);
       } catch (e) {
         healthEl.textContent = `Health check error: ${e && e.message ? e.message : e}`;
         connectBtn.disabled = false; // allow manual connect attempt anyway
+        devlog(`[health] error: ${e && e.message ? e.message : e}`);
       }
     }
     let ws;
     const notifList = document.getElementById('notifList');
+    const devlogEl = document.getElementById('devlog');
+    function devlog(msg) {
+      if (!devlogEl) return;
+      const line = `${new Date().toISOString()} ${msg}`;
+      devlogEl.textContent += (devlogEl.textContent ? '\n' : '') + line;
+      devlogEl.scrollTop = devlogEl.scrollHeight;
+      try { window.receiver.debugLog(line); } catch {}
+    }
     function addNotificationCard(data) {
       const card = document.createElement('div');
       card.style.border = '1px solid #ddd';
@@ -154,17 +177,17 @@
         });
         let desc = await res.json().catch(() => (null));
         if (!res.ok || !desc || !desc.base_url || !desc.user_id) {
-          log('Phone resolve failed' + (res ? ` (status=${res.status})` : ''));
+          devlog(`[resolve] phone failed status=${res && res.status}`);
           res = await fetch(new URL('/api/resolve-email', RESOLVE_BASE).toString(), {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: phone })
           });
           desc = await res.json().catch(() => (null));
           if (!res.ok || !desc || !desc.base_url || !desc.user_id) {
-            log('Resolve failed' + (res ? ` (status=${res.status})` : '') + (desc ? ` ${JSON.stringify(desc)}` : ''));
+            devlog(`[resolve] email failed status=${res && res.status} body=${JSON.stringify(desc)}`);
             return;
           }
         }
-        log(`Resolved: base_url=${desc.base_url} user_id=${desc.user_id}`);
+        devlog(`Resolved: base_url=${desc.base_url} user_id=${desc.user_id}`);
         const base = desc.base_url;
         const urlV1 = makeWsUrl(base, desc.user_id, '/v1/socket');
         const urlAlt = makeWsUrl(base, desc.user_id, '/socket');
@@ -172,19 +195,19 @@
         async function tryConnect(urls) {
           if (!urls.length) { log('All WS endpoints failed'); return; }
           const next = urls[0];
-          log(`Connecting to ${next}`);
+          devlog(`WS connecting: ${next}`);
           return new Promise((resolve) => {
             let opened = false;
             const candidate = new WebSocket(next);
             candidate.onopen = () => {
               opened = true;
               ws = candidate;
-              log('WS open');
+              devlog('WS open');
               document.getElementById('status').textContent = 'Connected';
               resolve(null);
             };
             candidate.onmessage = (ev) => {
-              log(ev.data);
+              devlog(`WS message: ${ev.data}`);
               try {
                 const data = JSON.parse(ev.data);
                 if (data && data.type === 'hello') {
@@ -198,24 +221,23 @@
             };
             candidate.onclose = (e) => {
               if (!opened) {
-                log(`WS close before open (${next}) code=${e.code}`);
+                devlog(`WS close before open (${next}) code=${e.code}`);
                 tryConnect(urls.slice(1)).then(resolve);
               } else {
-                log(`WS closed code=${e.code} reason=${e.reason}`);
+                devlog(`WS closed code=${e.code} reason=${e.reason}`);
                 document.getElementById('status').textContent = 'Disconnected';
               }
             };
             candidate.onerror = (e) => {
-              try { log(`WS error on ${next}: ` + (e.message || JSON.stringify(e))); } catch { log('WS error'); }
+              try { devlog(`WS error on ${next}: ` + (e.message || JSON.stringify(e))); } catch { devlog('WS error'); }
             };
           });
         }
 
         await tryConnect([urlAlt, urlV1]);
-        try { await window.receiver.debugLog('autoconnect ok for phone ' + phone); } catch {}
+        devlog('autoconnect ok for phone ' + phone);
       } catch (e) {
-        log('Connect failed: ' + e);
-        try { await window.receiver.debugLog('connect error: ' + (e && e.message ? e.message : e)); } catch {}
+        devlog('Connect failed: ' + (e && e.message ? e.message : e));
       }
     }
 
@@ -337,6 +359,10 @@
       } catch {}
       await refreshDevInfo();
     })();
+    document.getElementById('clearLogsBtn').addEventListener('click', () => { if (devlogEl) devlogEl.textContent=''; });
+    document.getElementById('copyLogsBtn').addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(devlogEl.textContent || ''); showToast('Copied logs',''); } catch {}
+    });
   </script>
 </body>
 </html>
