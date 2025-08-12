@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { ENV } from '../env';
 import { withTxn, pool } from '../db';
 import { fanoutQueue } from '../queues';
+import { pushToSockets } from '../adapters/socket';
 
 async function authPublisher(apiKey?: string) {
   if (!apiKey) return null;
@@ -65,8 +66,26 @@ export default async function routes(fastify: FastifyInstance) {
         console.log('[DB] insert message', { ms: Date.now() - q3Start });
         const messageId = msg.rows[0].id;
         console.log('[MSG] Inserted', { messageId, tenantId: pub.tenant_id, topic, title: String(title).slice(0, 120) });
-        return { messageId };
+        return { messageId, topicId };
       });
+
+      // Fast-path socket delivery (low latency, bypass queue)
+      try {
+        const fastStart = Date.now();
+        const subs = await pool.query(
+          `select distinct user_id from subscriptions where tenant_id=$1 and topic_id=$2`,
+          [pub.tenant_id, (result as any).topicId]
+        );
+        let pushed = 0;
+        const envelope = { title, body, payload: payload ?? null };
+        for (const r of subs.rows as Array<{ user_id: string }>) {
+          const ok = await pushToSockets(r.user_id, { type: 'notification', ...envelope });
+          if (ok) pushed++;
+        }
+        console.log('[SOCKET][FASTPATH] pushed', { users: subs.rows.length, pushed, ms: Date.now() - fastStart });
+      } catch (e: any) {
+        console.warn('[SOCKET][FASTPATH] error', String(e?.message || e));
+      }
 
       let enqueued = false;
       let enqueueTimedOut = false;
