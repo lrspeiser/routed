@@ -8,4 +8,13 @@ contextBridge.exposeInMainWorld('receiver', {
   // Resolve and notifications
   resolveChannel: (id, resolveUrl) => ipcRenderer.invoke('resolve-channel', id, resolveUrl),
   showNotification: (payload) => ipcRenderer.send('show-notification', payload),
+  // App + Dev
+  appShow: () => ipcRenderer.send('app:show'),
+  devGet: () => ipcRenderer.invoke('dev:get'),
+  devProvision: () => ipcRenderer.invoke('dev:provision'),
+  adminChannelsList: (tenantId) => ipcRenderer.invoke('admin:channels:list', tenantId),
+  adminChannelsCreate: (args) => ipcRenderer.invoke('admin:channels:create', args),
+  adminChannelsUsers: (shortId) => ipcRenderer.invoke('admin:channels:users', shortId),
+  adminUsersEnsure: (args) => ipcRenderer.invoke('admin:users:ensure', args),
+  devSendMessage: (args) => ipcRenderer.invoke('dev:sendMessage', args),
 });

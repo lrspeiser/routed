@@ -15,7 +15,7 @@
 <body>
   <header>
     <img src="arrow-icon-routed.png" alt="Routed" />
-    <h2 style="margin:0">Routed • Settings</h2>
+    <h2 style="margin:0">Routed</h2>
   </header>
   <div class="row" style="opacity:.7">Before connecting, we check your server health.</div>
   <div class="row" id="health">Checking server…</div>
@@ -25,11 +25,51 @@
   </div>
   <button id="connectBtn" disabled>Connect</button>
 
-  <h3>Status</h3>
-  <div id="status"></div>
+  <div class="row" style="margin-top:16px">
+    <div style="display:flex; gap:8px; border-bottom:1px solid #ddd; padding-bottom:6px">
+      <button id="tabClient" style="flex:1">Client</button>
+      <button id="tabDev" style="flex:1">Developer</button>
+    </div>
+  </div>
 
-  <h3>Log</h3>
-  <div id="log"></div>
+  <div id="clientTab" class="row">
+    <h3>Notifications</h3>
+    <div id="status"></div>
+    <div id="notifList" style="margin-top:8px; display:flex; flex-direction:column; gap:8px"></div>
+  </div>
+
+  <div id="devTab" class="row" style="display:none">
+    <h3>Developer Console</h3>
+    <div id="devInfo" style="font-family:monospace; background:#f6f6f6; padding:8px; border-radius:6px"></div>
+    <div style="display:flex; gap:8px; margin-top:8px">
+      <button id="provisionBtn">Provision Sandbox</button>
+      <button id="refreshChannelsBtn">Refresh Channels</button>
+    </div>
+    <div class="row">
+      <label>New Channel Name</label>
+      <input id="newChannelName" placeholder="e.g., QA Team" />
+      <button id="createChannelBtn">Create Channel</button>
+    </div>
+    <div class="row">
+      <label>Add User Phone to Channel (by Short ID)</label>
+      <input id="addUserShortId" placeholder="channel short id" />
+      <input id="addUserPhone" placeholder="+14155551234" />
+      <input id="addUserTopic" placeholder="topic (default runs.finished)" />
+      <button id="addUserBtn">Add User</button>
+    </div>
+    <div class="row">
+      <label>Send Message</label>
+      <input id="sendTopic" placeholder="topic (default runs.finished)" />
+      <input id="sendTitle" placeholder="Title" />
+      <input id="sendBody" placeholder="Body" />
+      <textarea id="sendPayload" placeholder='Payload JSON (optional)'></textarea>
+      <button id="sendBtn">Send</button>
+    </div>
+    <div class="row">
+      <h4>Channels</h4>
+      <div id="channels"></div>
+    </div>
+  </div>
 
   <script>
     const logEl = document.getElementById('log');
@@ -77,6 +117,15 @@
       }
     }
     let ws;
+    const notifList = document.getElementById('notifList');
+    function addNotificationCard(data) {
+      const card = document.createElement('div');
+      card.style.border = '1px solid #ddd';
+      card.style.borderRadius = '8px';
+      card.style.padding = '8px';
+      card.innerHTML = `<div style="font-weight:600">${(data.title||'').replace(/</g,'&lt;')}</div><div>${(data.body||'').replace(/</g,'&lt;')}</div>`;
+      notifList.prepend(card);
+    }
     function makeWsUrl(base, userId, path) {
       const url = new URL(base);
       const wsProto = url.protocol === 'https:' ? 'wss' : 'ws';
@@ -121,6 +170,7 @@
                   // handshake ok
                 } else if (data && data.title) {
                   window.receiver.showNotification(data);
+                  addNotificationCard(data);
                 }
               } catch {}
             };
@@ -152,12 +202,73 @@
       await connectWithPhone(phone);
     });
 
+    // Tabs
+    const clientTab = document.getElementById('clientTab');
+    const devTab = document.getElementById('devTab');
+    function showTab(which) {
+      clientTab.style.display = which === 'client' ? '' : 'none';
+      devTab.style.display = which === 'dev' ? '' : 'none';
+    }
+    document.getElementById('tabClient').addEventListener('click', () => showTab('client'));
+    document.getElementById('tabDev').addEventListener('click', () => showTab('dev'));
+
+    // Dev console handlers
+    const devInfoEl = document.getElementById('devInfo');
+    async function refreshDevInfo() {
+      const d = await window.receiver.devGet();
+      devInfoEl.textContent = d ? JSON.stringify(d, null, 2) : 'Not provisioned';
+    }
+    document.getElementById('provisionBtn').addEventListener('click', async () => {
+      await window.receiver.devProvision();
+      await refreshDevInfo();
+    });
+    document.getElementById('refreshChannelsBtn').addEventListener('click', async () => {
+      const d = await window.receiver.devGet();
+      if (!d || !d.tenantId) { alert('Provision first'); return; }
+      const ch = await window.receiver.adminChannelsList(d.tenantId);
+      document.getElementById('channels').textContent = JSON.stringify(ch, null, 2);
+    });
+    document.getElementById('createChannelBtn').addEventListener('click', async () => {
+      const d = await window.receiver.devGet();
+      if (!d || !d.tenantId) { alert('Provision first'); return; }
+      const name = (document.getElementById('newChannelName').value || '').trim();
+      if (!name) { alert('Enter a channel name'); return; }
+      await window.receiver.adminChannelsCreate({ tenantId: d.tenantId, name, topic: 'runs.finished' });
+      document.getElementById('newChannelName').value = '';
+      const ch = await window.receiver.adminChannelsList(d.tenantId);
+      document.getElementById('channels').textContent = JSON.stringify(ch, null, 2);
+    });
+    document.getElementById('addUserBtn').addEventListener('click', async () => {
+      const d = await window.receiver.devGet();
+      if (!d || !d.tenantId) { alert('Provision first'); return; }
+      const shortId = (document.getElementById('addUserShortId').value || '').trim();
+      const phone = (document.getElementById('addUserPhone').value || '').trim();
+      const topic = (document.getElementById('addUserTopic').value || '').trim() || 'runs.finished';
+      if (!shortId || !phone) { alert('Enter short id and phone'); return; }
+      // Ensure user exists and subscribed (by topic). Channel association is topic-based.
+      await window.receiver.adminUsersEnsure({ tenantId: d.tenantId, phone, topic });
+      const users = await window.receiver.adminChannelsUsers(shortId);
+      alert(`Channel users now: ${users.length}`);
+      document.getElementById('addUserShortId').value='';
+      document.getElementById('addUserPhone').value='';
+      document.getElementById('addUserTopic').value='';
+    });
+    document.getElementById('sendBtn').addEventListener('click', async () => {
+      const topic = (document.getElementById('sendTopic').value || '').trim() || 'runs.finished';
+      const title = (document.getElementById('sendTitle').value || '').trim() || 'Hello';
+      const body = (document.getElementById('sendBody').value || '').trim() || 'World';
+      let payload = null;
+      try { const raw = document.getElementById('sendPayload').value; payload = raw ? JSON.parse(raw) : null; } catch { payload = null; }
+      await window.receiver.devSendMessage({ topic, title, body, payload });
+    });
+
     (async () => {
       await checkHealth();
       try {
         const saved = localStorage.getItem('ROUTED_PHONE');
         if (saved && !connectBtn.disabled) { document.getElementById('phone').value = saved; connectWithPhone(saved); }
       } catch {}
+      await refreshDevInfo();
     })();
   </script>
 </body>

@@ -7,6 +7,7 @@ let mainWindow;
 let tray;
 const DEFAULT_RESOLVE_URL = 'https://routed-gbiz.onrender.com';
 const storePath = () => path.join(app.getPath('userData'), 'subscriptions.json');
+const devStorePath = () => path.join(app.getPath('userData'), 'dev.json');
 
 function loadStore() {
   try { return JSON.parse(fs.readFileSync(storePath(), 'utf8')); } catch { return { subscriptions: [] }; }
@@ -15,10 +16,18 @@ function saveStore(data) {
   try { fs.writeFileSync(storePath(), JSON.stringify(data, null, 2)); } catch {}
 }
 
+function loadDev() {
+  try { return JSON.parse(fs.readFileSync(devStorePath(), 'utf8')); } catch { return null; }
+}
+function saveDev(data) {
+  try { fs.writeFileSync(devStorePath(), JSON.stringify(data, null, 2)); } catch {}
+}
+
 async function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 520,
-    height: 640,
+    width: 560,
+    height: 720,
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
     },
@@ -51,6 +60,8 @@ app.whenReady().then(async () => {
   }
   await createWindow();
   createTray();
+  // Start minimized to tray
+  try { if (process.platform === 'darwin') app.dock.hide(); } catch {}
 });
 
 app.on('window-all-closed', () => {
@@ -99,3 +110,98 @@ ipcMain.on('show-notification', (_evt, payload) => {
   });
   try { n.show(); } catch {}
 });
+
+// Developer/Channels IPC
+ipcMain.handle('dev:get', async () => {
+  return loadDev();
+});
+
+ipcMain.handle('dev:provision', async () => {
+  try {
+    const res = await fetch(new URL('/api/dev/create', DEFAULT_RESOLVE_URL).toString(), { method: 'POST', cache: 'no-store' });
+    const j = await res.json();
+    if (!res.ok) throw new Error(`provision failed ${res.status} ${JSON.stringify(j)}`);
+    const dev = { hubUrl: j.hubUrl, tenantId: j.tenantId, apiKey: j.apiKey, userId: j.userId };
+    saveDev(dev);
+    return dev;
+  } catch (e) {
+    dialog.showErrorBox('Provision failed', String(e));
+    return null;
+  }
+});
+
+ipcMain.handle('admin:channels:list', async (_evt, tenantId) => {
+  try {
+    const url = new URL(`/api/admin/channels/list?tenantId=${encodeURIComponent(tenantId)}`, DEFAULT_RESOLVE_URL).toString();
+    const res = await fetch(url, { cache: 'no-store' });
+    const j = await res.json();
+    if (!res.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
+    return j.channels || [];
+  } catch (e) {
+    dialog.showErrorBox('List channels failed', String(e));
+    return [];
+  }
+});
+
+ipcMain.handle('admin:channels:create', async (_evt, { tenantId, name, topic }) => {
+  try {
+    const res = await fetch(new URL('/api/admin/channels/create', DEFAULT_RESOLVE_URL).toString(), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tenantId, name, topic }), cache: 'no-store'
+    });
+    const j = await res.json();
+    if (!res.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
+    return j;
+  } catch (e) {
+    dialog.showErrorBox('Create channel failed', String(e));
+    return null;
+  }
+});
+
+ipcMain.handle('admin:channels:users', async (_evt, shortId) => {
+  try {
+    const res = await fetch(new URL(`/api/admin/channels/users/${encodeURIComponent(shortId)}`, DEFAULT_RESOLVE_URL).toString(), { cache: 'no-store' });
+    const j = await res.json();
+    if (!res.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
+    return j.users || [];
+  } catch (e) {
+    dialog.showErrorBox('Fetch channel users failed', String(e));
+    return [];
+  }
+});
+
+ipcMain.handle('admin:users:ensure', async (_evt, { tenantId, phone, topic }) => {
+  try {
+    const res = await fetch(new URL('/api/resolve', DEFAULT_RESOLVE_URL).toString(), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tenantId, phone, topic }), cache: 'no-store'
+    });
+    const j = await res.json();
+    if (!res.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
+    return j;
+  } catch (e) {
+    dialog.showErrorBox('Add user failed', String(e));
+    return null;
+  }
+});
+
+ipcMain.handle('dev:sendMessage', async (_evt, { topic, title, body, payload }) => {
+  try {
+    const dev = loadDev();
+    if (!dev || !dev.hubUrl || !dev.apiKey) throw new Error('Developer not provisioned');
+    const res = await fetch(new URL('/v1/messages', dev.hubUrl).toString(), {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${dev.apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ topic, title, body, payload: payload ?? null }),
+      cache: 'no-store',
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
+    return j;
+  } catch (e) {
+    dialog.showErrorBox('Send failed', String(e));
+    return null;
+  }
+});
+
+ipcMain.on('app:show', () => { try { if (mainWindow) { mainWindow.show(); mainWindow.focus(); if (process.platform === 'darwin') app.dock.show(); } } catch {} });
