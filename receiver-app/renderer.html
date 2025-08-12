@@ -287,7 +287,12 @@
       await checkHealth();
       try {
         const saved = localStorage.getItem('ROUTED_PHONE');
-        if (saved && !connectBtn.disabled) { document.getElementById('phone').value = saved; connectWithPhone(saved); }
+        if (saved && !connectBtn.disabled) { document.getElementById('phone').value = saved; await connectWithPhone(saved); }
+        // Debug: log sockets snapshot to help diagnose delivery
+        try {
+          const snap = await window.receiver.adminSockets();
+          await window.receiver.debugLog('sockets snapshot: ' + JSON.stringify(snap));
+        } catch {}
       } catch {}
       await refreshDevInfo();
     })();

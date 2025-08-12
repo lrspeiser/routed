@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld('receiver', {
   // Resolve and notifications
   resolveChannel: (id, resolveUrl) => ipcRenderer.invoke('resolve-channel', id, resolveUrl),
   showNotification: (payload) => ipcRenderer.send('show-notification', payload),
+  debugLog: (line) => ipcRenderer.invoke('debug:log', line),
+  adminSockets: () => ipcRenderer.invoke('admin:sockets'),
   // App + Dev
   appShow: () => ipcRenderer.send('app:show'),
   devGet: () => ipcRenderer.invoke('dev:get'),

@@ -144,6 +144,20 @@ ipcMain.on('show-notification', (_evt, payload) => {
   writeLog(`Notification shown: ${title} :: ${body}`);
 });
 
+ipcMain.handle('debug:log', async (_evt, line) => { writeLog(`[renderer] ${line}`); return true; });
+
+ipcMain.handle('admin:sockets', async () => {
+  try {
+    const res = await fetch(new URL('/v1/admin/debug/sockets', process.env.HUB_URL || 'https://routed.onrender.com').toString(), { cache: 'no-store' });
+    const j = await res.json();
+    writeLog(`admin:sockets → ${JSON.stringify(j)}`);
+    return j;
+  } catch (e) {
+    writeLog(`admin:sockets error: ${String(e)}`);
+    return null;
+  }
+});
+
 // Developer/Channels IPC
 ipcMain.handle('dev:get', async () => {
   const d = loadDev();
