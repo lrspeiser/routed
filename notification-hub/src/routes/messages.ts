@@ -15,7 +15,8 @@ async function authPublisher(apiKey?: string) {
 export default async function routes(fastify: FastifyInstance) {
   fastify.post('/v1/messages', async (req, reply) => {
     const ip = (req.headers['x-forwarded-for'] as string) || (req as any).ip;
-    console.log('[HTTP] POST /v1/messages', { ip });
+    const startedAt = Date.now();
+    console.log('[HTTP] POST /v1/messages', { ip, ts: startedAt });
     const apiKey = (req.headers.authorization || '').replace('Bearer ', '');
     const pub = await authPublisher(apiKey);
     if (!pub) {
@@ -34,20 +35,25 @@ export default async function routes(fastify: FastifyInstance) {
 
     try {
       const result = await withTxn(async (c) => {
+        const q1Start = Date.now();
         const topicRow = await c.query(
           `select id from topics where tenant_id=$1 and name=$2`,
           [pub.tenant_id, topic]
         );
+        console.log('[DB] select topics', { ms: Date.now() - q1Start });
         let topicId = topicRow.rows[0]?.id;
         if (!topicId) {
+          const q2Start = Date.now();
           const ins = await c.query(
             `insert into topics (tenant_id, name) values ($1, $2) returning id`,
             [pub.tenant_id, topic]
           );
+          console.log('[DB] insert topic', { ms: Date.now() - q2Start });
           topicId = ins.rows[0].id;
           console.log(`[TOPIC] Created topic '${topic}' id=${topicId}`);
         }
 
+        const q3Start = Date.now();
         const msg = await c.query(
           `
           insert into messages (tenant_id, topic_id, publisher_id, title, body, payload, ttl_sec, expires_at, dedupe_key)
@@ -56,13 +62,32 @@ export default async function routes(fastify: FastifyInstance) {
           `,
           [pub.tenant_id, topicId, pub.id, title, body, payload ?? null, ttl, dedupe_key ?? null]
         );
+        console.log('[DB] insert message', { ms: Date.now() - q3Start });
         const messageId = msg.rows[0].id;
         console.log('[MSG] Inserted', { messageId, tenantId: pub.tenant_id, topic, title: String(title).slice(0, 120) });
         return { messageId };
       });
 
-      await fanoutQueue.add('fanout', { messageId: result.messageId }, { removeOnComplete: 1000, removeOnFail: 1000 });
+      let enqueued = false;
+      let enqueueTimedOut = false;
+      let enqueueError: string | null = null;
+      const enqueueStart = Date.now();
+      try {
+        await Promise.race([
+          (async () => { await fanoutQueue.add('fanout', { messageId: result.messageId }, { removeOnComplete: 1000, removeOnFail: 1000 }); enqueued = true; })(),
+          new Promise((_r, rej) => setTimeout(() => { enqueueTimedOut = true; rej(new Error('enqueue_timeout')); }, 2000)),
+        ]);
+      } catch (e: any) {
+        enqueueError = String(e?.message || e);
+      }
+      console.log('[ENQUEUE] Attempt', { messageId: result.messageId, enqueued, enqueueTimedOut, enqueueError, ms: Date.now() - enqueueStart, totalMs: Date.now() - startedAt });
+      // Respond regardless; worker may process later if enqueued succeeded after timeout
+      if (!enqueued && enqueueTimedOut) {
+        // Best-effort response
+        return reply.status(202).send({ message_id: result.messageId, enqueue: 'timeout' });
+      }
       console.log('[ENQUEUE] Fanout queued', { messageId: result.messageId });
+      return reply.status(202).send({ message_id: result.messageId });
       return reply.status(202).send({ message_id: result.messageId });
     } catch (e: any) {
       if (String(e.message).includes('duplicate key value violates unique constraint') && dedupe_key) {
