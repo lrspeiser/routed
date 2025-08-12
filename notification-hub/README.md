@@ -2,6 +2,11 @@
 
 Fastify + BullMQ + Postgres + Redis notification router with TTLs, web push and sockets.
 
+## Deployed URL
+
+- Hub (prod): `https://routed.onrender.com/`
+- Playground (demo): `https://routed-gbiz.onrender.com/`
+
 ## Quickstart
 
 1. Copy `.env.example` to `.env` and set `DATABASE_URL` and `REDIS_URL`.
