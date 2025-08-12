@@ -204,7 +204,7 @@ ipcMain.handle('dev:provision', async () => {
     const res = await fetch(new URL('/v1/dev/sandbox/provision', DEFAULT_RESOLVE_URL).toString(), { method: 'POST', cache: 'no-store' });
     const j = await res.json();
     if (!res.ok) throw new Error(`provision failed ${res.status} ${JSON.stringify(j)}`);
-    const dev = { hubUrl: j.hubUrl, tenantId: j.tenantId, apiKey: j.apiKey, userId: j.userId };
+    const dev = { hubUrl: DEFAULT_RESOLVE_URL, tenantId: j.tenantId, apiKey: j.apiKey, userId: j.userId };
     saveDev(dev);
     writeLog(`dev:provision → success tenantId=${dev.tenantId}`);
     return dev;
@@ -280,9 +280,15 @@ ipcMain.handle('admin:users:ensure', async (_evt, { tenantId, phone, topic }) =>
 
 ipcMain.handle('dev:sendMessage', async (_evt, { topic, title, body, payload }) => {
   try {
-    const dev = loadDev();
-    if (!dev || !dev.hubUrl || !dev.apiKey) throw new Error('Developer not provisioned');
-    const res = await fetch(new URL('/v1/messages', dev.hubUrl).toString(), {
+    let dev = loadDev();
+    if (!dev || !dev.apiKey) {
+      writeLog('sendMessage: provisioning because developer not provisioned');
+      await (async () => ipcMain.handlers?.['dev:provision']?.({}, {}) )?.();
+      dev = loadDev();
+    }
+    if (!dev || !dev.apiKey) throw new Error('Developer not provisioned');
+    const baseUrl = dev.hubUrl || DEFAULT_RESOLVE_URL;
+    const res = await fetch(new URL('/v1/messages', baseUrl).toString(), {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${dev.apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ topic, title, body, payload: payload ?? null }),
