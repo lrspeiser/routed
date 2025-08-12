@@ -34,6 +34,13 @@ async function main() {
     prefix: '/',
   });
 
+  // Serve site images from /images/
+  await app.register(fastifyStatic, {
+    root: path.join(__dirname, '..', 'images'),
+    prefix: '/images/',
+    decorateReply: false,
+  });
+
   app.get('/healthz', async () => ({ ok: true }));
   app.get('/healthz-deep', async () => ({ ok: true, time: Date.now() }));
 
