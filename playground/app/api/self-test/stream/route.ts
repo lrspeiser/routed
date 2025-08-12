@@ -111,4 +111,9 @@ export async function GET() {
   return new Response(stream, { headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' } });
 }
 
+// Allow lightweight availability probe
+export async function HEAD() {
+  return new Response(null, { status: 200, headers: { 'Cache-Control': 'no-cache' } });
+}
+
 
