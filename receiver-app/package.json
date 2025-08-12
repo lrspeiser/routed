@@ -19,18 +19,16 @@
       "package.json",
       "arrow-icon-routed.png"
     ],
-    "icon": "build/icon.icns",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "mac": {
       "category": "public.app-category.utilities",
       "target": [
         "dmg"
       ],
       "identity": null,
-      "icon": "build/icon.icns"
+      "hardenedRuntime": false
     },
-    "dmg": {
-      "icon": "build/icon.icns"
-    }
+    "dmg": {}
   },
   "dependencies": {
     "node-fetch": "^3.3.2",
