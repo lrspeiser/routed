@@ -30,19 +30,24 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
 
     const url = new URL('/v1/messages', baseUrl).toString();
     console.log('[API] Forwarding to hub /v1/messages', { baseUrl, topic, hasApiKey: Boolean(apiKey) });
+    const controller = new AbortController();
+    const to = setTimeout(() => controller.abort(), 8000);
     const forward = await fetch(url, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ topic, title, body, payload: extraPayload ?? null }),
       cache: 'no-store',
-    });
+      signal: controller.signal,
+    }).finally(() => clearTimeout(to));
     const j = await forward.json().catch(() => ({}));
     console.log('[API] Hub response', { status: forward.status, title: sanitize(title), body: j });
     if (!forward.ok) return NextResponse.json({ error: 'hub_error', result: j }, { status: forward.status });
     return NextResponse.json({ ok: true, result: j });
   } catch (e: any) {
-    console.error('[API] Channel send failed', String(e?.message || e));
-    return NextResponse.json({ error: 'internal_error' }, { status: 500 });
+    console.error('[API] Channel send failed', String(e?.name || e?.message || e));
+    const msg = String(e?.name || e?.message || e);
+    const status = msg.includes('AbortError') ? 504 : 500;
+    return NextResponse.json({ error: 'forward_failed', detail: msg }, { status });
   }
 }
 
