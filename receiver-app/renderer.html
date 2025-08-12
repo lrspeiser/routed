@@ -39,35 +39,38 @@
   </div>
 
   <div id="devTab" class="row" style="display:none">
-    <h3>Developer Console</h3>
-    <div id="devInfo" style="font-family:monospace; background:#f6f6f6; padding:8px; border-radius:6px"></div>
-    <div style="display:flex; gap:8px; margin-top:8px">
-      <button id="provisionBtn">Provision Sandbox</button>
-      <button id="refreshChannelsBtn">Refresh Channels</button>
+    <h3>Developer</h3>
+    <div id="devInfo" style="background:#f6f6f6; padding:8px; border-radius:6px; display:flex; gap:8px; align-items:center; justify-content:space-between">
+      <div>
+        <div style="font-size:12px; opacity:.7">Developer ID</div>
+        <div id="devId" style="font-family:monospace">Not created</div>
+      </div>
+      <button id="provisionBtn">Generate</button>
     </div>
+
     <div class="row">
-      <label>New Channel Name</label>
-      <input id="newChannelName" placeholder="e.g., QA Team" />
-      <button id="createChannelBtn">Create Channel</button>
+      <label>New Channel</label>
+      <div style="display:flex; gap:8px">
+        <input id="newChannelName" placeholder="e.g., QA Team" />
+        <button id="createChannelBtn">Create</button>
+      </div>
     </div>
+
     <div class="row">
-      <label>Add User Phone to Channel (by Short ID)</label>
-      <input id="addUserShortId" placeholder="channel short id" />
-      <input id="addUserPhone" placeholder="+14155551234" />
-      <input id="addUserTopic" placeholder="topic (default runs.finished)" />
-      <button id="addUserBtn">Add User</button>
+      <label>Channel</label>
+      <select id="channelSelect"></select>
     </div>
+
     <div class="row">
-      <label>Send Message</label>
-      <input id="sendTopic" placeholder="topic (default runs.finished)" />
-      <input id="sendTitle" placeholder="Title" />
-      <input id="sendBody" placeholder="Body" />
-      <textarea id="sendPayload" placeholder='Payload JSON (optional)'></textarea>
-      <button id="sendBtn">Send</button>
+      <label>Add Phone Numbers (comma or space separated)</label>
+      <input id="addPhones" placeholder="+14155551234, +14155559876" />
+      <button id="addUsersBtn">Add to Channel</button>
     </div>
+
     <div class="row">
-      <h4>Channels</h4>
-      <div id="channels"></div>
+      <label>Message</label>
+      <input id="messageText" placeholder="Type your message" />
+      <button id="sendBtn">Send to Channel</button>
     </div>
   </div>
 
@@ -213,53 +216,59 @@
     document.getElementById('tabDev').addEventListener('click', () => showTab('dev'));
 
     // Dev console handlers
-    const devInfoEl = document.getElementById('devInfo');
+    const devIdEl = document.getElementById('devId');
+    const channelSelect = document.getElementById('channelSelect');
+    async function loadChannels() {
+      const d = await window.receiver.devGet();
+      if (!d || !d.tenantId) return;
+      const ch = await window.receiver.adminChannelsList(d.tenantId);
+      channelSelect.innerHTML = '';
+      ch.forEach((c) => {
+        const opt = document.createElement('option');
+        opt.value = JSON.stringify({ topic: c.topic });
+        opt.textContent = `${c.name} (${c.short_id})`;
+        channelSelect.appendChild(opt);
+      });
+    }
     async function refreshDevInfo() {
       const d = await window.receiver.devGet();
-      devInfoEl.textContent = d ? JSON.stringify(d, null, 2) : 'Not provisioned';
+      devIdEl.textContent = d ? (d.tenantId || 'Unknown') : 'Not created';
+      await loadChannels();
     }
     document.getElementById('provisionBtn').addEventListener('click', async () => {
       await window.receiver.devProvision();
       await refreshDevInfo();
     });
-    document.getElementById('refreshChannelsBtn').addEventListener('click', async () => {
-      const d = await window.receiver.devGet();
-      if (!d || !d.tenantId) { alert('Provision first'); return; }
-      const ch = await window.receiver.adminChannelsList(d.tenantId);
-      document.getElementById('channels').textContent = JSON.stringify(ch, null, 2);
-    });
     document.getElementById('createChannelBtn').addEventListener('click', async () => {
       const d = await window.receiver.devGet();
-      if (!d || !d.tenantId) { alert('Provision first'); return; }
+      if (!d || !d.tenantId) { alert('Generate Developer ID first'); return; }
       const name = (document.getElementById('newChannelName').value || '').trim();
       if (!name) { alert('Enter a channel name'); return; }
       await window.receiver.adminChannelsCreate({ tenantId: d.tenantId, name, topic: 'runs.finished' });
       document.getElementById('newChannelName').value = '';
-      const ch = await window.receiver.adminChannelsList(d.tenantId);
-      document.getElementById('channels').textContent = JSON.stringify(ch, null, 2);
+      await loadChannels();
     });
-    document.getElementById('addUserBtn').addEventListener('click', async () => {
+    document.getElementById('addUsersBtn').addEventListener('click', async () => {
       const d = await window.receiver.devGet();
-      if (!d || !d.tenantId) { alert('Provision first'); return; }
-      const shortId = (document.getElementById('addUserShortId').value || '').trim();
-      const phone = (document.getElementById('addUserPhone').value || '').trim();
-      const topic = (document.getElementById('addUserTopic').value || '').trim() || 'runs.finished';
-      if (!shortId || !phone) { alert('Enter short id and phone'); return; }
-      // Ensure user exists and subscribed (by topic). Channel association is topic-based.
-      await window.receiver.adminUsersEnsure({ tenantId: d.tenantId, phone, topic });
-      const users = await window.receiver.adminChannelsUsers(shortId);
-      alert(`Channel users now: ${users.length}`);
-      document.getElementById('addUserShortId').value='';
-      document.getElementById('addUserPhone').value='';
-      document.getElementById('addUserTopic').value='';
+      if (!d || !d.tenantId) { alert('Generate Developer ID first'); return; }
+      const selected = channelSelect.value ? JSON.parse(channelSelect.value) : null;
+      if (!selected) { alert('Choose a channel'); return; }
+      const raw = (document.getElementById('addPhones').value || '').trim();
+      if (!raw) { alert('Enter phone numbers'); return; }
+      const phones = raw.split(/[,\s]+/).map((p) => p.trim()).filter(Boolean);
+      for (const phone of phones) {
+        await window.receiver.adminUsersEnsure({ tenantId: d.tenantId, phone, topic: selected.topic });
+      }
+      document.getElementById('addPhones').value = '';
+      alert('Added');
     });
     document.getElementById('sendBtn').addEventListener('click', async () => {
-      const topic = (document.getElementById('sendTopic').value || '').trim() || 'runs.finished';
-      const title = (document.getElementById('sendTitle').value || '').trim() || 'Hello';
-      const body = (document.getElementById('sendBody').value || '').trim() || 'World';
-      let payload = null;
-      try { const raw = document.getElementById('sendPayload').value; payload = raw ? JSON.parse(raw) : null; } catch { payload = null; }
-      await window.receiver.devSendMessage({ topic, title, body, payload });
+      const selected = channelSelect.value ? JSON.parse(channelSelect.value) : null;
+      if (!selected) { alert('Choose a channel'); return; }
+      const text = (document.getElementById('messageText').value || '').trim();
+      if (!text) { alert('Enter a message'); return; }
+      await window.receiver.devSendMessage({ topic: selected.topic, title: 'Routed', body: text, payload: null });
+      document.getElementById('messageText').value = '';
     });
 
     (async () => {
