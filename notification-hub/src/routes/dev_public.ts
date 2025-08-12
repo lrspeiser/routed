@@ -33,32 +33,34 @@ export default async function routes(fastify: FastifyInstance) {
     if (!tenant_id || !phone) return reply.status(400).send({ error: 'missing tenant_id/phone' });
     try {
       const out = await withTxn(async (c) => {
-        // ensure user
-        const ur = await c.query(
-          `insert into users (tenant_id, phone) values ($1,$2)
-           on conflict (tenant_id, phone) do update set phone=excluded.phone
-           returning id`,
-          [tenant_id, phone]
-        );
-        const userId = ur.rows[0].id as string;
-        // ensure topic
-        const tr = await c.query(
-          `insert into topics (tenant_id, name) values ($1,$2)
-           on conflict (tenant_id, name) do update set name=excluded.name
-           returning id`,
-          [tenant_id, topic]
-        );
-        const topicId = tr.rows[0].id as string;
+        // ensure user without relying on unique index
+        let userId: string | null = null;
+        let r = await c.query(`select id from users where tenant_id=$1 and phone=$2 limit 1`, [tenant_id, phone]);
+        if (r.rows.length === 0) {
+          r = await c.query(`insert into users (tenant_id, phone) values ($1,$2) returning id`, [tenant_id, phone]);
+        }
+        userId = r.rows[0].id as string;
+
+        // ensure topic without relying on unique index
+        r = await c.query(`select id from topics where tenant_id=$1 and name=$2 limit 1`, [tenant_id, topic]);
+        if (r.rows.length === 0) {
+          r = await c.query(`insert into topics (tenant_id, name) values ($1,$2) returning id`, [tenant_id, topic]);
+        }
+        const topicId = r.rows[0].id as string;
+
         // ensure subscription
-        await c.query(
-          `insert into subscriptions (tenant_id, user_id, topic_id) values ($1,$2,$3)
-           on conflict do nothing`,
+        const rs = await c.query(
+          `select 1 from subscriptions where tenant_id=$1 and user_id=$2 and topic_id=$3 limit 1`,
           [tenant_id, userId, topicId]
         );
+        if (rs.rows.length === 0) {
+          await c.query(`insert into subscriptions (tenant_id, user_id, topic_id) values ($1,$2,$3)`, [tenant_id, userId, topicId]);
+        }
         return { userId };
       });
       return reply.send(out);
     } catch (e) {
+      console.warn('[DEV] users/ensure error', e);
       return reply.status(500).send({ error: 'internal_error' });
     }
   });
