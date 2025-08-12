@@ -10,6 +10,8 @@
     input, button { font-size: 14px; padding: 8px; margin: 4px 0; width: 100%; }
     #log { white-space: pre-wrap; height: 240px; overflow: auto; background: #111; color: #0f0; padding: 8px; border-radius: 6px; }
     .row { margin-top: 8px; }
+    #toast { position: fixed; top: 20px; right: 20px; background: rgba(17,17,17,0.95); color:#fff; padding:12px 14px; border-radius:10px; box-shadow:0 10px 30px rgba(0,0,0,0.3); display:none; max-width: 320px; }
+    #toast .t-title { font-weight:600; margin-bottom:4px; }
   </style>
 </head>
 <body>
@@ -31,6 +33,7 @@
       <button id="tabDev" style="flex:1">Developer</button>
     </div>
   </div>
+  <div id="toast"><div class="t-title"></div><div class="t-body"></div></div>
 
   <div id="clientTab" class="row">
     <h3>Notifications</h3>
@@ -129,6 +132,14 @@
       card.innerHTML = `<div style="font-weight:600">${(data.title||'').replace(/</g,'&lt;')}</div><div>${(data.body||'').replace(/</g,'&lt;')}</div>`;
       notifList.prepend(card);
     }
+    function showToast(title, body) {
+      const el = document.getElementById('toast');
+      el.querySelector('.t-title').textContent = title || 'Notification';
+      el.querySelector('.t-body').textContent = body || '';
+      el.style.display = 'block';
+      clearTimeout(showToast._t);
+      showToast._t = setTimeout(() => { el.style.display = 'none'; }, 3500);
+    }
     function makeWsUrl(base, userId, path) {
       const url = new URL(base);
       const wsProto = url.protocol === 'https:' ? 'wss' : 'ws';
@@ -174,6 +185,7 @@
                 } else if (data && data.title) {
                   window.receiver.showNotification(data);
                   addNotificationCard(data);
+                  showToast(data.title, data.body);
                 }
               } catch {}
             };
