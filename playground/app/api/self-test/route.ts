@@ -41,16 +41,16 @@ export async function GET() {
     const sockUrlV1 = `${wsProto}://${url.host}/v1/socket?user_id=${encodeURIComponent(targetUserId)}`;
     let ws: WebSocket;
     try {
-      ws = new WebSocket(sockUrlAlt);
+      ws = new WebSocket(sockUrlAlt, undefined, { headers: { Origin: url.origin, 'User-Agent': 'routed-self-test' } as any });
       await new Promise<void>((resolve, reject) => {
-        const to = setTimeout(() => reject(new Error('ws_timeout_alt')), 6000);
+        const to = setTimeout(() => reject(new Error(`ws_timeout_alt:${sockUrlAlt}`)), 6000);
         ws!.on('open', () => { clearTimeout(to); resolve(); });
         ws!.on('error', (e) => { clearTimeout(to); reject(e as any); });
       });
     } catch (e) {
-      ws = new WebSocket(sockUrlV1);
+      ws = new WebSocket(sockUrlV1, undefined, { headers: { Origin: url.origin, 'User-Agent': 'routed-self-test' } as any });
       await new Promise<void>((resolve, reject) => {
-        const to = setTimeout(() => reject(new Error('ws_timeout_v1')), 6000);
+        const to = setTimeout(() => reject(new Error(`ws_timeout_v1:${sockUrlV1}`)), 6000);
         ws!.on('open', () => { clearTimeout(to); resolve(); });
         ws!.on('error', (er) => { clearTimeout(to); reject(er as any); });
       });
