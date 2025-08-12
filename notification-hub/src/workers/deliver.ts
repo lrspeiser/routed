@@ -65,7 +65,7 @@ export const deliverWorker = new Worker<DeliverJob>(
           `update deliveries set status='sent', updated_at=now(), last_error=null where id=$1`,
           [deliveryId]
         );
-        console.log(`[DELIVER] Sent via ${channel} to user=${userId}`);
+        console.log('[DELIVER] Sent', { channel, userId, messageId, deliveryId });
       } else {
         throw new Error('No delivery path succeeded');
       }

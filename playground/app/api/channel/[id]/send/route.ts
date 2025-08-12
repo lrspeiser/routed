@@ -9,7 +9,7 @@ function sanitize(input: unknown): string {
 
 export async function POST(req: Request, ctx: { params: { id: string } }) {
   const id = ctx.params.id;
-  console.log('[API] POST /api/channel/:id/send', { id });
+  console.log('[API] POST /api/channel/:id/send (playground)', { id });
   const code = channelIdToCode.get(id);
   if (!code) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
@@ -29,6 +29,7 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
     if (!baseUrl || !apiKey) return NextResponse.json({ error: 'channel_unusable' }, { status: 500 });
 
     const url = new URL('/v1/messages', baseUrl).toString();
+    console.log('[API] Forwarding to hub /v1/messages', { baseUrl, topic, hasApiKey: Boolean(apiKey) });
     const forward = await fetch(url, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
@@ -36,11 +37,11 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
       cache: 'no-store',
     });
     const j = await forward.json().catch(() => ({}));
-    console.log('[API] Forwarded to hub', { status: forward.status, title: sanitize(title) });
+    console.log('[API] Hub response', { status: forward.status, title: sanitize(title), body: j });
     if (!forward.ok) return NextResponse.json({ error: 'hub_error', result: j }, { status: forward.status });
     return NextResponse.json({ ok: true, result: j });
   } catch (e: any) {
-    console.error('[API] Channel send failed', e);
+    console.error('[API] Channel send failed', String(e?.message || e));
     return NextResponse.json({ error: 'internal_error' }, { status: 500 });
   }
 }

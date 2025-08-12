@@ -315,6 +315,7 @@ export default function Page() {
           <button disabled={!channelId} onClick={async () => {
             if (!channelId) return;
             try {
+              console.log('[UI] Channel Send clicked', { channelId, title: sendTitle, body: sendBody });
               let payload: any = null;
               try { payload = sendPayload ? JSON.parse(sendPayload) : null; } catch {}
               const res = await fetch(`/api/channel/${channelId}/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: sendTitle, body: sendBody, payload }) });
@@ -328,6 +329,7 @@ export default function Page() {
           }}>Send</button>
           <button disabled={!sandbox} onClick={async () => {
             try {
+              console.log('[UI] Admin Test Send clicked', { tenantId: sandbox?.tenantId, title: sendTitle });
               let payload: any = null;
               try { payload = sendPayload ? JSON.parse(sendPayload) : null; } catch {}
               const res = await fetch('/api/admin/test-message', {

@@ -24,6 +24,7 @@ export default async function routes(fastify: FastifyInstance) {
     }
 
     const { topic, title, body, payload, ttl_sec, dedupe_key } = (req.body ?? {}) as any;
+    console.log('[HTTP] /v1/messages payload', { topic, hasTitle: Boolean(title), hasBody: Boolean(body) });
     if (!topic || !title || !body) {
       return reply.status(400).send({ error: 'missing required fields (topic,title,body)' });
     }
@@ -61,7 +62,7 @@ export default async function routes(fastify: FastifyInstance) {
       });
 
       await fanoutQueue.add('fanout', { messageId: result.messageId }, { removeOnComplete: 1000, removeOnFail: 1000 });
-      console.log(`[ENQUEUE] Fanout queued for message=${result.messageId}`);
+      console.log('[ENQUEUE] Fanout queued', { messageId: result.messageId });
       return reply.status(202).send({ message_id: result.messageId });
     } catch (e: any) {
       if (String(e.message).includes('duplicate key value violates unique constraint') && dedupe_key) {

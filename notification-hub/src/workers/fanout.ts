@@ -15,7 +15,7 @@ export const fanoutWorker = new Worker<FanoutJob>(
   'fanout',
   async (job) => {
     const messageId = job.data.messageId;
-    console.log(`[FANOUT] Starting fanout for message=${messageId}`);
+    console.log('[FANOUT] Start', { messageId });
 
     // Load message and ensure not expired
     const { rows: msgRows } = await pool.query(
@@ -44,7 +44,7 @@ export const fanoutWorker = new Worker<FanoutJob>(
     );
 
     if (rows.length === 0) {
-      console.log('[FANOUT] No subscribers/devices found; finishing.');
+      console.log('[FANOUT] No subscribers/devices found; finishing.', { messageId });
       return;
     }
 
@@ -95,7 +95,7 @@ export const fanoutWorker = new Worker<FanoutJob>(
       }
     }
 
-    console.log(`[FANOUT] Enqueued ${jobsAdded} delivery jobs for ${byUser.size} users.`);
+    console.log('[FANOUT] Enqueued deliveries', { messageId, jobsAdded, users: byUser.size });
   },
   { connection }
 );
