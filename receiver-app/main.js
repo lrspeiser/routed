@@ -5,6 +5,7 @@ const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch
 
 let mainWindow;
 let tray;
+let isQuitting = false;
 const DEFAULT_RESOLVE_URL = 'https://routed-gbiz.onrender.com';
 const storePath = () => path.join(app.getPath('userData'), 'subscriptions.json');
 const devStorePath = () => path.join(app.getPath('userData'), 'dev.json');
@@ -53,7 +54,14 @@ async function createWindow() {
   });
 
   await mainWindow.loadFile('renderer.html');
-  mainWindow.on('close', (e) => { e.preventDefault(); mainWindow.hide(); });
+  mainWindow.on('close', (e) => {
+    if (!isQuitting) {
+      e.preventDefault();
+      mainWindow.hide();
+    } else {
+      // allow default close on quit
+    }
+  });
   writeLog('Main window created');
 }
 
@@ -71,7 +79,7 @@ function createTray() {
     } },
     { label: 'Settings', click: () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } } },
     { type: 'separator' },
-    { label: 'Quit Routed', click: () => { app.exit(0); } },
+    { label: 'Quit Routed', click: () => { isQuitting = true; app.quit(); } },
   ]);
   tray.setToolTip('Routed');
   tray.setContextMenu(contextMenu);
@@ -99,6 +107,8 @@ app.on('activate', () => {
   try { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } } catch {}
   writeLog('App activated');
 });
+
+app.on('before-quit', () => { isQuitting = true; });
 
 ipcMain.handle('subscriptions:list', async () => {
   return loadStore().subscriptions || [];
