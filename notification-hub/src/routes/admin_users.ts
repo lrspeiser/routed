@@ -12,41 +12,63 @@ function requireAdmin(req: any) {
 }
 
 export default async function routes(fastify: FastifyInstance) {
-  // Ensure a user exists by email for a tenant and is subscribed to a topic.
+  // Ensure a user exists by identifier (email or phone) for a tenant and is subscribed to a topic.
   fastify.post('/v1/admin/users/ensure', async (req, reply) => {
     requireAdmin(req);
-    const { tenant_id, email, topic } = (req.body ?? {}) as any;
-    if (!tenant_id || !email) return reply.status(400).send({ error: 'missing tenant_id/email' });
+    const { tenant_id, email, phone, topic } = (req.body ?? {}) as any;
+    if (!tenant_id || (!email && !phone)) return reply.status(400).send({ error: 'missing tenant_id and email/phone' });
     const topicName = (topic as string) || 'runs.finished';
 
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
 
-      // ensure user (support DBs without the unique constraint by falling back)
+      // ensure user by email or phone (support DBs without the unique constraint by falling back)
       let userId: string | null = null;
       await client.query('SAVEPOINT ensure_user');
       try {
-        const ur = await client.query(
-          `insert into users (tenant_id, email) values ($1,$2)
-           on conflict (tenant_id, email) do update set email=excluded.email
-           returning id`,
-          [tenant_id, email]
-        );
+        let ur;
+        if (email) {
+          ur = await client.query(
+            `insert into users (tenant_id, email) values ($1,$2)
+             on conflict (tenant_id, email) do update set email=excluded.email
+             returning id`,
+            [tenant_id, email]
+          );
+        } else {
+          ur = await client.query(
+            `insert into users (tenant_id, phone) values ($1,$2)
+             on conflict (tenant_id, phone) do update set phone=excluded.phone
+             returning id`,
+            [tenant_id, phone]
+          );
+        }
         userId = ur.rows[0]?.id ?? null;
       } catch (e: any) {
         // Clear error state for this transaction scope and run fallback path
         await client.query('ROLLBACK TO SAVEPOINT ensure_user');
-        const ur2 = await client.query(
-          `insert into users (tenant_id, email) values ($1,$2)
-           on conflict do nothing
-           returning id`,
-          [tenant_id, email]
-        );
+        let ur2;
+        if (email) {
+          ur2 = await client.query(
+            `insert into users (tenant_id, email) values ($1,$2)
+             on conflict do nothing
+             returning id`,
+            [tenant_id, email]
+          );
+        } else {
+          ur2 = await client.query(
+            `insert into users (tenant_id, phone) values ($1,$2)
+             on conflict do nothing
+             returning id`,
+            [tenant_id, phone]
+          );
+        }
         userId = ur2.rows[0]?.id ?? null;
       }
       if (!userId) {
-        const f = await client.query(`select id from users where tenant_id=$1 and email=$2`, [tenant_id, email]);
+        const f = email
+          ? await client.query(`select id from users where tenant_id=$1 and email=$2`, [tenant_id, email])
+          : await client.query(`select id from users where tenant_id=$1 and phone=$2`, [tenant_id, phone]);
         userId = f.rows[0]?.id ?? null;
       }
       if (!userId) throw new Error('failed_to_ensure_user');

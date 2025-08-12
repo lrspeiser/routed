@@ -20,8 +20,8 @@
   <div class="row" style="opacity:.7">Before connecting, we check your server health.</div>
   <div class="row" id="health">Checking server…</div>
   <div class="row">
-    <label>Your Email</label>
-    <input id="email" placeholder="you@example.com" />
+    <label>Your Phone</label>
+    <input id="phone" placeholder="+14155551234" />
   </div>
   <button id="connectBtn" disabled>Connect</button>
 
@@ -83,10 +83,10 @@
       return `${wsProto}://${url.host}${path}?user_id=${encodeURIComponent(userId)}`;
     }
 
-    async function connectWithEmail(email) {
+    async function connectWithPhone(phone) {
       try {
         const res = await fetch(new URL('/api/resolve-email', RESOLVE_BASE).toString(), {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email })
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: phone })
         });
         let desc = null;
         try { desc = await res.json(); } catch {}
@@ -146,17 +146,17 @@
     }
 
     document.getElementById('connectBtn').addEventListener('click', async () => {
-      const email = document.getElementById('email').value.trim();
-      if (!email) { alert('Enter your email'); return; }
-      try { localStorage.setItem('ROUTED_EMAIL', email); } catch {}
-      await connectWithEmail(email);
+      const phone = document.getElementById('phone').value.trim();
+      if (!phone) { alert('Enter your phone'); return; }
+      try { localStorage.setItem('ROUTED_PHONE', phone); } catch {}
+      await connectWithPhone(phone);
     });
 
     (async () => {
       await checkHealth();
       try {
-        const saved = localStorage.getItem('ROUTED_EMAIL');
-        if (saved && !connectBtn.disabled) { document.getElementById('email').value = saved; connectWithEmail(saved); }
+        const saved = localStorage.getItem('ROUTED_PHONE');
+        if (saved && !connectBtn.disabled) { document.getElementById('phone').value = saved; connectWithPhone(saved); }
       } catch {}
     })();
   </script>

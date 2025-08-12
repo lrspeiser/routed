@@ -93,5 +93,9 @@ ipcMain.handle('resolve-channel', async (_evt, id, resolveBaseUrl) => {
 ipcMain.on('show-notification', (_evt, payload) => {
   const title = payload.title || 'Notification';
   const body = payload.body || '';
-  new Notification({ title, body }).show();
+  const n = new Notification({ title, body, silent: false });
+  n.on('click', () => {
+    try { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } } catch {}
+  });
+  try { n.show(); } catch {}
 });
