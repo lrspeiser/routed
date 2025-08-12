@@ -61,6 +61,13 @@ function createTray() {
   try { trayImg.setTemplateImage(false); } catch {}
   tray = new Tray(trayImg);
   const contextMenu = Menu.buildFromTemplate([
+    { label: 'Test Notification', click: () => {
+      const test = { title: 'Routed', body: 'Test notification' };
+      const n = new Notification(test);
+      n.on('click', () => { try { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } } catch {} });
+      try { n.show(); } catch {}
+      writeLog('Tray: Test Notification triggered');
+    } },
     { label: 'Settings', click: () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } } },
     { type: 'separator' },
     { label: 'Quit Routed', click: () => { app.exit(0); } },
