@@ -318,8 +318,10 @@ export default function Page() {
               let payload: any = null;
               try { payload = sendPayload ? JSON.parse(sendPayload) : null; } catch {}
               const res = await fetch(`/api/channel/${channelId}/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: sendTitle, body: sendBody, payload }) });
-              const j = await res.json();
-              setLog(`Channel send → ${res.status} ${JSON.stringify(j)}`);
+              const text = await res.text();
+              let parsed: any;
+              try { parsed = JSON.parse(text); } catch { parsed = text; }
+              setLog(`Channel send → ${res.status} ${typeof parsed === 'string' ? parsed : JSON.stringify(parsed)}`);
             } catch (e: any) {
               setLog(`Channel send failed: ${e.message || e}`);
             }
@@ -332,8 +334,10 @@ export default function Page() {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ tenantId: sandbox?.tenantId, topic: 'runs.finished', title: sendTitle, body: sendBody, payload })
               });
-              const j = await res.json();
-              setLog(`Admin test message → ${res.status} ${JSON.stringify(j)}`);
+              const text = await res.text();
+              let parsed: any;
+              try { parsed = JSON.parse(text); } catch { parsed = text; }
+              setLog(`Admin test message → ${res.status} ${typeof parsed === 'string' ? parsed : JSON.stringify(parsed)}`);
             } catch (e: any) {
               setLog(`Admin test failed: ${e.message || e}`);
             }
