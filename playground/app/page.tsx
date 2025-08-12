@@ -218,6 +218,21 @@ export default function Page() {
             try {
               setSelfTestRunning(true);
               if (selfTestRef.current) { try { selfTestRef.current.close(); } catch {} selfTestRef.current = null; }
+              // Probe stream endpoint; fallback to non-stream self-test if 404/not available
+              let useStream = true;
+              try {
+                const head = await fetch('/api/self-test/stream', { method: 'HEAD', cache: 'no-store' });
+                if (!head.ok) useStream = false;
+              } catch { useStream = false; }
+
+              if (!useStream) {
+                const res = await fetch('/api/self-test', { cache: 'no-store' });
+                const j = await res.json().catch(() => ({}));
+                setLog((prev) => prev + `\n${new Date().toISOString()} Self-test (fallback) → ${res.status} ${JSON.stringify(j)}`);
+                setSelfTestRunning(false);
+                return;
+              }
+
               const ev = new EventSource('/api/self-test/stream');
               selfTestRef.current = ev;
               ev.onopen = () => setLog((prev) => prev + `\n${new Date().toISOString()} [sse] open`);
