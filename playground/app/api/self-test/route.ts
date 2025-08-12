@@ -22,12 +22,23 @@ export async function GET() {
     if (!provRes.ok) return NextResponse.json({ ok: false, step: 'provision', status: provRes.status, hub: prov }, { status: 500 });
 
     const { tenantId, apiKey, userId } = prov;
+    const email = 'tester@routed.is';
+
+    // 1b) Ensure tester email subscribed to topic
+    const ensureRes = await fetch(new URL('/v1/admin/users/ensure', hubUrlStr).toString(), {
+      method: 'POST', headers: { 'Authorization': `Bearer ${HUB_ADMIN_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tenant_id: tenantId, email, topic: 'runs.finished' })
+    });
+    const ensured = await ensureRes.json().catch(() => ({}));
+    if (!ensureRes.ok) return NextResponse.json({ ok: false, step: 'ensure', status: ensureRes.status, hub: ensured }, { status: 500 });
+    const targetUserId = ensured.userId || ensured.user_id;
+    if (!targetUserId) return NextResponse.json({ ok: false, step: 'ensure', error: 'no_user_id' }, { status: 500 });
 
     // 2) Open WS
     const url = new URL(hubUrlStr);
     const wsProto = url.protocol === 'https:' ? 'wss' : 'ws';
-    const sockUrlAlt = `${wsProto}://${url.host}/socket?user_id=${encodeURIComponent(userId)}`;
-    const sockUrlV1 = `${wsProto}://${url.host}/v1/socket?user_id=${encodeURIComponent(userId)}`;
+    const sockUrlAlt = `${wsProto}://${url.host}/socket?user_id=${encodeURIComponent(targetUserId)}`;
+    const sockUrlV1 = `${wsProto}://${url.host}/v1/socket?user_id=${encodeURIComponent(targetUserId)}`;
     let ws: WebSocket;
     try {
       ws = new WebSocket(sockUrlAlt);
