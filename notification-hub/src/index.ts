@@ -53,6 +53,8 @@ async function main() {
   await app.register(adminTest);
   await app.register(adminChannels);
   await app.register(health);
+  const devPublic = (await import('./routes/dev_public')).default;
+  await app.register(devPublic);
 
   const stopTtl = startTtlSweeper();
 

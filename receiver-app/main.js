@@ -6,7 +6,8 @@ const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch
 let mainWindow;
 let tray;
 let isQuitting = false;
-const DEFAULT_RESOLVE_URL = 'https://routed-gbiz.onrender.com';
+// Point app directly at the hub for all actions
+const DEFAULT_RESOLVE_URL = process.env.HUB_URL || 'https://routed.onrender.com';
 const storePath = () => path.join(app.getPath('userData'), 'subscriptions.json');
 const devStorePath = () => path.join(app.getPath('userData'), 'dev.json');
 function resolveLogPath() {
@@ -200,7 +201,7 @@ ipcMain.handle('dev:get', async () => {
 
 ipcMain.handle('dev:provision', async () => {
   try {
-    const res = await fetch(new URL('/api/dev/create', DEFAULT_RESOLVE_URL).toString(), { method: 'POST', cache: 'no-store' });
+    const res = await fetch(new URL('/v1/dev/sandbox/provision', DEFAULT_RESOLVE_URL).toString(), { method: 'POST', cache: 'no-store' });
     const j = await res.json();
     if (!res.ok) throw new Error(`provision failed ${res.status} ${JSON.stringify(j)}`);
     const dev = { hubUrl: j.hubUrl, tenantId: j.tenantId, apiKey: j.apiKey, userId: j.userId };
@@ -216,7 +217,7 @@ ipcMain.handle('dev:provision', async () => {
 
 ipcMain.handle('admin:channels:list', async (_evt, tenantId) => {
   try {
-    const url = new URL(`/api/admin/channels/list?tenantId=${encodeURIComponent(tenantId)}`, DEFAULT_RESOLVE_URL).toString();
+    const url = new URL(`/v1/dev/channels/list?tenant_id=${encodeURIComponent(tenantId)}`, DEFAULT_RESOLVE_URL).toString();
     const res = await fetch(url, { cache: 'no-store' });
     const j = await res.json();
     if (!res.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
@@ -231,7 +232,7 @@ ipcMain.handle('admin:channels:list', async (_evt, tenantId) => {
 
 ipcMain.handle('admin:channels:create', async (_evt, { tenantId, name, topic }) => {
   try {
-    const res = await fetch(new URL('/api/admin/channels/create', DEFAULT_RESOLVE_URL).toString(), {
+    const res = await fetch(new URL('/v1/dev/channels/create', DEFAULT_RESOLVE_URL).toString(), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tenantId, name, topic }), cache: 'no-store'
     });
@@ -248,7 +249,7 @@ ipcMain.handle('admin:channels:create', async (_evt, { tenantId, name, topic }) 
 
 ipcMain.handle('admin:channels:users', async (_evt, shortId) => {
   try {
-    const res = await fetch(new URL(`/api/admin/channels/users/${encodeURIComponent(shortId)}`, DEFAULT_RESOLVE_URL).toString(), { cache: 'no-store' });
+    const res = await fetch(new URL(`/v1/dev/channels/${encodeURIComponent(shortId)}/users`, DEFAULT_RESOLVE_URL).toString(), { cache: 'no-store' });
     const j = await res.json();
     if (!res.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
     writeLog(`channels:users(${shortId}) → ${Array.isArray(j.users)? j.users.length: 0}`);
@@ -262,22 +263,12 @@ ipcMain.handle('admin:channels:users', async (_evt, shortId) => {
 
 ipcMain.handle('admin:users:ensure', async (_evt, { tenantId, phone, topic }) => {
   try {
-    // Try new phone-based endpoint first
-    let res = await fetch(new URL('/api/resolve', DEFAULT_RESOLVE_URL).toString(), {
+    const res = await fetch(new URL('/v1/dev/users/ensure', DEFAULT_RESOLVE_URL).toString(), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tenantId, phone, topic }), cache: 'no-store'
+      body: JSON.stringify({ tenant_id: tenantId, phone, topic }), cache: 'no-store'
     });
-    let j = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      // Fallback to legacy resolve-email endpoint
-      writeLog(`users:ensure phone endpoint failed (${res.status} ${j && j.error}) → trying resolve-email`);
-      res = await fetch(new URL('/api/resolve-email', DEFAULT_RESOLVE_URL).toString(), {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: phone }), cache: 'no-store'
-      });
-      j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
-    }
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
     writeLog(`users:ensure → ok tenant=${tenantId} phone=${phone}`);
     return j;
   } catch (e) {
