@@ -89,8 +89,8 @@
     const logEl = document.getElementById('log');
     function log(msg) { logEl.textContent += '\n' + new Date().toISOString() + ' ' + msg; logEl.scrollTop = logEl.scrollHeight; }
 
-    // Default to your playground origin (has /api/* helpers)
-    const RESOLVE_BASE = 'https://routed-gbiz.onrender.com';
+    // Point directly to the notification hub
+    const RESOLVE_BASE = 'https://routed.onrender.com';
     const healthEl = document.getElementById('health');
     const connectBtn = document.getElementById('connectBtn');
 
@@ -171,26 +171,17 @@
 
     async function connectWithPhone(phone) {
       try {
-        // Try phone-first resolve, fallback to legacy resolve-email
-        let res = await fetch(new URL('/api/resolve', RESOLVE_BASE).toString(), {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone })
-        });
-        let desc = await res.json().catch(() => (null));
-        if (!res.ok || !desc || !desc.base_url || !desc.user_id) {
-          devlog(`[resolve] phone failed status=${res && res.status}`);
-          res = await fetch(new URL('/api/resolve-email', RESOLVE_BASE).toString(), {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: phone })
-          });
-          desc = await res.json().catch(() => (null));
-          if (!res.ok || !desc || !desc.base_url || !desc.user_id) {
-            devlog(`[resolve] email failed status=${res && res.status} body=${JSON.stringify(desc)}`);
-            return;
-          }
-        }
-        devlog(`Resolved: base_url=${desc.base_url} user_id=${desc.user_id}`);
-        const base = desc.base_url;
-        const urlV1 = makeWsUrl(base, desc.user_id, '/v1/socket');
-        const urlAlt = makeWsUrl(base, desc.user_id, '/socket');
+        // Provision tenant if needed and ensure phone user on hub
+        let d = await window.receiver.devGet();
+        if (!d || !d.tenantId) { devlog('dev:provision (pre-connect)'); await window.receiver.devProvision(); d = await window.receiver.devGet(); }
+        if (!d || !d.tenantId) { devlog('dev:provision failed'); return; }
+        const ensured = await window.receiver.adminUsersEnsure({ tenantId: d.tenantId, phone, topic: 'runs.finished' });
+        if (!ensured || !ensured.userId) { devlog('users:ensure failed'); return; }
+        const userId = ensured.userId;
+        devlog(`Resolved: base_url=${RESOLVE_BASE} user_id=${userId}`);
+        const base = RESOLVE_BASE;
+        const urlV1 = makeWsUrl(base, userId, '/v1/socket');
+        const urlAlt = makeWsUrl(base, userId, '/socket');
 
         async function tryConnect(urls) {
           if (!urls.length) { log('All WS endpoints failed'); return; }
