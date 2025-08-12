@@ -14,17 +14,17 @@ services:
           name: routed-postgres
           property: connectionString
       - key: REDIS_URL
-        value: "" # set this to your Upstash rediss:// URL after deploy
+        value: "rediss://default:Aa5IAAIncDE4OTBjOGI1MzAzZTI0ZTMxODk0MGVkNzU4ODAyOGFmMXAxNDQ2MTY@obliging-drum-44616.upstash.io:6379"
       - key: DEFAULT_TTL_SEC
         value: "86400"
       - key: HUB_ADMIN_TOKEN
-        value: "" # set a random secret
+        value: "33925b5f5b9a2bd3d5a01f2b5857ce73"
       - key: VAPID_PUBLIC
         value: "" # set your VAPID public key
       - key: VAPID_PRIVATE
         value: "" # set your VAPID private key
       - key: BASE_URL
-        value: "" # set to the hub's public URL after deploy
+        value: "https://routed.onrender.com"
       - key: APPLY_SCHEMA_ON_BOOT
         value: "true"
 
@@ -38,9 +38,9 @@ services:
     startCommand: "npm start"
     envVars:
       - key: HUB_URL
-        value: "" # set to the hub's public URL after deploy
+        value: "https://routed.onrender.com"
       - key: HUB_ADMIN_TOKEN
-        value: "" # set same as hub to enable developer key creation
+        value: "33925b5f5b9a2bd3d5a01f2b5857ce73"
 
 databases:
   - name: routed-postgres
