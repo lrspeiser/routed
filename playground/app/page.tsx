@@ -18,6 +18,9 @@ export default function Page() {
   const [sendTitle, setSendTitle] = useState<string>('Hello from Routed');
   const [sendBody, setSendBody] = useState<string>('This is a test message');
   const [sendPayload, setSendPayload] = useState<string>('{"k":"v"}');
+  const [selfTestRunning, setSelfTestRunning] = useState<boolean>(false);
+  const selfTestRef = (globalThis as any).__selfTestRef || { current: null as EventSource | null };
+  ;(globalThis as any).__selfTestRef = selfTestRef;
 
   async function createSandbox(): Promise<any | null> {
     try {
@@ -125,6 +128,8 @@ export default function Page() {
           sessionStorage.setItem('SANDBOX_READY', '1');
         }
       } catch {}
+      // Log on page load
+      setLog((prev) => (prev ? prev + '\n' : '') + new Date().toISOString() + ' Self-test ready');
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -207,18 +212,35 @@ export default function Page() {
         <div style={{ background: '#0b1020', color: '#e6e9f5', padding: 16, borderRadius: 12 }}>
           <h3>0) Connection Self-Test</h3>
           <p style={{ opacity: 0.8, marginTop: -8 }}>Verifies hub admin, WS and delivery before enabling inputs.</p>
-          <button onClick={async () => {
-            setLog('');
+          <button type="button" disabled={selfTestRunning} onClick={async () => {
+            console.log('[UI] Self-test clicked');
+            setLog((prev) => (prev ? prev + '\n' : '') + new Date().toISOString() + ' Self-test starting…');
             try {
+              setSelfTestRunning(true);
+              if (selfTestRef.current) { try { selfTestRef.current.close(); } catch {} selfTestRef.current = null; }
               const ev = new EventSource('/api/self-test/stream');
+              selfTestRef.current = ev;
+              ev.onopen = () => setLog((prev) => prev + `\n${new Date().toISOString()} [sse] open`);
               ev.onmessage = (m) => {
-                try { const obj = JSON.parse(m.data); setLog((prev) => prev + `\n${new Date().toISOString()} ${JSON.stringify(obj)}`); if (obj.done) ev.close(); } catch { setLog((prev) => prev + `\n${new Date().toISOString()} ${m.data}`); }
+                try {
+                  const obj = JSON.parse(m.data);
+                  setLog((prev) => prev + `\n${new Date().toISOString()} ${JSON.stringify(obj)}`);
+                  if (obj.done) { try { ev.close(); } catch {} selfTestRef.current = null; setSelfTestRunning(false); }
+                } catch {
+                  setLog((prev) => prev + `\n${new Date().toISOString()} ${m.data}`);
+                }
               };
-              ev.onerror = () => { setLog((prev) => prev + `\n${new Date().toISOString()} [error] SSE connection error`); try { ev.close(); } catch {} };
+              ev.onerror = () => {
+                setLog((prev) => prev + `\n${new Date().toISOString()} [error] SSE connection error`);
+                try { ev.close(); } catch {}
+                selfTestRef.current = null;
+                setSelfTestRunning(false);
+              };
             } catch (e: any) {
-              setLog(`Self-test failed to start: ${e.message || e}`);
+              setLog((prev) => prev + `\nSelf-test failed to start: ${e.message || e}`);
+              setSelfTestRunning(false);
             }
-          }}>Run Self-Test</button>
+          }}>{selfTestRunning ? 'Running…' : 'Run Self-Test'}</button>
         </div>
         <div style={{ background: '#0b1020', color: '#e6e9f5', padding: 16, borderRadius: 12 }}>
           <h3>1) Create Channel</h3>
