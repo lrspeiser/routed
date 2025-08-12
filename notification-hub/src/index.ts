@@ -35,6 +35,7 @@ async function main() {
   });
 
   app.get('/healthz', async () => ({ ok: true }));
+  app.get('/healthz-deep', async () => ({ ok: true, time: Date.now() }));
 
   await app.register(messages);
   await app.register(webpush);
