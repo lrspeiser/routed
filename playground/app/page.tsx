@@ -210,11 +210,13 @@ export default function Page() {
           <button onClick={async () => {
             setLog('');
             try {
-              const res = await fetch('/api/self-test', { cache: 'no-store' });
-              const j = await res.json();
-              setLog(`Self-test → ${res.status} ${JSON.stringify(j)}`);
+              const ev = new EventSource('/api/self-test/stream');
+              ev.onmessage = (m) => {
+                try { const obj = JSON.parse(m.data); setLog((prev) => prev + `\n${new Date().toISOString()} ${JSON.stringify(obj)}`); if (obj.done) ev.close(); } catch { setLog((prev) => prev + `\n${new Date().toISOString()} ${m.data}`); }
+              };
+              ev.onerror = () => { setLog((prev) => prev + `\n${new Date().toISOString()} [error] SSE connection error`); try { ev.close(); } catch {} };
             } catch (e: any) {
-              setLog(`Self-test failed: ${e.message || e}`);
+              setLog(`Self-test failed to start: ${e.message || e}`);
             }
           }}>Run Self-Test</button>
         </div>
