@@ -75,7 +75,7 @@ export default async function routes(fastify: FastifyInstance) {
       try {
         await Promise.race([
           (async () => { await fanoutQueue.add('fanout', { messageId: result.messageId }, { removeOnComplete: 1000, removeOnFail: 1000 }); enqueued = true; })(),
-          new Promise((_r, rej) => setTimeout(() => { enqueueTimedOut = true; rej(new Error('enqueue_timeout')); }, 2000)),
+          new Promise((_r, rej) => setTimeout(() => { enqueueTimedOut = true; rej(new Error('enqueue_timeout')); }, 8000)),
         ]);
       } catch (e: any) {
         enqueueError = String(e?.message || e);
