@@ -1,4 +1,4 @@
-import WebSocket from 'ws';
+import WebSocket, { RawData } from 'ws';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
@@ -72,8 +72,8 @@ export async function GET() {
         let opened = false;
         const to = setTimeout(() => { if (!opened) { try { w.terminate(); } catch {} reject(new Error(`ws_timeout:${u}`)); } }, 7000);
         w.on('open', () => { opened = true; clearTimeout(to); ws = w; enqueue({ level: 'info', step: 'ws_open', url: u }); resolve(); });
-        w.on('error', (e) => { if (!opened) { clearTimeout(to); reject(e as any); } else { enqueue({ level: 'error', step: 'ws_error', error: String((e as any)?.message || e) }); } });
-        w.on('close', (c, r) => { enqueue({ level: 'info', step: 'ws_close', code: c, reason: String(r || '') }); });
+        w.on('error', (e: Error) => { if (!opened) { clearTimeout(to); reject(e as any); } else { enqueue({ level: 'error', step: 'ws_error', error: String((e as any)?.message || e) }); } });
+        w.on('close', (c: number, r: Buffer) => { enqueue({ level: 'info', step: 'ws_close', code: c, reason: String(r || '') }); });
       });
 
       let wsOk = false;
@@ -94,12 +94,15 @@ export async function GET() {
       await safe(async () => {
         received = await new Promise<any>((resolve, reject) => {
           const to = setTimeout(() => reject(new Error('no_message')), 10000);
-          ws!.on('message', (buf) => { try { const d = JSON.parse(buf.toString()); if (d && d.title) { clearTimeout(to); resolve(d); } } catch {} });
+          ws!.on('message', (buf: RawData) => { try { const d = JSON.parse((buf as Buffer).toString()); if (d && d.title) { clearTimeout(to); resolve(d); } } catch {} });
         });
         enqueue({ level: 'info', step: 'received', body: received });
       });
 
-      try { ws?.close(); } catch {}
+      try {
+        const wsToClose = (ws as unknown as { close: () => void } | null);
+        wsToClose?.close?.();
+      } catch {}
       enqueue({ done: Boolean(received), ok: Boolean(received) });
       end();
     }
