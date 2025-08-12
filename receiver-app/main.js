@@ -95,6 +95,29 @@ app.whenReady().then(async () => {
   createTray();
   // Keep Dock icon visible so users can open the window
   writeLog('App ready');
+
+  // Basic app menu with Quit for macOS
+  try {
+    const isMac = process.platform === 'darwin';
+    const template = [
+      ...(isMac ? [{
+        label: app.name,
+        submenu: [
+          { role: 'about' },
+          { type: 'separator' },
+          { label: 'Quit', accelerator: 'Command+Q', click: () => { isQuitting = true; app.quit(); } },
+        ],
+      }] : []),
+      {
+        label: 'File',
+        submenu: [
+          { label: 'Quit', accelerator: isMac ? 'Command+Q' : 'Ctrl+Q', click: () => { isQuitting = true; app.quit(); } },
+        ],
+      },
+    ];
+    const menu = Menu.buildFromTemplate(template);
+    Menu.setApplicationMenu(menu);
+  } catch {}
 });
 
 app.on('window-all-closed', () => {

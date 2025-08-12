@@ -6,9 +6,11 @@ export async function POST(req: Request) {
   const HUB_ADMIN_TOKEN = process.env.HUB_ADMIN_TOKEN || '';
   if (!HUB_URL || !HUB_ADMIN_TOKEN) return NextResponse.json({ error: 'server_not_configured' }, { status: 500 });
 
-  const { email, tenantId, topic = 'runs.finished' } = await req.json().catch(() => ({}));
-  const tId = tenantId || (await import('../../lib/state')).latestTenantId;
-  if (!email || !tId) return NextResponse.json({ error: 'missing email/tenantId' }, { status: 400 });
+  const { email, topic = 'runs.finished' } = await req.json().catch(() => ({}));
+  const { latestTenantId } = await import('../../lib/state');
+  const tId = latestTenantId;
+  if (!email) return NextResponse.json({ error: 'missing email' }, { status: 400 });
+  if (!tId) return NextResponse.json({ error: 'missing tenant' }, { status: 400 });
 
   // Ask hub to ensure user and subscription
   const res = await fetch(new URL('/v1/admin/users/ensure', HUB_URL).toString(), {
