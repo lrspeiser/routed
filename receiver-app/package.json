@@ -7,7 +7,8 @@
   "main": "main.js",
   "scripts": {
     "dev": "electron .",
-    "dist": "electron-builder --mac dmg"
+    "dist": "electron-builder --mac dmg",
+    "dist:sign": "dotenv -e .env -- electron-builder --mac dmg"
   },
   "build": {
     "appId": "com.routed.app",
@@ -20,10 +21,8 @@
       "routed_icon.png"
     ],
     "extraResources": [
-      {
-        "from": "routed_icon.png",
-        "to": "routed_icon.png"
-      }
+      { "from": "routed_icon.png", "to": "routed_icon.png" },
+      { "from": "assets", "to": "assets" }
     ],
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "mac": {
@@ -32,7 +31,15 @@
         "dmg"
       ],
       "identity": null,
-      "hardenedRuntime": false
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "gatekeeperAssess": false,
+      "notarize": {
+        "teamId": "${env:APPLE_TEAM_ID}",
+        "appleId": "${env:APPLE_ID}",
+        "appleIdPassword": "${env:APPLE_APP_SPECIFIC_PASSWORD}"
+      }
     },
     "dmg": {}
   },
@@ -42,6 +49,7 @@
   },
   "devDependencies": {
     "electron": "^31.3.1",
-    "electron-builder": "^24.13.3"
+    "electron-builder": "^24.13.3",
+    "dotenv-cli": "^7.4.2"
   }
 }

@@ -74,8 +74,25 @@ async function createWindow() {
 
 function createTray() {
   const assetBase = app.isPackaged ? process.resourcesPath : __dirname;
-  const trayImg = nativeImage.createFromPath(path.join(assetBase, 'routed_icon.png'));
-  try { trayImg.setTemplateImage(true); } catch {}
+  // Prefer dedicated monochrome template assets if available
+  const template1x = path.join(assetBase, 'assets', 'trayTemplate.png');
+  const template2x = path.join(assetBase, 'assets', 'trayTemplate@2x.png');
+  let trayImg;
+  if (fs.existsSync(template1x)) {
+    try {
+      trayImg = nativeImage.createFromPath(template1x);
+      // Attach @2x if present
+      if (fs.existsSync(template2x)) {
+        try { trayImg.addRepresentation({ scaleFactor: 2.0, filename: template2x }); } catch {}
+      }
+      try { trayImg.setTemplateImage(true); } catch {}
+    } catch {}
+  }
+  // Fallback to app icon (non-template colored) if template assets missing
+  if (!trayImg || trayImg.isEmpty?.()) {
+    trayImg = nativeImage.createFromPath(path.join(assetBase, 'routed_icon.png'));
+    try { trayImg.setTemplateImage(false); } catch {}
+  }
   tray = new Tray(trayImg);
   const login = app.getLoginItemSettings?.() || { openAtLogin: false };
   const contextMenu = Menu.buildFromTemplate([
