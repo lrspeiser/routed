@@ -34,13 +34,9 @@
       "hardenedRuntime": true,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
-      "gatekeeperAssess": false,
-      "notarize": {
-        "teamId": "${env:APPLE_TEAM_ID}",
-        "appleId": "${env:APPLE_ID}",
-        "appleIdPassword": "${env:APPLE_APP_SPECIFIC_PASSWORD}"
-      }
+      "gatekeeperAssess": false
     },
+    "afterSign": "./build/notarize.js",
     "dmg": {}
   },
   "dependencies": {
@@ -48,6 +44,7 @@
     "wscat": "^6.1.0"
   },
   "devDependencies": {
+    "@electron/notarize": "^2.2.1",
     "electron": "^31.3.1",
     "electron-builder": "^24.13.3",
     "dotenv-cli": "^7.4.2"
