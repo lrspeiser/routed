@@ -199,7 +199,11 @@
                 } else if (data && data.title) {
                   window.receiver.showNotification(data);
                   addNotificationCard(data);
-                  showToast(data.title, data.body);
+                  // On macOS, the main process shows native notifications; avoid duplicate in-app toast
+                  const IS_MAC = navigator.userAgent.includes('Mac OS X');
+                  if (!IS_MAC) {
+                    showToast(data.title, data.body);
+                  }
                 }
               } catch {}
             };

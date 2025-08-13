@@ -106,10 +106,11 @@ app.whenReady().then(async () => {
   try { app.setName('Routed'); } catch {}
   if (process.platform === 'darwin') {
     try { app.dock.setIcon(path.join(__dirname, 'routed_icon.png')); } catch {}
+    // Hide Dock for menu-bar-only behavior; app accessible via tray icon
+    try { app.dock.hide(); } catch {}
   }
   await createWindow();
   createTray();
-  // Keep Dock icon visible so users can open the window
   writeLog('App ready');
 
   // Basic app menu with Quit for macOS
