@@ -196,6 +196,11 @@ ipcMain.on('show-notification', (_evt, payload) => {
 
 ipcMain.handle('debug:log', async (_evt, line) => { writeLog(`[renderer] ${line}`); return true; });
 
+// Expose app version to renderer
+ipcMain.handle('app:version', async () => {
+  try { return app.getVersion ? app.getVersion() : '0.0.0'; } catch { return '0.0.0'; }
+});
+
 ipcMain.handle('admin:sockets', async () => {
   try {
     const res = await fetch(new URL('/v1/admin/debug/sockets', process.env.HUB_URL || 'https://routed.onrender.com').toString(), { cache: 'no-store' });

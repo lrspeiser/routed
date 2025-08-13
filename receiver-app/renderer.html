@@ -7,6 +7,7 @@
     body { font-family: -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial; margin: 16px; }
     header { display:flex; align-items:center; gap:8px; }
     header img { width: 18px; height: 18px; }
+    .ver { font-size: 12px; opacity: .6; margin-left: 6px; }
     input, button { font-size: 14px; padding: 8px; margin: 4px 0; width: 100%; }
     #log { white-space: pre-wrap; height: 240px; overflow: auto; background: #111; color: #0f0; padding: 8px; border-radius: 6px; }
     .row { margin-top: 8px; }
@@ -17,7 +18,7 @@
 <body>
   <header>
     <img src="routed_icon.png" alt="Routed" />
-    <h2 style="margin:0">Routed</h2>
+    <h2 style="margin:0; display:flex; align-items:center; gap:6px">Routed <span id="appVer" class="ver"></span></h2>
   </header>
   <div class="row" style="opacity:.7">Before connecting, we check your server health.</div>
   <div class="row" id="health">Checking server…</div>
@@ -329,6 +330,13 @@
     }
 
     (async () => {
+      // Set version label
+      try {
+        const v = await window.receiver.appVersion();
+        const el = document.getElementById('appVer');
+        if (el && v) el.textContent = `v${v}`;
+      } catch {}
+
       await checkHealth();
       try {
         const saved = localStorage.getItem('ROUTED_PHONE');
