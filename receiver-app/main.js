@@ -1,3 +1,8 @@
+// Routed Receiver App
+// This app is used to receive messages from the Routed Hub.
+// It is a simple Electron app that uses the Routed Hub API to receive messages.
+// It is used to receive messages from the Routed Hub.
+
 const { app, BrowserWindow, Notification, dialog, ipcMain, Tray, Menu, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
