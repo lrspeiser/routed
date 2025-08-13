@@ -95,9 +95,9 @@
     const connectBtn = document.getElementById('connectBtn');
 
     async function checkHealth() {
-      // First try playground proxy /api/healthz
+      // Hub-only health checks
       try {
-        let url = new URL('/api/healthz', RESOLVE_BASE).toString();
+        let url = new URL('/v1/health/deep', RESOLVE_BASE).toString();
         devlog(`[health] GET ${url}`);
         let res = await fetch(url, { cache: 'no-store' });
         let json = null;
@@ -106,26 +106,19 @@
           try { json = await res.json(); } catch {}
         }
         if (res.ok && json && json.ok) {
-          if (json.hub_ok) {
-            healthEl.innerHTML = `Server: <span style="color:#22c55e">OK</span> (${json.hub_url || 'not set'})`;
-            connectBtn.disabled = false;
-            devlog('[health] ok via playground');
-            return;
-          } else {
-            healthEl.innerHTML = `Server: <span style="color:#ef4444">UNREACHABLE</span> ${json.hub_error ? '(' + json.hub_error + ')' : ''}. Check HUB_URL on playground/server.`;
-            connectBtn.disabled = false; // still allow trying to connect
-            devlog('[health] playground says hub unreachable');
-            return;
-          }
+          healthEl.innerHTML = `Server: <span style="color:#22c55e">OK</span>`;
+          connectBtn.disabled = false;
+          devlog('[health] ok via hub');
+          return;
         }
-        // Fallback: try hub /healthz
+        // Fallback: simple /healthz
         url = new URL('/healthz', RESOLVE_BASE).toString();
         devlog(`[health] GET ${url}`);
         res = await fetch(url, { cache: 'no-store' });
         if (res.ok) {
-          healthEl.innerHTML = `Server (direct): <span style="color:#22c55e">OK</span>`;
+          healthEl.innerHTML = `Server: <span style="color:#22c55e">OK</span>`;
           connectBtn.disabled = false;
-          devlog('[health] ok via hub direct');
+          devlog('[health] ok via hub /healthz');
           return;
         }
         healthEl.textContent = `Health check failed. Status ${res.status}`;
