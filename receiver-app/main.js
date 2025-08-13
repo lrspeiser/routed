@@ -48,6 +48,7 @@ function saveDev(data) {
 }
 
 async function createWindow() {
+  const assetBase = app.isPackaged ? process.resourcesPath : __dirname;
   mainWindow = new BrowserWindow({
     width: 560,
     height: 720,
@@ -56,7 +57,7 @@ async function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
     },
     title: 'Routed',
-    icon: path.join(__dirname, 'routed_icon.png'),
+    icon: path.join(assetBase, 'routed_icon.png'),
   });
 
   await mainWindow.loadFile('renderer.html');
@@ -72,8 +73,9 @@ async function createWindow() {
 }
 
 function createTray() {
-  const trayImg = nativeImage.createFromPath(path.join(__dirname, 'routed_icon.png'));
-  try { trayImg.setTemplateImage(false); } catch {}
+  const assetBase = app.isPackaged ? process.resourcesPath : __dirname;
+  const trayImg = nativeImage.createFromPath(path.join(assetBase, 'routed_icon.png'));
+  try { trayImg.setTemplateImage(true); } catch {}
   tray = new Tray(trayImg);
   const login = app.getLoginItemSettings?.() || { openAtLogin: false };
   const contextMenu = Menu.buildFromTemplate([
@@ -105,8 +107,9 @@ function createTray() {
 app.whenReady().then(async () => {
   try { app.setName('Routed'); } catch {}
   if (process.platform === 'darwin') {
-    try { app.dock.setIcon(path.join(__dirname, 'routed_icon.png')); } catch {}
-    // Hide Dock for menu-bar-only behavior; app accessible via tray icon
+    const assetBase = app.isPackaged ? process.resourcesPath : __dirname;
+    try { app.dock.setIcon(path.join(assetBase, 'routed_icon.png')); } catch {}
+    // Hide Dock for menu-bar-preferred behavior; app accessible via tray icon
     try { app.dock.hide(); } catch {}
   }
   // Register a global quit shortcut for menu-bar-only mode

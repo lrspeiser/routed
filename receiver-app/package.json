@@ -19,6 +19,12 @@
       "package.json",
       "routed_icon.png"
     ],
+    "extraResources": [
+      {
+        "from": "routed_icon.png",
+        "to": "routed_icon.png"
+      }
+    ],
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "mac": {
       "category": "public.app-category.utilities",
@@ -26,8 +32,7 @@
         "dmg"
       ],
       "identity": null,
-      "hardenedRuntime": false,
-      "extendInfo": { "LSUIElement": true }
+      "hardenedRuntime": false
     },
     "dmg": {}
   },
