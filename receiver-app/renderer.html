@@ -33,6 +33,7 @@
     <div style="display:flex; gap:8px; border-bottom:1px solid #ddd; padding-bottom:6px">
       <button id="tabClient" style="flex:1">Client</button>
       <button id="tabDev" style="flex:1">Developer</button>
+      <button id="tabApi" style="flex:1">API</button>
     </div>
   </div>
   <div id="toast"><div class="t-title"></div><div class="t-body"></div></div>
@@ -84,6 +85,23 @@
         <button id="copyLogsBtn">Copy</button>
       </div>
       <pre id="devlog" style="height:200px; overflow:auto; background:#0b0b0b; color:#9be37f; padding:8px; border-radius:8px"></pre>
+    </div>
+  </div>
+
+  <div id="apiTab" class="row" style="display:none">
+    <h3>API Docs</h3>
+    <div class="row" style="background:#f6f6f6; padding:12px; border-radius:8px">
+      <div style="margin-bottom:8px">Send a message via HTTPS:</div>
+      <pre id="curlCmd" style="white-space:pre-wrap; background:#0b0b0b; color:#9be37f; padding:8px; border-radius:8px"></pre>
+      <div style="display:flex; gap:8px; align-items:center; margin-top:6px">
+        <button id="copyCurlBtn">Copy</button>
+        <span style="font-size:12px; opacity:.7">Replace placeholders if empty.</span>
+      </div>
+      <div style="font-size:12px; opacity:.8; margin-top:10px">
+        Endpoint: <code>POST /v1/messages</code><br/>
+        Headers: <code>Authorization: Bearer &lt;API_KEY&gt;</code>, <code>Content-Type: application/json</code><br/>
+        Body: <code>{ "topic": "runs.finished", "title": "Routed", "body": "Hello", "payload": null }</code>
+      </div>
     </div>
   </div>
 
@@ -237,12 +255,15 @@
     // Tabs
     const clientTab = document.getElementById('clientTab');
     const devTab = document.getElementById('devTab');
+    const apiTab = document.getElementById('apiTab');
     function showTab(which) {
       clientTab.style.display = which === 'client' ? '' : 'none';
       devTab.style.display = which === 'dev' ? '' : 'none';
+      apiTab.style.display = which === 'api' ? '' : 'none';
     }
     document.getElementById('tabClient').addEventListener('click', () => showTab('client'));
     document.getElementById('tabDev').addEventListener('click', () => showTab('dev'));
+    document.getElementById('tabApi').addEventListener('click', () => { updateCurl(); showTab('api'); });
 
     // Dev console handlers
     const devIdEl = document.getElementById('devId');
@@ -320,10 +341,35 @@
           opt.value = JSON.stringify({ topic: first.topic });
           opt.textContent = `${first.name} (${first.short_id})`;
           channelSelect.appendChild(opt);
-          // Ensure phone is subscribed to the topic
-          await window.receiver.adminUsersEnsure({ tenantId: d.tenantId, phone, topic: first.topic });
+          // Do NOT re-ensure here to avoid duplicate subscriptions; connectWithPhone already ensured
         }
       } catch {}
+    }
+
+    function updateCurl() {
+      (async () => {
+        try {
+          const d = await window.receiver.devGet();
+          const apiKey = d && d.apiKey ? d.apiKey : '$API_KEY';
+          let topic = 'runs.finished';
+          try {
+            const selected = channelSelect.value ? JSON.parse(channelSelect.value) : null;
+            if (selected && selected.topic) topic = selected.topic;
+          } catch {}
+          const cmd = [
+            'curl -X POST',
+            "-H 'Authorization: Bearer " + apiKey + "'",
+            "-H 'Content-Type: application/json'",
+            "-d '{" +
+              "\"topic\": \"" + topic + "\", " +
+              "\"title\": \"Routed\", " +
+              "\"body\": \"Hello from CLI\", " +
+              "\"payload\": null'",
+            'https://routed.onrender.com/v1/messages'
+          ].join(' ');
+          document.getElementById('curlCmd').textContent = cmd;
+        } catch {}
+      })();
     }
 
     (async () => {
@@ -355,6 +401,9 @@
     document.getElementById('clearLogsBtn').addEventListener('click', () => { if (devlogEl) devlogEl.textContent=''; });
     document.getElementById('copyLogsBtn').addEventListener('click', async () => {
       try { await navigator.clipboard.writeText(devlogEl.textContent || ''); showToast('Copied logs',''); } catch {}
+    });
+    document.getElementById('copyCurlBtn').addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(document.getElementById('curlCmd').textContent || ''); showToast('Copied curl',''); } catch {}
     });
     document.getElementById('quitBtn').addEventListener('click', () => { try { window.receiver.appQuit(); } catch {} });
   </script>
