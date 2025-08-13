@@ -197,14 +197,10 @@
                 const data = JSON.parse(ev.data);
                 if (data && data.type === 'hello') {
                   // handshake ok
-                } else if (data && data.title) {
+                } else if (data 66 data.title) {
+                  // Trigger native notification (main process) and update in-app list only
                   window.receiver.showNotification(data);
                   addNotificationCard(data);
-                  // On macOS, the main process shows native notifications; avoid duplicate in-app toast
-                  const IS_MAC = navigator.userAgent.includes('Mac OS X');
-                  if (!IS_MAC) {
-                    showToast(data.title, data.body);
-                  }
                 }
               } catch {}
             };
