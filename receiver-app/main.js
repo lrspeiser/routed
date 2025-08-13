@@ -12,7 +12,46 @@ let mainWindow;
 let tray;
 let isQuitting = false;
 // Point app directly at the hub for all actions
-const DEFAULT_RESOLVE_URL = 'https://routed.onrender.com';
+let OVERRIDE_BASE = null;
+const DEFAULT_RESOLVE_URL_FALLBACK = 'https://routed.onrender.com';
+function readEnvFile(file) {
+  try {
+    const txt = fs.readFileSync(file, 'utf8');
+    const out = {};
+    txt.split(/\r?\n/).forEach(l => {
+      const m = l.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
+      if (!m) return;
+      let v = m[2];
+      if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1,-1);
+      out[m[1]] = v;
+    });
+    return out;
+  } catch { return {}; }
+}
+function tryLoadLocalEnv() {
+  const homes = [];
+  try { homes.push(path.join(app.getPath('home') || '', '.routed', '.env')); } catch {}
+  try { homes.push(path.join(app.getPath('userData') || '', '.env')); } catch {}
+  // Dev locations
+  try { homes.push(path.join(__dirname, '.env')); } catch {}
+  try { homes.push(path.join(process.cwd(), 'receiver-app', '.env')); } catch {}
+  let env = {};
+  for (const f of homes) {
+    const e = readEnvFile(f);
+    env = { ...env, ...e };
+  }
+  const hub = env.HUB_URL || env.BASE_URL;
+  if (hub) OVERRIDE_BASE = hub;
+  if (env.HUB_ADMIN_TOKEN) process.env.HUB_ADMIN_TOKEN = process.env.HUB_ADMIN_TOKEN || env.HUB_ADMIN_TOKEN;
+}
+try { tryLoadLocalEnv(); } catch {}
+
+function baseUrl() {
+  const fromEnv = OVERRIDE_BASE || process.env.HUB_URL || process.env.BASE_URL;
+  const d = (() => { try { return loadDev(); } catch { return null; } })();
+  if (d && d.hubUrl) return d.hubUrl;
+  return fromEnv || DEFAULT_RESOLVE_URL_FALLBACK;
+}
 const storePath = () => path.join(app.getPath('userData'), 'subscriptions.json');
 const devStorePath = () => path.join(app.getPath('userData'), 'dev.json');
 function resolveLogPath() {
@@ -230,7 +269,9 @@ ipcMain.handle('app:version', async () => {
 
 ipcMain.handle('admin:sockets', async () => {
   try {
-    const res = await fetch(new URL('/v1/admin/debug/sockets', process.env.HUB_URL || 'https://routed.onrender.com').toString(), { cache: 'no-store' });
+    const headers = {};
+    if (process.env.HUB_ADMIN_TOKEN) headers['Authorization'] = `Bearer ${process.env.HUB_ADMIN_TOKEN}`;
+    const res = await fetch(new URL('/v1/admin/debug/sockets', baseUrl()).toString(), { cache: 'no-store', headers });
     const j = await res.json();
     writeLog(`admin:sockets → ${JSON.stringify(j)}`);
     return j;
@@ -249,10 +290,10 @@ ipcMain.handle('dev:get', async () => {
 
 ipcMain.handle('dev:provision', async () => {
   try {
-    const res = await fetch(new URL('/v1/dev/sandbox/provision', DEFAULT_RESOLVE_URL).toString(), { method: 'POST', cache: 'no-store' });
+    const res = await fetch(new URL('/v1/dev/sandbox/provision', baseUrl()).toString(), { method: 'POST', cache: 'no-store' });
     const j = await res.json();
     if (!res.ok) throw new Error(`provision failed ${res.status} ${JSON.stringify(j)}`);
-    const dev = { hubUrl: DEFAULT_RESOLVE_URL, tenantId: j.tenantId, apiKey: j.apiKey, userId: j.userId };
+    const dev = { hubUrl: baseUrl(), tenantId: j.tenantId, apiKey: j.apiKey, userId: j.userId };
     saveDev(dev);
     writeLog(`dev:provision → success tenantId=${dev.tenantId}`);
     return dev;
@@ -263,9 +304,26 @@ ipcMain.handle('dev:provision', async () => {
   }
 });
 
+ipcMain.handle('dev:setBaseUrl', async (_evt, url) => {
+  try {
+    const d = loadDev() || {};
+    d.hubUrl = (url || '').trim() || DEFAULT_RESOLVE_URL;
+    saveDev(d);
+    writeLog(`dev:setBaseUrl → ${d.hubUrl}`);
+    return d.hubUrl;
+  } catch (e) {
+    writeLog('dev:setBaseUrl error: ' + String(e));
+    return baseUrl();
+  }
+});
+
+ipcMain.handle('dev:getBaseUrl', async () => {
+  return baseUrl();
+});
+
 ipcMain.handle('admin:channels:list', async (_evt, tenantId) => {
   try {
-    const url = new URL(`/v1/dev/channels/list?tenant_id=${encodeURIComponent(tenantId)}`, DEFAULT_RESOLVE_URL).toString();
+    const url = new URL(`/v1/dev/channels/list?tenant_id=${encodeURIComponent(tenantId)}`, baseUrl()).toString();
     const res = await fetch(url, { cache: 'no-store' });
     const j = await res.json();
     if (!res.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
@@ -280,7 +338,7 @@ ipcMain.handle('admin:channels:list', async (_evt, tenantId) => {
 
 ipcMain.handle('admin:channels:create', async (_evt, { tenantId, name, topic }) => {
   try {
-    const res = await fetch(new URL('/v1/dev/channels/create', DEFAULT_RESOLVE_URL).toString(), {
+    const res = await fetch(new URL('/v1/dev/channels/create', baseUrl()).toString(), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tenantId, name, topic }), cache: 'no-store'
     });
@@ -297,7 +355,7 @@ ipcMain.handle('admin:channels:create', async (_evt, { tenantId, name, topic }) 
 
 ipcMain.handle('admin:channels:users', async (_evt, shortId) => {
   try {
-    const res = await fetch(new URL(`/v1/dev/channels/${encodeURIComponent(shortId)}/users`, DEFAULT_RESOLVE_URL).toString(), { cache: 'no-store' });
+    const res = await fetch(new URL(`/v1/dev/channels/${encodeURIComponent(shortId)}/users`, baseUrl()).toString(), { cache: 'no-store' });
     const j = await res.json();
     if (!res.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
     writeLog(`channels:users(${shortId}) → ${Array.isArray(j.users)? j.users.length: 0}`);
@@ -311,7 +369,7 @@ ipcMain.handle('admin:channels:users', async (_evt, shortId) => {
 
 ipcMain.handle('admin:users:ensure', async (_evt, { tenantId, phone, topic }) => {
   try {
-    const res = await fetch(new URL('/v1/dev/users/ensure', DEFAULT_RESOLVE_URL).toString(), {
+    const res = await fetch(new URL('/v1/dev/users/ensure', baseUrl()).toString(), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tenant_id: tenantId, phone, topic }), cache: 'no-store'
     });
@@ -335,8 +393,8 @@ ipcMain.handle('dev:sendMessage', async (_evt, { topic, title, body, payload }) 
       dev = loadDev();
     }
     if (!dev || !dev.apiKey) throw new Error('Developer not provisioned');
-    const baseUrl = dev.hubUrl || DEFAULT_RESOLVE_URL;
-    const res = await fetch(new URL('/v1/messages', baseUrl).toString(), {
+    const b = dev.hubUrl || baseUrl();
+    const res = await fetch(new URL('/v1/messages', b).toString(), {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${dev.apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ topic, title, body, payload: payload ?? null }),
