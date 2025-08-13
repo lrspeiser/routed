@@ -18,7 +18,8 @@
 <body>
   <header>
     <img src="routed_icon.png" alt="Routed" />
-    <h2 style="margin:0; display:flex; align-items:center; gap:6px">Routed <span id="appVer" class="ver"></span></h2>
+    <h2 style="margin:0; display:flex; align-items:center; gap:6px; flex:1">Routed <span id="appVer" class="ver"></span></h2>
+    <button id="quitBtn" style="font-size:12px; padding:4px 8px">Quit</button>
   </header>
   <div class="row" style="opacity:.7">Before connecting, we check your server health.</div>
   <div class="row" id="health">Checking server…</div>
@@ -355,6 +356,7 @@
     document.getElementById('copyLogsBtn').addEventListener('click', async () => {
       try { await navigator.clipboard.writeText(devlogEl.textContent || ''); showToast('Copied logs',''); } catch {}
     });
+    document.getElementById('quitBtn').addEventListener('click', () => { try { window.receiver.appQuit(); } catch {} });
   </script>
 </body>
 </html>

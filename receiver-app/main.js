@@ -3,7 +3,7 @@
 // It is a simple Electron app that uses the Routed Hub API to receive messages.
 // It is used to receive messages from the Routed Hub.
 
-const { app, BrowserWindow, Notification, dialog, ipcMain, Tray, Menu, nativeImage } = require('electron');
+const { app, BrowserWindow, Notification, dialog, ipcMain, Tray, Menu, nativeImage, globalShortcut } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
@@ -109,6 +109,11 @@ app.whenReady().then(async () => {
     // Hide Dock for menu-bar-only behavior; app accessible via tray icon
     try { app.dock.hide(); } catch {}
   }
+  // Register a global quit shortcut for menu-bar-only mode
+  try {
+    globalShortcut.register('Command+Q', () => { isQuitting = true; try { app.quit(); } catch {} });
+  } catch {}
+
   await createWindow();
   createTray();
   writeLog('App ready');
@@ -196,7 +201,8 @@ ipcMain.on('show-notification', (_evt, payload) => {
 
 ipcMain.handle('debug:log', async (_evt, line) => { writeLog(`[renderer] ${line}`); return true; });
 
-// Expose app version to renderer
+// Quit + Version APIs
+ipcMain.on('app:quit', () => { isQuitting = true; try { app.quit(); } catch {} });
 ipcMain.handle('app:version', async () => {
   try { return app.getVersion ? app.getVersion() : '0.0.0'; } catch { return '0.0.0'; }
 });

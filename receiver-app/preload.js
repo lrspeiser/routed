@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('receiver', {
   adminSockets: () => ipcRenderer.invoke('admin:sockets'),
   // App + Dev
   appShow: () => ipcRenderer.send('app:show'),
+  appQuit: () => ipcRenderer.send('app:quit'),
   appVersion: () => ipcRenderer.invoke('app:version'),
   devGet: () => ipcRenderer.invoke('dev:get'),
   devProvision: () => ipcRenderer.invoke('dev:provision'),
