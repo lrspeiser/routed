@@ -7,7 +7,6 @@ on:
 
 jobs:
   test:
-    if: ${{ secrets.HUB_URL != '' && secrets.HUB_ADMIN_TOKEN != '' }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -21,16 +20,21 @@ jobs:
           node-version: '22'
       - name: Install deps
         run: npm ci
+      - name: Check secrets
+        env:
+          HUB_URL: ${{ secrets.HUB_URL }}
+          HUB_ADMIN_TOKEN: ${{ secrets.HUB_ADMIN_TOKEN }}
+        run: |
+          if [ -z "${HUB_URL}" ] || [ -z "${HUB_ADMIN_TOKEN}" ]; then
+            echo "SECS_SET=false" >> $GITHUB_ENV
+            echo "Skipping hub integration test because HUB_URL or HUB_ADMIN_TOKEN secrets are not set."
+          else
+            echo "SECS_SET=true" >> $GITHUB_ENV
+          fi
       - name: Run integration test
+        if: env.SECS_SET == 'true'
         env:
           HUB_URL: ${{ secrets.HUB_URL }}
           HUB_ADMIN_TOKEN: ${{ secrets.HUB_ADMIN_TOKEN }}
         run: npm run test:integration
-  note:
-    if: ${{ secrets.HUB_URL == '' || secrets.HUB_ADMIN_TOKEN == '' }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Note missing secrets
-        run: |
-          echo "Skipping hub integration test because HUB_URL or HUB_ADMIN_TOKEN GitHub secrets are not set."
 
