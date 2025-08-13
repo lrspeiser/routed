@@ -42,6 +42,9 @@ Thumbs.db
 .playwright/
 **/sql/*.sqlite
 
+# Receiver app local config (do not commit secrets)
+receiver-app/.server.local.json
+
 # Docker local config
 .docker-local/
 

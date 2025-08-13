@@ -1,0 +1,5 @@
+{
+  "baseUrl": "https://your.server",
+  "adminToken": "optional-admin-token-if-needed"
+}
+
