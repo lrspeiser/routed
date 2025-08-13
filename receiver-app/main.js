@@ -98,6 +98,9 @@ function saveDev(data) {
 
 async function createWindow() {
   const assetBase = app.isPackaged ? process.resourcesPath : __dirname;
+  // Prefer platform-native icon bundle on macOS if available
+  let appIconPath = path.join(assetBase, 'build', 'icon.icns');
+  try { if (!fs.existsSync(appIconPath)) appIconPath = path.join(assetBase, 'routed_icon.png'); } catch { appIconPath = path.join(assetBase, 'routed_icon.png'); }
   mainWindow = new BrowserWindow({
     width: 560,
     height: 720,
@@ -106,7 +109,7 @@ async function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
     },
     title: 'Routed',
-    icon: path.join(assetBase, 'routed_icon.png'),
+    icon: appIconPath,
   });
 
   await mainWindow.loadFile('renderer.html');
@@ -174,7 +177,10 @@ app.whenReady().then(async () => {
   try { app.setName('Routed'); } catch {}
   if (process.platform === 'darwin') {
     const assetBase = app.isPackaged ? process.resourcesPath : __dirname;
-    try { app.dock.setIcon(path.join(assetBase, 'routed_icon.png')); } catch {}
+    // Prefer the icns bundle for the dock if available
+    let dockIcon = path.join(assetBase, 'build', 'icon.icns');
+    try { if (!fs.existsSync(dockIcon)) dockIcon = path.join(assetBase, 'routed_icon.png'); } catch { dockIcon = path.join(assetBase, 'routed_icon.png'); }
+    try { app.dock.setIcon(dockIcon); } catch {}
     // Ensure the app shows in the Dock and Force Quit menu
     try { app.setActivationPolicy?.('regular'); } catch {}
     try { app.dock.show(); } catch {}
@@ -332,6 +338,19 @@ ipcMain.handle('dev:setBaseUrl', async (_evt, url) => {
 
 ipcMain.handle('dev:getBaseUrl', async () => {
   return baseUrl();
+});
+
+ipcMain.handle('dev:setApiKey', async (_evt, key) => {
+  try {
+    const d = loadDev() || {};
+    d.apiKey = (key || '').trim();
+    saveDev(d);
+    writeLog('dev:setApiKey → ' + (d.apiKey ? 'set' : 'cleared'));
+    return true;
+  } catch (e) {
+    writeLog('dev:setApiKey error: ' + String(e));
+    return false;
+  }
 });
 
 ipcMain.handle('admin:channels:list', async (_evt, tenantId) => {

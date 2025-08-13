@@ -4,14 +4,28 @@
   <meta charset="utf-8" />
   <title>Routed Receiver</title>
   <style>
-    body { font-family: -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial; margin: 16px; }
+    :root {
+      --bg: #fffdfa;           /* soft white */
+      --panel: #f4efe7;        /* light warm panel */
+      --border: #e2d8c8;       /* subtle warm border */
+      --brown: #3d2b1f;        /* primary brown */
+      --green: #7fbf3f;        /* accent green */
+      --green-ink: #2a5d1a;    /* darker green for text */
+    }
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial; margin: 16px; background: var(--bg); color: var(--brown); }
+    a { color: var(--green-ink); }
     header { display:flex; align-items:center; gap:8px; }
     header img { width: 18px; height: 18px; }
     .ver { font-size: 12px; opacity: .6; margin-left: 6px; }
-    input, button { font-size: 14px; padding: 8px; margin: 4px 0; width: 100%; }
-    #log { white-space: pre-wrap; height: 240px; overflow: auto; background: #111; color: #0f0; padding: 8px; border-radius: 6px; }
+    input, button, select { font-size: 14px; padding: 8px; margin: 4px 0; width: 100%; }
+    input, select { border: 1px solid var(--border); border-radius: 8px; background: #fff; color: var(--brown); }
+    button { background: var(--green); color: #fff; border: none; border-radius: 8px; cursor: pointer; }
+    button:hover { filter: brightness(0.95); }
+    button#tabClient, button#tabDev, button#tabSettings { background: transparent; color: var(--brown); border: 1px solid var(--border); }
+    #log { white-space: pre-wrap; height: 240px; overflow: auto; background: #fbf7ef; color: var(--green-ink); padding: 8px; border-radius: 8px; border: 1px solid var(--border); }
     .row { margin-top: 8px; }
-    #toast { position: fixed; top: 20px; right: 20px; background: rgba(17,17,17,0.95); color:#fff; padding:12px 14px; border-radius:10px; box-shadow:0 10px 30px rgba(0,0,0,0.3); display:none; max-width: 320px; }
+    #toast { position: fixed; top: 20px; right: 20px; background: var(--brown); color:#fff; padding:12px 14px; border-radius:10px; box-shadow:0 10px 30px rgba(0,0,0,0.15); display:none; max-width: 320px; }
     #toast .t-title { font-weight:600; margin-bottom:4px; }
   </style>
 </head>
@@ -25,7 +39,7 @@
   <div class="row" id="health">Checking server…</div>
 
   <div class="row" style="margin-top:16px">
-    <div style="display:flex; gap:8px; border-bottom:1px solid #ddd; padding-bottom:6px">
+    <div style="display:flex; gap:8px; border-bottom:1px solid var(--border); padding-bottom:6px">
       <button id="tabClient" style="flex:1">Client</button>
       <button id="tabDev" style="flex:1">Developer</button>
       <button id="tabSettings" title="Settings" style="width:42px">⚙︎</button>
@@ -49,7 +63,7 @@
 
   <div id="devTab" class="row" style="display:none">
     <h3>Developer</h3>
-    <div id="devInfo" style="background:#f6f6f6; padding:8px; border-radius:6px; display:flex; gap:8px; align-items:center; justify-content:space-between">
+    <div id="devInfo" style="background:var(--panel); padding:8px; border-radius:8px; border:1px solid var(--border); display:flex; gap:8px; align-items:center; justify-content:space-between">
       <div>
         <div style="font-size:12px; opacity:.7">Developer ID</div>
         <div id="devId" style="font-family:monospace">Not created</div>
@@ -85,7 +99,7 @@
       <div style="margin-top:8px; font-size:13px">
         <a href="#" id="toggleCurl">Show curl</a>
         <div id="curlPanel" style="display:none; margin-top:6px">
-          <pre id="curlCmd" style="white-space:pre-wrap; background:#0b0b0b; color:#9be37f; padding:8px; border-radius:8px"></pre>
+      <pre id="curlCmd" style="white-space:pre-wrap; background:#fbf7ef; color:var(--green-ink); padding:8px; border-radius:8px; border:1px solid var(--border)"></pre>
           <button id="copyCurlBtn">Copy curl</button>
         </div>
       </div>
@@ -96,25 +110,67 @@
         <button id="clearLogsBtn">Clear</button>
         <button id="copyLogsBtn">Copy</button>
       </div>
-      <pre id="devlog" style="height:200px; overflow:auto; background:#0b0b0b; color:#9be37f; padding:8px; border-radius:8px"></pre>
+      <pre id="devlog" style="height:200px; overflow:auto; background:#fbf7ef; color:var(--green-ink); padding:8px; border-radius:8px; border:1px solid var(--border)"></pre>
     </div>
   </div>
 
 
   <div id="settingsTab" class="row" style="display:none">
     <h3>Settings</h3>
-    <div class="row" style="display:flex; gap:8px; align-items:center">
-      <input id="serverUrl" placeholder="https://your.server" style="flex:1" />
-      <button id="saveServerBtn" style="white-space:nowrap">Save Server</button>
+    <div class="row" style="background:var(--panel); padding:10px; border-radius:8px; border:1px solid var(--border)">
+      <div style="display:flex; gap:8px; align-items:center; justify-content:space-between">
+        <div style="flex:1">
+          <div style="font-size:12px; opacity:.7">Server</div>
+          <div id="serverView" style="word-break:break-all"></div>
+        </div>
+        <div>
+          <button id="editServerBtn">Edit</button>
+        </div>
+      </div>
+      <div id="serverEdit" style="display:none; margin-top:8px; display:flex; gap:8px; align-items:center">
+        <input id="serverUrl" placeholder="https://your.server" style="flex:1" />
+        <button id="saveServerBtn">Save</button>
+        <button id="cancelServerBtn">Cancel</button>
+      </div>
     </div>
-    <div class="row" style="display:flex; gap:8px; align-items:center; margin-top:8px">
-      <input id="settingsPhone" placeholder="+14155551234" style="flex:1" />
-      <button id="savePhoneBtn" style="white-space:nowrap">Save Phone</button>
-      <button id="connectNowBtn" style="white-space:nowrap">Connect</button>
+
+    <div class="row" style="background:var(--panel); padding:10px; border-radius:8px; border:1px solid var(--border)">
+      <div style="display:flex; gap:8px; align-items:center; justify-content:space-between">
+        <div style="flex:1">
+          <div style="font-size:12px; opacity:.7">Phone</div>
+          <div id="settingsPhoneView"></div>
+        </div>
+        <div>
+          <button id="editPhoneBtn">Edit</button>
+          <button id="connectNowBtn">Connect</button>
+        </div>
+      </div>
+      <div id="phoneEdit" style="display:none; margin-top:8px; display:flex; gap:8px; align-items:center">
+        <input id="settingsPhone" placeholder="+14155551234" style="flex:1" />
+        <button id="savePhoneBtn">Save</button>
+        <button id="cancelPhoneBtn">Cancel</button>
+      </div>
     </div>
-    <div class="row" style="display:flex; gap:8px; align-items:center; margin-top:8px">
-      <button id="provisionBtn">Generate Developer Key</button>
+
+    <div class="row" style="background:var(--panel); padding:10px; border-radius:8px; border:1px solid var(--border)">
+      <div style="display:flex; gap:8px; align-items:center; justify-content:space-between">
+        <div style="flex:1">
+          <div style="font-size:12px; opacity:.7">Developer Key</div>
+          <div id="devKeyView" style="font-family:monospace; word-break:break-all">Not created</div>
+        </div>
+        <div style="display:flex; gap:8px">
+          <button id="copyDevKeyBtn">Copy</button>
+          <button id="editDevKeyBtn">Edit</button>
+          <button id="provisionBtn">Generate</button>
+        </div>
+      </div>
+      <div id="devKeyEdit" style="display:none; margin-top:8px; display:flex; gap:8px; align-items:center">
+        <input id="devKeyInput" placeholder="Paste API key" style="flex:1; font-family:monospace" />
+        <button id="saveDevKeyBtn">Save</button>
+        <button id="cancelDevKeyBtn">Cancel</button>
+      </div>
     </div>
+
     <div class="row" style="font-size:12px; opacity:.7">Default: https://routed.onrender.com</div>
   </div>
 
@@ -146,7 +202,6 @@
         try { const j = JSON.parse(text1); ok1 = !!(j && j.ok); } catch {}
         if (status1 === 200 && ok1) {
           healthEl.innerHTML = `Server: <span style="color:#22c55e">OK</span>`;
-          connectBtn.disabled = false;
           return true;
         }
         // Fallback: simple /healthz with 2s timeout
@@ -163,7 +218,6 @@
           return true;
         }
         healthEl.textContent = `Health check failed. Status ${status2}`;
-        connectBtn.disabled = false;
         return false;
       } catch (e) {
         const msg = (e && (e.name === 'AbortError' ? 'timeout' : e.message)) || String(e);
@@ -430,7 +484,9 @@
       try {
         BASE_URL = await window.receiver.devGetBaseUrl() || BASE_URL;
         const su = document.getElementById('serverUrl');
+        const sv = document.getElementById('serverView');
         if (su) su.value = BASE_URL;
+        if (sv) sv.textContent = BASE_URL;
       } catch {}
       // Set version label
       try {
@@ -444,6 +500,7 @@
         const saved = localStorage.getItem('ROUTED_PHONE');
         if (saved) {
           try { document.getElementById('settingsPhone').value = saved; } catch {}
+          try { document.getElementById('settingsPhoneView').textContent = saved; } catch {}
           await connectWithPhone(saved);
           await ensureDevChannelForPhone(saved);
           showTab('dev');
@@ -456,14 +513,30 @@
         } catch {}
       } catch {}
       await refreshDevInfo();
+      // Populate dev key view
+      try {
+        const d = await window.receiver.devGet();
+        const k = d && d.apiKey ? d.apiKey : '';
+        const vEl = document.getElementById('devKeyView'); if (vEl) vEl.textContent = k || 'Not created';
+      } catch {}
     })();
+    // Settings: view/edit toggles
+    document.getElementById('editServerBtn').addEventListener('click', () => { document.getElementById('serverEdit').style.display='flex'; });
+    document.getElementById('cancelServerBtn').addEventListener('click', () => { document.getElementById('serverEdit').style.display='none'; });
+    document.getElementById('editPhoneBtn').addEventListener('click', () => { document.getElementById('phoneEdit').style.display='flex'; });
+    document.getElementById('cancelPhoneBtn').addEventListener('click', () => { document.getElementById('phoneEdit').style.display='none'; });
+    document.getElementById('editDevKeyBtn').addEventListener('click', async () => { document.getElementById('devKeyEdit').style.display='flex'; try { document.getElementById('devKeyInput').value = (await window.receiver.devGet())?.apiKey || ''; } catch {} });
+    document.getElementById('cancelDevKeyBtn').addEventListener('click', () => { document.getElementById('devKeyEdit').style.display='none'; });
+
     document.getElementById('saveServerBtn').addEventListener('click', async () => {
       try {
         const su = document.getElementById('serverUrl');
         const url = (su.value || '').trim();
         if (!url) { alert('Enter server URL'); return; }
         BASE_URL = await window.receiver.devSetBaseUrl(url) || url;
+        const sv = document.getElementById('serverView'); if (sv) sv.textContent = BASE_URL;
         devlog('Saved server: ' + BASE_URL);
+        document.getElementById('serverEdit').style.display='none';
         await checkHealth();
       } catch {}
     });
@@ -485,7 +558,7 @@
     document.getElementById('savePhoneBtn').addEventListener('click', () => {
       const phone = (document.getElementById('settingsPhone').value || '').trim();
       if (!phone) { alert('Enter your phone'); return; }
-      try { localStorage.setItem('ROUTED_PHONE', phone); showToast('Saved phone',''); } catch {}
+      try { localStorage.setItem('ROUTED_PHONE', phone); document.getElementById('settingsPhoneView').textContent = phone; document.getElementById('phoneEdit').style.display='none'; showToast('Saved phone',''); } catch {}
     });
     document.getElementById('connectNowBtn').addEventListener('click', async () => {
       const phone = (document.getElementById('settingsPhone').value || '').trim();
@@ -494,6 +567,17 @@
       await connectWithPhone(phone);
       await ensureDevChannelForPhone(phone);
       showTab('dev');
+    });
+
+    document.getElementById('copyDevKeyBtn').addEventListener('click', async () => { try { await navigator.clipboard.writeText(document.getElementById('devKeyView').textContent || ''); showToast('Copied key',''); } catch {} });
+    document.getElementById('saveDevKeyBtn').addEventListener('click', async () => {
+      try {
+        const key = (document.getElementById('devKeyInput').value || '').trim();
+        await window.receiver.devSetApiKey(key);
+        document.getElementById('devKeyView').textContent = key || 'Not created';
+        document.getElementById('devKeyEdit').style.display='none';
+        showToast('Saved key','');
+      } catch {}
     });
 
     // Load users on channel change
