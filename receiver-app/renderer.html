@@ -21,7 +21,7 @@
     <h2 style="margin:0; display:flex; align-items:center; gap:6px; flex:1">Routed <span id="appVer" class="ver"></span></h2>
     <button id="quitBtn" style="font-size:12px; padding:4px 8px">Quit</button>
   </header>
-  <div class="row" style="opacity:.7">Before connecting, we check your server health.</div>
+  <div class="row" style="opacity:.7">Before connecting, we’ll check your server health.</div>
   <div class="row" id="health">Checking server…</div>
   <div class="row">
     <label>Your Phone</label>
@@ -34,6 +34,7 @@
       <button id="tabClient" style="flex:1">Client</button>
       <button id="tabDev" style="flex:1">Developer</button>
       <button id="tabApi" style="flex:1">API</button>
+      <button id="tabSettings" title="Settings" style="width:42px">⚙︎</button>
     </div>
   </div>
   <div id="toast"><div class="t-title"></div><div class="t-body"></div></div>
@@ -105,19 +106,28 @@
     </div>
   </div>
 
+  <div id="settingsTab" class="row" style="display:none">
+    <h3>Settings</h3>
+    <div class="row" style="display:flex; gap:8px; align-items:center">
+      <input id="serverUrl" placeholder="https://your.server" style="flex:1" />
+      <button id="saveServerBtn" style="white-space:nowrap">Save Server</button>
+    </div>
+    <div class="row" style="font-size:12px; opacity:.7">Default: https://routed.onrender.com</div>
+  </div>
+
   <script>
     const logEl = document.getElementById('log');
     function log(msg) { logEl.textContent += '\n' + new Date().toISOString() + ' ' + msg; logEl.scrollTop = logEl.scrollHeight; }
 
-    // Point directly to the notification hub
-    const RESOLVE_BASE = 'https://routed.onrender.com';
+    // Configurable server base URL (persisted via main process)
+    let BASE_URL = 'https://routed.onrender.com';
     const healthEl = document.getElementById('health');
     const connectBtn = document.getElementById('connectBtn');
 
     async function checkHealth() {
       // Hub-only health checks
       try {
-        let url = new URL('/v1/health/deep', RESOLVE_BASE).toString();
+        let url = new URL('/v1/health/deep', BASE_URL).toString();
         devlog(`[health] GET ${url}`);
         let res = await fetch(url, { cache: 'no-store' });
         let json = null;
@@ -132,7 +142,7 @@
           return;
         }
         // Fallback: simple /healthz
-        url = new URL('/healthz', RESOLVE_BASE).toString();
+        url = new URL('/healthz', BASE_URL).toString();
         devlog(`[health] GET ${url}`);
         res = await fetch(url, { cache: 'no-store' });
         if (res.ok) {
@@ -191,8 +201,8 @@
         const ensured = await window.receiver.adminUsersEnsure({ tenantId: d.tenantId, phone, topic: 'runs.finished' });
         if (!ensured || !ensured.userId) { devlog('users:ensure failed'); return; }
         const userId = ensured.userId;
-        devlog(`Resolved: base_url=${RESOLVE_BASE} user_id=${userId}`);
-        const base = RESOLVE_BASE;
+        devlog(`Resolved: base_url=${BASE_URL} user_id=${userId}`);
+        const base = BASE_URL;
         const urlV1 = makeWsUrl(base, userId, '/v1/socket');
         const urlAlt = makeWsUrl(base, userId, '/socket');
 
@@ -256,14 +266,17 @@
     const clientTab = document.getElementById('clientTab');
     const devTab = document.getElementById('devTab');
     const apiTab = document.getElementById('apiTab');
+    const settingsTab = document.getElementById('settingsTab');
     function showTab(which) {
       clientTab.style.display = which === 'client' ? '' : 'none';
       devTab.style.display = which === 'dev' ? '' : 'none';
       apiTab.style.display = which === 'api' ? '' : 'none';
+      settingsTab.style.display = which === 'settings' ? '' : 'none';
     }
     document.getElementById('tabClient').addEventListener('click', () => showTab('client'));
     document.getElementById('tabDev').addEventListener('click', () => showTab('dev'));
     document.getElementById('tabApi').addEventListener('click', () => { updateCurl(); showTab('api'); });
+    document.getElementById('tabSettings').addEventListener('click', () => showTab('settings'));
 
     // Dev console handlers
     const devIdEl = document.getElementById('devId');
@@ -373,6 +386,12 @@
     }
 
     (async () => {
+      // Load server URL
+      try {
+        BASE_URL = await window.receiver.devGetBaseUrl() || BASE_URL;
+        const su = document.getElementById('serverUrl');
+        if (su) su.value = BASE_URL;
+      } catch {}
       // Set version label
       try {
         const v = await window.receiver.appVersion();
@@ -398,6 +417,16 @@
       } catch {}
       await refreshDevInfo();
     })();
+    document.getElementById('saveServerBtn').addEventListener('click', async () => {
+      try {
+        const su = document.getElementById('serverUrl');
+        const url = (su.value || '').trim();
+        if (!url) { alert('Enter server URL'); return; }
+        BASE_URL = await window.receiver.devSetBaseUrl(url) || url;
+        devlog('Saved server: ' + BASE_URL);
+        await checkHealth();
+      } catch {}
+    });
     document.getElementById('clearLogsBtn').addEventListener('click', () => { if (devlogEl) devlogEl.textContent=''; });
     document.getElementById('copyLogsBtn').addEventListener('click', async () => {
       try { await navigator.clipboard.writeText(devlogEl.textContent || ''); showToast('Copied logs',''); } catch {}
