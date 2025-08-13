@@ -23,17 +23,11 @@
   </header>
   <div class="row" style="opacity:.7">Before connecting, we’ll check your server health.</div>
   <div class="row" id="health">Checking server…</div>
-  <div class="row">
-    <label>Your Phone</label>
-    <input id="phone" placeholder="+14155551234" />
-  </div>
-  <button id="connectBtn" disabled>Connect</button>
 
   <div class="row" style="margin-top:16px">
     <div style="display:flex; gap:8px; border-bottom:1px solid #ddd; padding-bottom:6px">
       <button id="tabClient" style="flex:1">Client</button>
       <button id="tabDev" style="flex:1">Developer</button>
-      <button id="tabApi" style="flex:1">API</button>
       <button id="tabSettings" title="Settings" style="width:42px">⚙︎</button>
     </div>
   </div>
@@ -43,6 +37,14 @@
     <h3>Notifications</h3>
     <div id="status"></div>
     <div id="notifList" style="margin-top:8px; display:flex; flex-direction:column; gap:8px"></div>
+    <div class="row">
+      <h4 style="margin:12px 0 4px">Log</h4>
+      <div style="display:flex; gap:8px; align-items:center; margin-bottom:6px">
+        <button id="clearMainLogBtn">Clear</button>
+        <button id="copyMainLogBtn">Copy</button>
+      </div>
+      <pre id="log" style="height:160px; overflow:auto; background:#0b0b0b; color:#9be37f; padding:8px; border-radius:8px"></pre>
+    </div>
   </div>
 
   <div id="devTab" class="row" style="display:none">
@@ -52,7 +54,6 @@
         <div style="font-size:12px; opacity:.7">Developer ID</div>
         <div id="devId" style="font-family:monospace">Not created</div>
       </div>
-      <button id="provisionBtn">Generate</button>
     </div>
 
     <div class="row">
@@ -68,16 +69,26 @@
       <select id="channelSelect"></select>
     </div>
 
-    <div class="row">
-      <label>Add Phone Numbers (comma or space separated)</label>
-      <input id="addPhones" placeholder="+14155551234, +14155559876" />
-      <button id="addUsersBtn">Add to Channel</button>
+    <div class="row" id="usersSection" style="display:none">
+      <h4 style="margin:8px 0 4px">Team Members</h4>
+      <ul id="usersList" style="margin:0; padding-left:18px"></ul>
+      <div style="display:flex; gap:8px; margin-top:6px">
+        <input id="addPhones" placeholder="+14155551234" />
+        <button id="addUsersBtn">Add</button>
+      </div>
     </div>
 
     <div class="row">
       <label>Message</label>
       <input id="messageText" placeholder="Type your message" />
       <button id="sendBtn">Send to Channel</button>
+      <div style="margin-top:8px; font-size:13px">
+        <a href="#" id="toggleCurl">Show curl</a>
+        <div id="curlPanel" style="display:none; margin-top:6px">
+          <pre id="curlCmd" style="white-space:pre-wrap; background:#0b0b0b; color:#9be37f; padding:8px; border-radius:8px"></pre>
+          <button id="copyCurlBtn">Copy curl</button>
+        </div>
+      </div>
     </div>
     <div class="row">
       <h4 style="margin:8px 0 4px">Logs</h4>
@@ -89,28 +100,20 @@
     </div>
   </div>
 
-  <div id="apiTab" class="row" style="display:none">
-    <h3>API Docs</h3>
-    <div class="row" style="background:#f6f6f6; padding:12px; border-radius:8px">
-      <div style="margin-bottom:8px">Send a message via HTTPS:</div>
-      <pre id="curlCmd" style="white-space:pre-wrap; background:#0b0b0b; color:#9be37f; padding:8px; border-radius:8px"></pre>
-      <div style="display:flex; gap:8px; align-items:center; margin-top:6px">
-        <button id="copyCurlBtn">Copy</button>
-        <span style="font-size:12px; opacity:.7">Replace placeholders if empty.</span>
-      </div>
-      <div style="font-size:12px; opacity:.8; margin-top:10px">
-        Endpoint: <code>POST /v1/messages</code><br/>
-        Headers: <code>Authorization: Bearer &lt;API_KEY&gt;</code>, <code>Content-Type: application/json</code><br/>
-        Body: <code>{ "topic": "runs.finished", "title": "Routed", "body": "Hello", "payload": null }</code>
-      </div>
-    </div>
-  </div>
 
   <div id="settingsTab" class="row" style="display:none">
     <h3>Settings</h3>
     <div class="row" style="display:flex; gap:8px; align-items:center">
       <input id="serverUrl" placeholder="https://your.server" style="flex:1" />
       <button id="saveServerBtn" style="white-space:nowrap">Save Server</button>
+    </div>
+    <div class="row" style="display:flex; gap:8px; align-items:center; margin-top:8px">
+      <input id="settingsPhone" placeholder="+14155551234" style="flex:1" />
+      <button id="savePhoneBtn" style="white-space:nowrap">Save Phone</button>
+      <button id="connectNowBtn" style="white-space:nowrap">Connect</button>
+    </div>
+    <div class="row" style="display:flex; gap:8px; align-items:center; margin-top:8px">
+      <button id="provisionBtn">Generate Developer Key</button>
     </div>
     <div class="row" style="font-size:12px; opacity:.7">Default: https://routed.onrender.com</div>
   </div>
@@ -122,7 +125,6 @@
     // Configurable server base URL (persisted via main process)
     let BASE_URL = 'https://routed.onrender.com';
     const healthEl = document.getElementById('health');
-    const connectBtn = document.getElementById('connectBtn');
 
     function fetchTimeout(resource, options = {}, timeoutMs = 3000) {
       const controller = new AbortController();
@@ -137,33 +139,35 @@
         let url = new URL('/v1/health/deep', BASE_URL).toString();
         devlog(`[health] GET ${url}`);
         let res = await fetchTimeout(url, { cache: 'no-store' }, 2000);
-        let json = null;
-        const ct = (res.headers.get('content-type') || '').toLowerCase();
-        if (ct.includes('application/json')) { try { json = await res.json(); } catch {} }
-        if (res.ok && json && json.ok) {
+        const status1 = res.status;
+        const text1 = await res.text().catch(() => '');
+        devlog(`[health] deep status=${status1} body=${text1}`);
+        let ok1 = false;
+        try { const j = JSON.parse(text1); ok1 = !!(j && j.ok); } catch {}
+        if (status1 === 200 && ok1) {
           healthEl.innerHTML = `Server: <span style="color:#22c55e">OK</span>`;
           connectBtn.disabled = false;
-          devlog('[health] ok via /v1/health/deep');
           return true;
         }
         // Fallback: simple /healthz with 2s timeout
         url = new URL('/healthz', BASE_URL).toString();
         devlog(`[health] GET ${url}`);
         res = await fetchTimeout(url, { cache: 'no-store' }, 2000);
-        if (res.ok) {
+        const status2 = res.status;
+        const text2 = await res.text().catch(() => '');
+        devlog(`[health] healthz status=${status2} body=${text2}`);
+        let ok2 = false;
+        try { const j2 = JSON.parse(text2); ok2 = !!(j2 && j2.ok); } catch {}
+        if (status2 === 200 && ok2) {
           healthEl.innerHTML = `Server: <span style="color:#22c55e">OK</span>`;
-          connectBtn.disabled = false;
-          devlog('[health] ok via /healthz');
           return true;
         }
-        healthEl.textContent = `Health check failed. Status ${res.status}`;
+        healthEl.textContent = `Health check failed. Status ${status2}`;
         connectBtn.disabled = false;
-        devlog(`[health] failed status=${res.status}`);
         return false;
       } catch (e) {
         const msg = (e && (e.name === 'AbortError' ? 'timeout' : e.message)) || String(e);
         healthEl.textContent = `Health check error: ${msg}`;
-        connectBtn.disabled = false;
         devlog(`[health] error: ${msg}`);
         return false;
       }
@@ -178,13 +182,29 @@
       return true;
     }
     let ws;
+    const recentMsgs = [];
+    function isDuplicateMessage(data) {
+      try {
+        const key = `${data.title||''}|${data.body||''}`;
+        const now = Date.now();
+        // purge old
+        while (recentMsgs.length && now - recentMsgs[0].t > 5000) recentMsgs.shift();
+        if (recentMsgs.some(x => x.k === key)) return true;
+        recentMsgs.push({ k: key, t: now });
+        return false;
+      } catch { return false; }
+    }
     const notifList = document.getElementById('notifList');
     const devlogEl = document.getElementById('devlog');
     function devlog(msg) {
-      if (!devlogEl) return;
       const line = `${new Date().toISOString()} ${msg}`;
-      devlogEl.textContent += (devlogEl.textContent ? '\n' : '') + line;
-      devlogEl.scrollTop = devlogEl.scrollHeight;
+      // Mirror to visible Log section
+      try { log(msg); } catch {}
+      // Developer log panel
+      if (devlogEl) {
+        devlogEl.textContent += (devlogEl.textContent ? '\n' : '') + line;
+        devlogEl.scrollTop = devlogEl.scrollHeight;
+      }
       try { window.receiver.debugLog(line); } catch {}
     }
     function addNotificationCard(data) {
@@ -192,8 +212,9 @@
       card.style.border = '1px solid #ddd';
       card.style.borderRadius = '8px';
       card.style.padding = '8px';
-      card.innerHTML = `<div style="font-weight:600">${(data.title||'').replace(/</g,'&lt;')}</div><div>${(data.body||'').replace(/</g,'&lt;')}</div>`;
+      card.innerHTML = `\u003cdiv style=\"font-weight:600\"\u003e${(data.title||'').replace(/\u003c/g,'\u0026lt;')}\u003c/div\u003e\u003cdiv\u003e${(data.body||'').replace(/\u003c/g,'\u0026lt;')}\u003c/div\u003e`;
       notifList.prepend(card);
+      try { devlog('Client: received notification'); } catch {}
     }
     function showToast(title, body) {
       const el = document.getElementById('toast');
@@ -233,20 +254,23 @@
             candidate.onopen = () => {
               opened = true;
               ws = candidate;
-              devlog('WS open');
+              devlog('Client: WS open');
               document.getElementById('status').textContent = 'Connected';
               resolve(null);
             };
             candidate.onmessage = (ev) => {
-              devlog(`WS message: ${ev.data}`);
+              devlog(`Client: WS message ${ev.data}`);
               try {
                 const data = JSON.parse(ev.data);
                 if (data && data.type === 'hello') {
                   // handshake ok
-                } else if (data 66 data.title) {
-                  // Trigger native notification (main process) and update in-app list only
-                  window.receiver.showNotification(data);
-                  addNotificationCard(data);
+                } else if (data && data.title) {
+                  if (!isDuplicateMessage(data)) {
+                    window.receiver.showNotification(data);
+                    addNotificationCard(data);
+                  } else {
+                    devlog('Client: duplicate message suppressed');
+                  }
                 }
               } catch {}
             };
@@ -255,12 +279,12 @@
                 devlog(`WS close before open (${next}) code=${e.code}`);
                 tryConnect(urls.slice(1)).then(resolve);
               } else {
-                devlog(`WS closed code=${e.code} reason=${e.reason}`);
+                devlog(`Client: WS closed code=${e.code} reason=${e.reason}`);
                 document.getElementById('status').textContent = 'Disconnected';
               }
             };
             candidate.onerror = (e) => {
-              try { devlog(`WS error on ${next}: ` + (e.message || JSON.stringify(e))); } catch { devlog('WS error'); }
+              try { devlog(`Client: WS error on ${next}: ` + (e.message || JSON.stringify(e))); } catch { devlog('Client: WS error'); }
             };
           });
         }
@@ -272,29 +296,18 @@
       }
     }
 
-    document.getElementById('connectBtn').addEventListener('click', async () => {
-      const phone = document.getElementById('phone').value.trim();
-      if (!phone) { alert('Enter your phone'); return; }
-      try { localStorage.setItem('ROUTED_PHONE', phone); } catch {}
-      const ok = await preflightOrFail();
-      if (!ok) return;
-      await connectWithPhone(phone);
-    });
 
     // Tabs
     const clientTab = document.getElementById('clientTab');
     const devTab = document.getElementById('devTab');
-    const apiTab = document.getElementById('apiTab');
     const settingsTab = document.getElementById('settingsTab');
     function showTab(which) {
       clientTab.style.display = which === 'client' ? '' : 'none';
       devTab.style.display = which === 'dev' ? '' : 'none';
-      apiTab.style.display = which === 'api' ? '' : 'none';
       settingsTab.style.display = which === 'settings' ? '' : 'none';
     }
     document.getElementById('tabClient').addEventListener('click', () => showTab('client'));
     document.getElementById('tabDev').addEventListener('click', () => showTab('dev'));
-    document.getElementById('tabApi').addEventListener('click', () => { updateCurl(); showTab('api'); });
     document.getElementById('tabSettings').addEventListener('click', () => showTab('settings'));
 
     // Dev console handlers
@@ -307,7 +320,7 @@
       channelSelect.innerHTML = '';
       ch.forEach((c) => {
         const opt = document.createElement('option');
-        opt.value = JSON.stringify({ topic: c.topic });
+        opt.value = JSON.stringify({ topic: c.topic, short_id: c.short_id });
         opt.textContent = `${c.name} (${c.short_id})`;
         channelSelect.appendChild(opt);
       });
@@ -344,13 +357,21 @@
       document.getElementById('addPhones').value = '';
       alert('Added');
     });
+    let sending = false;
     document.getElementById('sendBtn').addEventListener('click', async () => {
+      if (sending) { return; }
       const selected = channelSelect.value ? JSON.parse(channelSelect.value) : null;
       if (!selected) { alert('Choose a channel'); return; }
       const text = (document.getElementById('messageText').value || '').trim();
       if (!text) { alert('Enter a message'); return; }
-      await window.receiver.devSendMessage({ topic: selected.topic, title: 'Routed', body: text, payload: null });
+      sending = true;
+      const btn = document.getElementById('sendBtn');
+      const prev = btn.disabled; btn.disabled = true;
+      try { devlog(`Client: sending message topic=${selected.topic} body=${text}`); } catch {}
+      const res = await window.receiver.devSendMessage({ topic: selected.topic, title: 'Routed', body: text, payload: null });
+      try { devlog(`Client: send result ${res ? 'ok' : 'error'}`); } catch {}
       document.getElementById('messageText').value = '';
+      btn.disabled = prev; sending = false;
     });
 
     async function ensureDevChannelForPhone(phone) {
@@ -396,7 +417,7 @@
               "\"topic\": \"" + topic + "\", " +
               "\"title\": \"Routed\", " +
               "\"body\": \"Hello from CLI\", " +
-              "\"payload\": null'",
+              "\"payload\": null}'",
             'https://routed.onrender.com/v1/messages'
           ].join(' ');
           document.getElementById('curlCmd').textContent = cmd;
@@ -422,7 +443,7 @@
       try {
         const saved = localStorage.getItem('ROUTED_PHONE');
         if (saved) {
-          document.getElementById('phone').value = saved;
+          try { document.getElementById('settingsPhone').value = saved; } catch {}
           await connectWithPhone(saved);
           await ensureDevChannelForPhone(saved);
           showTab('dev');
@@ -447,13 +468,51 @@
       } catch {}
     });
     document.getElementById('clearLogsBtn').addEventListener('click', () => { if (devlogEl) devlogEl.textContent=''; });
+    document.getElementById('clearMainLogBtn').addEventListener('click', () => { if (logEl) logEl.textContent=''; });
+    document.getElementById('copyMainLogBtn').addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(logEl.textContent || ''); showToast('Copied logs',''); } catch {}
+    });
     document.getElementById('copyLogsBtn').addEventListener('click', async () => {
       try { await navigator.clipboard.writeText(devlogEl.textContent || ''); showToast('Copied logs',''); } catch {}
     });
     document.getElementById('copyCurlBtn').addEventListener('click', async () => {
       try { await navigator.clipboard.writeText(document.getElementById('curlCmd').textContent || ''); showToast('Copied curl',''); } catch {}
     });
+    document.getElementById('toggleCurl').addEventListener('click', (e) => { e.preventDefault(); const p = document.getElementById('curlPanel'); p.style.display = p.style.display === 'none' ? '' : 'none'; if (p.style.display !== 'none') updateCurl(); });
     document.getElementById('quitBtn').addEventListener('click', () => { try { window.receiver.appQuit(); } catch {} });
+
+    // Settings handlers for phone/connect
+    document.getElementById('savePhoneBtn').addEventListener('click', () => {
+      const phone = (document.getElementById('settingsPhone').value || '').trim();
+      if (!phone) { alert('Enter your phone'); return; }
+      try { localStorage.setItem('ROUTED_PHONE', phone); showToast('Saved phone',''); } catch {}
+    });
+    document.getElementById('connectNowBtn').addEventListener('click', async () => {
+      const phone = (document.getElementById('settingsPhone').value || '').trim();
+      if (!phone) { alert('Enter your phone'); return; }
+      const ok = await preflightOrFail(); if (!ok) return;
+      await connectWithPhone(phone);
+      await ensureDevChannelForPhone(phone);
+      showTab('dev');
+    });
+
+    // Load users on channel change
+    channelSelect.addEventListener('change', async () => {
+      try {
+        const selected = channelSelect.value ? JSON.parse(channelSelect.value) : null;
+        const sec = document.getElementById('usersSection');
+        const list = document.getElementById('usersList');
+        if (!selected || !selected.short_id) { sec.style.display = 'none'; list.innerHTML = ''; return; }
+        const users = await window.receiver.adminChannelsUsers(selected.short_id);
+        list.innerHTML = '';
+        for (const u of (users || [])) {
+          const li = document.createElement('li');
+          li.textContent = u.phone || u.user_id || JSON.stringify(u);
+          list.appendChild(li);
+        }
+        sec.style.display = '';
+      } catch {}
+    });
   </script>
 </body>
 </html>
