@@ -1,6 +1,6 @@
 {
   "name": "routed",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "author": "Routed",
   "description": "Routed desktop receiver",
@@ -30,13 +30,12 @@
       "target": [
         "dmg"
       ],
-      "identity": null,
       "hardenedRuntime": true,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
-      "gatekeeperAssess": false
+      "gatekeeperAssess": false,
+      "notarize": { "teamId": "F25JD2C29Z" }
     },
-    "afterSign": "./build/notarize.js",
     "dmg": {}
   },
   "dependencies": {
