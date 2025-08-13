@@ -95,12 +95,12 @@ export default async function routes(fastify: FastifyInstance) {
     if (chRows.length === 0) return reply.status(404).send({ error: 'not_found' });
     const { tenant_id, topic_id } = chRows[0];
     const { rows } = await pool.query(
-      `select u.id as user_id, u.email as email from users u
+      `select u.id as user_id, u.email as email, u.phone as phone from users u
        join subscriptions s on s.user_id=u.id and s.tenant_id=u.tenant_id and s.topic_id=$2
-       where u.tenant_id=$1 order by lower(u.email) asc`,
+       where u.tenant_id=$1 order by lower(coalesce(u.phone,u.email)) asc`,
       [tenant_id, topic_id]
     );
-    const users = rows.map((r) => ({ user_id: r.user_id, email: r.email, online: isUserOnline(r.user_id) }));
+    const users = rows.map((r) => ({ user_id: r.user_id, email: r.email, phone: r.phone, online: isUserOnline(r.user_id) }));
     return reply.send({ users });
   });
 }

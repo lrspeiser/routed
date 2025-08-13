@@ -1,0 +1,28 @@
+name: Hub Integration Test
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: notification-hub
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install deps
+        run: npm ci
+      - name: Run integration test
+        env:
+          HUB_URL: ${{ secrets.HUB_URL }}
+          HUB_ADMIN_TOKEN: ${{ secrets.HUB_ADMIN_TOKEN }}
+        run: npm run test:integration
+

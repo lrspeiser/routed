@@ -27,7 +27,7 @@ async function main() {
   invariant(HUB_URL && HUB_ADMIN_TOKEN, 'HUB_URL and HUB_ADMIN_TOKEN are required');
 
   const topic = 'runs.finished';
-  const testEmail = `integration+${Date.now()}@example.com`;
+  const testPhone = `+1555${Math.floor(1000000 + Math.random()*8999999)}`;
 
   // 1) Provision sandbox
   const provRes = await fetch(new URL('/v1/admin/sandbox/provision', HUB_URL).toString(), {
@@ -48,15 +48,15 @@ async function main() {
   invariant(chRes.ok, `channel create failed ${chRes.status} ${JSON.stringify(ch)}`);
   console.log('[TEST] Channel created', ch);
 
-  // 3) Ensure a test email
+  // 3) Ensure a test phone
   const ensRes = await fetch(new URL('/v1/admin/users/ensure', HUB_URL).toString(), {
     method: 'POST', headers: { 'Authorization': `Bearer ${HUB_ADMIN_TOKEN}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tenant_id: tenantId, email: testEmail, topic }),
+    body: JSON.stringify({ tenant_id: tenantId, phone: testPhone, topic }),
   });
   const ens: any = await ensRes.json().catch(() => ({} as any));
   invariant(ensRes.ok, `ensure failed ${ensRes.status} ${JSON.stringify(ens)}`);
   const targetUserId = (ens as any).userId || (ens as any).user_id || userId;
-  console.log('[TEST] Ensured email', { email: testEmail, userId: targetUserId });
+  console.log('[TEST] Ensured phone', { phone: testPhone, userId: targetUserId });
 
   // 4) Open WS
   const url = new URL(HUB_URL);

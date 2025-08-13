@@ -7,7 +7,7 @@ let mainWindow;
 let tray;
 let isQuitting = false;
 // Point app directly at the hub for all actions
-const DEFAULT_RESOLVE_URL = process.env.HUB_URL || 'https://routed.onrender.com';
+const DEFAULT_RESOLVE_URL = 'https://routed.onrender.com';
 const storePath = () => path.join(app.getPath('userData'), 'subscriptions.json');
 const devStorePath = () => path.join(app.getPath('userData'), 'dev.json');
 function resolveLogPath() {
