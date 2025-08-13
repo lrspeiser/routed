@@ -27,43 +27,43 @@ export default async function routes(fastify: FastifyInstance) {
       let userId: string | null = null;
       await client.query('SAVEPOINT ensure_user');
       try {
-        let ur;
         if (phone) {
-          ur = await client.query(
+          const r = await client.query(
             `insert into users (tenant_id, phone) values ($1,$2)
              on conflict (tenant_id, phone) do update set phone=excluded.phone
              returning id`,
             [tenant_id, phone]
           );
+          userId = r.rows[0]?.id ?? null;
         } else if (email) {
-          ur = await client.query(
+          const r = await client.query(
             `insert into users (tenant_id, email) values ($1,$2)
              on conflict (tenant_id, email) do update set email=excluded.email
              returning id`,
             [tenant_id, email]
           );
+          userId = r.rows[0]?.id ?? null;
         }
-        userId = ur.rows[0]?.id ?? null;
       } catch (e: any) {
         // Clear error state for this transaction scope and run fallback path
         await client.query('ROLLBACK TO SAVEPOINT ensure_user');
-        let ur2;
         if (phone) {
-          ur2 = await client.query(
+          const r2 = await client.query(
             `insert into users (tenant_id, phone) values ($1,$2)
              on conflict do nothing
              returning id`,
             [tenant_id, phone]
           );
+          userId = r2.rows[0]?.id ?? null;
         } else if (email) {
-          ur2 = await client.query(
+          const r2 = await client.query(
             `insert into users (tenant_id, email) values ($1,$2)
              on conflict do nothing
              returning id`,
             [tenant_id, email]
           );
+          userId = r2.rows[0]?.id ?? null;
         }
-        userId = ur2.rows[0]?.id ?? null;
       }
       if (!userId) {
         const f = phone
