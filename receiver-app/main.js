@@ -126,10 +126,11 @@ app.whenReady().then(async () => {
   if (process.platform === 'darwin') {
     const assetBase = app.isPackaged ? process.resourcesPath : __dirname;
     try { app.dock.setIcon(path.join(assetBase, 'routed_icon.png')); } catch {}
-    // Hide Dock for menu-bar-preferred behavior; app accessible via tray icon
-    try { app.dock.hide(); } catch {}
+    // Ensure the app shows in the Dock and Force Quit menu
+    try { app.setActivationPolicy?.('regular'); } catch {}
+    try { app.dock.show(); } catch {}
   }
-  // Register a global quit shortcut for menu-bar-only mode
+  // Register a global quit shortcut
   try {
     globalShortcut.register('Command+Q', () => { isQuitting = true; try { app.quit(); } catch {} });
   } catch {}
