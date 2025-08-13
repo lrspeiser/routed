@@ -17,7 +17,7 @@
       "preload.js",
       "renderer.html",
       "package.json",
-      "arrow-icon-routed.png"
+      "routed_icon.png"
     ],
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "mac": {

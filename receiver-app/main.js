@@ -56,7 +56,7 @@ async function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
     },
     title: 'Routed',
-    icon: path.join(__dirname, 'arrow-icon-routed.png'),
+    icon: path.join(__dirname, 'routed_icon.png'),
   });
 
   await mainWindow.loadFile('renderer.html');
@@ -72,7 +72,7 @@ async function createWindow() {
 }
 
 function createTray() {
-  const trayImg = nativeImage.createFromPath(path.join(__dirname, 'arrow-icon-routed.png'));
+  const trayImg = nativeImage.createFromPath(path.join(__dirname, 'routed_icon.png'));
   try { trayImg.setTemplateImage(false); } catch {}
   tray = new Tray(trayImg);
   const login = app.getLoginItemSettings?.() || { openAtLogin: false };
@@ -105,7 +105,7 @@ function createTray() {
 app.whenReady().then(async () => {
   try { app.setName('Routed'); } catch {}
   if (process.platform === 'darwin') {
-    try { app.dock.setIcon(path.join(__dirname, 'arrow-icon-routed.png')); } catch {}
+    try { app.dock.setIcon(path.join(__dirname, 'routed_icon.png')); } catch {}
   }
   await createWindow();
   createTray();
