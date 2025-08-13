@@ -75,7 +75,10 @@ function createTray() {
   const trayImg = nativeImage.createFromPath(path.join(__dirname, 'arrow-icon-routed.png'));
   try { trayImg.setTemplateImage(false); } catch {}
   tray = new Tray(trayImg);
+  const login = app.getLoginItemSettings?.() || { openAtLogin: false };
   const contextMenu = Menu.buildFromTemplate([
+    { label: 'Open', click: () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } } },
+    { type: 'separator' },
     { label: 'Test Notification', click: () => {
       const test = { title: 'Routed', body: 'Test notification' };
       const n = new Notification(test);
@@ -83,7 +86,14 @@ function createTray() {
       try { n.show(); } catch {}
       writeLog('Tray: Test Notification triggered');
     } },
-    { label: 'Settings', click: () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } } },
+    { type: 'separator' },
+    { label: login.openAtLogin ? 'Disable Open at Login' : 'Enable Open at Login', click: () => {
+      try {
+        const cur = app.getLoginItemSettings?.() || { openAtLogin: false };
+        app.setLoginItemSettings?.({ openAtLogin: !cur.openAtLogin });
+        writeLog(`Tray: Open at Login → ${!cur.openAtLogin}`);
+      } catch (e) { writeLog('Tray: setLoginItemSettings error ' + String(e)); }
+    } },
     { type: 'separator' },
     { label: 'Quit Routed', click: () => { isQuitting = true; app.quit(); } },
   ]);
