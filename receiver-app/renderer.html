@@ -124,41 +124,58 @@
     const healthEl = document.getElementById('health');
     const connectBtn = document.getElementById('connectBtn');
 
+    function fetchTimeout(resource, options = {}, timeoutMs = 3000) {
+      const controller = new AbortController();
+      const id = setTimeout(() => controller.abort(), timeoutMs);
+      return fetch(resource, { ...options, signal: controller.signal })
+        .finally(() => clearTimeout(id));
+    }
+
     async function checkHealth() {
-      // Hub-only health checks
       try {
+        // Fast-path deep health with 2s timeout
         let url = new URL('/v1/health/deep', BASE_URL).toString();
         devlog(`[health] GET ${url}`);
-        let res = await fetch(url, { cache: 'no-store' });
+        let res = await fetchTimeout(url, { cache: 'no-store' }, 2000);
         let json = null;
         const ct = (res.headers.get('content-type') || '').toLowerCase();
-        if (ct.includes('application/json')) {
-          try { json = await res.json(); } catch {}
-        }
+        if (ct.includes('application/json')) { try { json = await res.json(); } catch {} }
         if (res.ok && json && json.ok) {
           healthEl.innerHTML = `Server: <span style="color:#22c55e">OK</span>`;
           connectBtn.disabled = false;
-          devlog('[health] ok via hub');
-          return;
+          devlog('[health] ok via /v1/health/deep');
+          return true;
         }
-        // Fallback: simple /healthz
+        // Fallback: simple /healthz with 2s timeout
         url = new URL('/healthz', BASE_URL).toString();
         devlog(`[health] GET ${url}`);
-        res = await fetch(url, { cache: 'no-store' });
+        res = await fetchTimeout(url, { cache: 'no-store' }, 2000);
         if (res.ok) {
           healthEl.innerHTML = `Server: <span style="color:#22c55e">OK</span>`;
           connectBtn.disabled = false;
-          devlog('[health] ok via hub /healthz');
-          return;
+          devlog('[health] ok via /healthz');
+          return true;
         }
         healthEl.textContent = `Health check failed. Status ${res.status}`;
-        connectBtn.disabled = false; // allow manual connect attempt anyway
+        connectBtn.disabled = false;
         devlog(`[health] failed status=${res.status}`);
+        return false;
       } catch (e) {
-        healthEl.textContent = `Health check error: ${e && e.message ? e.message : e}`;
-        connectBtn.disabled = false; // allow manual connect attempt anyway
-        devlog(`[health] error: ${e && e.message ? e.message : e}`);
+        const msg = (e && (e.name === 'AbortError' ? 'timeout' : e.message)) || String(e);
+        healthEl.textContent = `Health check error: ${msg}`;
+        connectBtn.disabled = false;
+        devlog(`[health] error: ${msg}`);
+        return false;
       }
+    }
+
+    async function preflightOrFail() {
+      const ok = await checkHealth();
+      if (!ok) {
+        showToast('Cannot connect', 'Server is unreachable. Check Settings → Server and try again.');
+        return false;
+      }
+      return true;
     }
     let ws;
     const notifList = document.getElementById('notifList');
@@ -259,6 +276,8 @@
       const phone = document.getElementById('phone').value.trim();
       if (!phone) { alert('Enter your phone'); return; }
       try { localStorage.setItem('ROUTED_PHONE', phone); } catch {}
+      const ok = await preflightOrFail();
+      if (!ok) return;
       await connectWithPhone(phone);
     });
 

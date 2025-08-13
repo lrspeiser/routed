@@ -52,6 +52,16 @@ function baseUrl() {
   if (d && d.hubUrl) return d.hubUrl;
   return fromEnv || DEFAULT_RESOLVE_URL_FALLBACK;
 }
+
+function adminAuthHeaders() {
+  const h = {};
+  if (process.env.HUB_ADMIN_TOKEN) h['Authorization'] = `Bearer ${process.env.HUB_ADMIN_TOKEN}`;
+  return h;
+}
+
+function isAdminMode() {
+  return !!process.env.HUB_ADMIN_TOKEN;
+}
 const storePath = () => path.join(app.getPath('userData'), 'subscriptions.json');
 const devStorePath = () => path.join(app.getPath('userData'), 'dev.json');
 function resolveLogPath() {
@@ -290,12 +300,15 @@ ipcMain.handle('dev:get', async () => {
 
 ipcMain.handle('dev:provision', async () => {
   try {
-    const res = await fetch(new URL('/v1/dev/sandbox/provision', baseUrl()).toString(), { method: 'POST', cache: 'no-store' });
+    const admin = isAdminMode();
+    const url = new URL(admin ? '/v1/admin/sandbox/provision' : '/v1/dev/sandbox/provision', baseUrl()).toString();
+    const opts = { method: 'POST', cache: 'no-store', headers: admin ? { ...adminAuthHeaders(), 'Content-Type': 'application/json' } : undefined };
+    const res = await fetch(url, opts);
     const j = await res.json();
     if (!res.ok) throw new Error(`provision failed ${res.status} ${JSON.stringify(j)}`);
     const dev = { hubUrl: baseUrl(), tenantId: j.tenantId, apiKey: j.apiKey, userId: j.userId };
     saveDev(dev);
-    writeLog(`dev:provision → success tenantId=${dev.tenantId}`);
+    writeLog(`provision → success tenantId=${dev.tenantId} (admin=${admin})`);
     return dev;
   } catch (e) {
     dialog.showErrorBox('Provision failed', String(e));
@@ -338,13 +351,14 @@ ipcMain.handle('admin:channels:list', async (_evt, tenantId) => {
 
 ipcMain.handle('admin:channels:create', async (_evt, { tenantId, name, topic }) => {
   try {
-    const res = await fetch(new URL('/v1/dev/channels/create', baseUrl()).toString(), {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tenantId, name, topic }), cache: 'no-store'
-    });
+    const admin = isAdminMode();
+    const url = new URL(admin ? '/v1/admin/channels/create' : '/v1/dev/channels/create', baseUrl()).toString();
+    const headers = { 'Content-Type': 'application/json', ...(admin ? adminAuthHeaders() : {}) };
+    const body = admin ? { tenant_id: tenantId, name, topic_name: topic } : { tenantId, name, topic };
+    const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body), cache: 'no-store' });
     const j = await res.json();
     if (!res.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
-    writeLog(`channels:create → ok name=${name}`);
+    writeLog(`channels:create → ok name=${name} (admin=${admin})`);
     return j;
   } catch (e) {
     dialog.showErrorBox('Create channel failed', String(e));
@@ -369,13 +383,14 @@ ipcMain.handle('admin:channels:users', async (_evt, shortId) => {
 
 ipcMain.handle('admin:users:ensure', async (_evt, { tenantId, phone, topic }) => {
   try {
-    const res = await fetch(new URL('/v1/dev/users/ensure', baseUrl()).toString(), {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tenant_id: tenantId, phone, topic }), cache: 'no-store'
-    });
+    const admin = isAdminMode();
+    const url = new URL(admin ? '/v1/admin/users/ensure' : '/v1/dev/users/ensure', baseUrl()).toString();
+    const headers = { 'Content-Type': 'application/json', ...(admin ? adminAuthHeaders() : {}) };
+    const body = admin ? { tenant_id: tenantId, phone, topic } : { tenant_id: tenantId, phone, topic };
+    const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body), cache: 'no-store' });
     const j = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
-    writeLog(`users:ensure → ok tenant=${tenantId} phone=${phone}`);
+    writeLog(`users:ensure → ok tenant=${tenantId} phone=${phone} (admin=${admin})`);
     return j;
   } catch (e) {
     dialog.showErrorBox('Add user failed', String(e));
