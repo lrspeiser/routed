@@ -165,8 +165,6 @@ function createTray() {
   }
 
   tray = new Tray(trayImg);
-  // Set a short title as a debug fallback so we see presence even if icon fails
-  try { tray.setTitle('R'); } catch {}
 
   const login = app.getLoginItemSettings?.() || { openAtLogin: false };
   const contextMenu = Menu.buildFromTemplate([
