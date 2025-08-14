@@ -95,6 +95,8 @@
     <div class="row">
       <label>Message</label>
       <input id="messageText" placeholder="Type your message" />
+      <label style="margin-top:8px">Link (optional)</label>
+      <input id="linkUrl" placeholder="https://www.google.com" value="https://www.google.com" />
       <button id="sendBtn">Send to Channel</button>
       <div style="margin-top:8px; font-size:13px">
         <a href="#" id="toggleCurl">Show curl</a>
@@ -422,7 +424,9 @@
       const btn = document.getElementById('sendBtn');
       const prev = btn.disabled; btn.disabled = true;
       try { devlog(`Client: sending message topic=${selected.topic} body=${text}`); } catch {}
-      const res = await window.receiver.devSendMessage({ topic: selected.topic, title: 'Routed', body: text, payload: null });
+      const link = (document.getElementById('linkUrl').value || '').trim();
+      const payload = link ? { url: link.startsWith('http') ? link : 'https://' + link } : null;
+      const res = await window.receiver.devSendMessage({ topic: selected.topic, title: 'Routed', body: text, payload });
       try { devlog(`Client: send result ${res ? 'ok' : 'error'}`); } catch {}
       document.getElementById('messageText').value = '';
       btn.disabled = prev; sending = false;
@@ -471,7 +475,7 @@
               "\"topic\": \"" + topic + "\", " +
               "\"title\": \"Routed\", " +
               "\"body\": \"Hello from CLI\", " +
-              "\"payload\": null}'",
+              "\"payload\": {\"url\": \"" + ((document.getElementById('linkUrl')?.value || 'https://www.google.com').replace(/"/g,'\\"')) + "\"}}'",
             'https://routed.onrender.com/v1/messages'
           ].join(' ');
           document.getElementById('curlCmd').textContent = cmd;

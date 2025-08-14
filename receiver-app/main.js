@@ -3,7 +3,7 @@
 // It is a simple Electron app that uses the Routed Hub API to receive messages.
 // It is used to receive messages from the Routed Hub.
 
-const { app, BrowserWindow, Notification, dialog, ipcMain, Tray, Menu, nativeImage, globalShortcut } = require('electron');
+const { app, BrowserWindow, Notification, dialog, ipcMain, Tray, Menu, nativeImage, globalShortcut, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
@@ -289,12 +289,21 @@ ipcMain.handle('resolve-channel', async (_evt, id, resolveBaseUrl) => {
 ipcMain.on('show-notification', (_evt, payload) => {
   const title = payload.title || 'Notification';
   const body = payload.body || '';
+  const url = (payload && payload.payload && payload.payload.url) ? String(payload.payload.url) : null;
   const n = new Notification({ title, body, silent: false });
   n.on('click', () => {
-    try { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } } catch {}
+    try {
+      if (url) {
+        writeLog('Notification click: opening ' + url);
+        shell.openExternal(url).catch(() => {});
+      } else if (mainWindow) {
+        mainWindow.show();
+        mainWindow.focus();
+      }
+    } catch {}
   });
   try { n.show(); } catch {}
-  writeLog(`Notification shown: ${title} :: ${body}`);
+  writeLog(`Notification shown: ${title} :: ${body} ${url ? '(url=' + url + ')' : ''}`);
 });
 
 ipcMain.handle('debug:log', async (_evt, line) => { writeLog(`[renderer] ${line}`); return true; });
