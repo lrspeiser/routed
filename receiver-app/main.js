@@ -259,7 +259,7 @@ ipcMain.handle('subscriptions:add', async (_evt, sub) => {
   const store = loadStore();
   const exists = (store.subscriptions || []).some((s) => s.id === sub.id);
   if (!exists) {
-    store.subscriptions = [...(store.subscriptions || []), { id: sub.id, resolveUrl: sub.resolveUrl || DEFAULT_RESOLVE_URL }];
+    store.subscriptions = [...(store.subscriptions || []), { id: sub.id, resolveUrl: sub.resolveUrl || DEFAULT_RESOLVE_URL_FALLBACK }];
     saveStore(store);
   }
   return store.subscriptions;
@@ -272,9 +272,9 @@ ipcMain.handle('subscriptions:remove', async (_evt, id) => {
   return store.subscriptions;
 });
 
-ipcMain.handle('resolve-channel', async (_evt, id, resolveBaseUrl) => {
+ipcMain.handle('resolve-channel', async (_evt, id, resolveBaseUrl) => {
   try {
-    const res = await fetch(new URL(`/api/channel/resolve/${encodeURIComponent(id)}`, resolveBaseUrl || DEFAULT_RESOLVE_URL).toString(), { cache: 'no-store' });
+    const res = await fetch(new URL(`/api/channel/resolve/${encodeURIComponent(id)}`, resolveBaseUrl || DEFAULT_RESOLVE_URL_FALLBACK).toString(), { cache: 'no-store' });
     if (!res.ok) throw new Error(`resolve failed ${res.status}`);
     return await res.json();
   } catch (e) {
@@ -355,7 +355,7 @@ ipcMain.handle('dev:provision', async () => {
 ipcMain.handle('dev:setBaseUrl', async (_evt, url) => {
   try {
     const d = loadDev() || {};
-    d.hubUrl = (url || '').trim() || DEFAULT_RESOLVE_URL;
+    d.hubUrl = (url || '').trim() || DEFAULT_RESOLVE_URL_FALLBACK;
     saveDev(d);
     writeLog(`dev:setBaseUrl → ${d.hubUrl}`);
     return d.hubUrl;

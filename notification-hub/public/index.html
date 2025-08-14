@@ -14,13 +14,22 @@
       background-size: cover;
       display: flex; align-items: center; justify-content: center;
     }
-    .center { text-align: center; color: white; text-shadow: 0 2px 16px rgba(0,0,0,0.5); }
+    .center { text-align: center; color: white; text-shadow: 0 2px 16px rgba(0,0,0,0.5); max-width: 720px; padding: 0 16px; }
     h1 { font-size: 56px; margin: 0 0 16px 0; }
     a.download { display:inline-block; padding: 12px 18px; background: rgba(255,255,255,0.9); color:#111; border-radius: 10px; text-decoration:none; font-weight:600; }
     a.download:hover { background: #fff; }
     .links { margin-top: 14px; }
     .links a { color: #fff; opacity: .9; text-decoration: underline; margin: 0 8px; }
     .links a:hover { opacity: 1; }
+    .panel { margin: 18px auto 0; background: rgba(0,0,0,0.45); border: 1px solid rgba(255,255,255,0.25); border-radius: 12px; text-align:left; padding: 14px; color: #f5f5f5; }
+    .panel h3 { margin: 0 0 8px 0; font-size: 18px; }
+    .panel p { margin: 6px 0; opacity: .9; }
+    pre.code { background: rgba(255,255,255,0.08); padding: 10px 12px; border-radius: 8px; overflow-x: auto; }
+    code { color: #e6e6e6; }
+    .row { display:flex; align-items:center; justify-content:space-between; gap: 8px; }
+    .copy { display:inline-flex; align-items:center; gap:8px; background: rgba(255,255,255,0.9); color:#111; border:none; padding:6px 10px; border-radius:8px; cursor:pointer; font-weight:600; }
+    .copy:hover { background: #fff; }
+    .muted { font-size: 13px; opacity: .85; }
   </style>
 </head>
 <body>
@@ -28,9 +37,40 @@
     <h1>Routed</h1>
     <div style="margin-bottom:24px; opacity:.85">Fast, unified notifications.</div>
     <a class="download" href="/downloads/Routed-latest.dmg">Download for macOS</a>
+
+    <div class="panel" role="region" aria-label="Unsigned app help">
+      <h3>Having trouble opening on macOS?</h3>
+      <p class="muted">Until the app is signed, macOS may block it. You can allow it by removing the quarantine attribute:</p>
+      <ol class="muted" style="padding-left:18px; margin:8px 0; text-align:left">
+        <li>Open the DMG and drag <strong>Routed.app</strong> to <strong>Applications</strong>.</li>
+        <li>Open Terminal and run:</li>
+      </ol>
+      <div class="row">
+        <pre id="macCmd" class="code"><code>xattr -rd com.apple.quarantine /Applications/Routed.app</code></pre>
+        <button id="copyCmdBtn" class="copy" title="Copy to clipboard">📋 Copy</button>
+      </div>
+      <p class="muted">Then launch Routed from Applications. If it still warns you, right-click the app and choose <em>Open</em>.</p>
+    </div>
+
     <div class="links">
       <a href="/api.html">API Docs</a>
     </div>
   </div>
+
+  <script>
+    (function(){
+      var btn = document.getElementById('copyCmdBtn');
+      if (!btn) return;
+      btn.addEventListener('click', function(){
+        try {
+          var cmd = document.getElementById('macCmd').innerText.trim();
+          navigator.clipboard.writeText(cmd).then(function(){
+            btn.textContent = '✔ Copied';
+            setTimeout(function(){ btn.textContent = '📋 Copy'; }, 1400);
+          }).catch(function(){});
+        } catch (e) {}
+      });
+    })();
+  </script>
 </body>
 </html>

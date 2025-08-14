@@ -9,7 +9,7 @@
     :root { --bg:#0b0b0b; --panel:rgba(255,255,255,0.06); --text:#f5f5f5; --muted:#c9c9c9; --code:#111; --accent:#79ffe1; }
     html, body { height: 100%; }
     body { margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; background: var(--bg); color: var(--text); }
-    .container { max-width: 900px; margin: 0 auto; padding: 32px 20px 60px; }
+    .container { max-width: 1000px; margin: 0 auto; padding: 32px 20px 60px; }
     a { color: var(--accent); }
     h1 { font-size: 40px; margin: 0 0 8px 0; }
     h2 { margin-top: 32px; }
@@ -22,14 +22,48 @@
     .grid { display:grid; grid-template-columns: 1fr; gap: 16px; }
     .muted { color: var(--muted); }
     .kbd { background:#111; border:1px solid #222; padding:2px 6px; border-radius:6px }
-    @media(min-width: 900px){ .grid { grid-template-columns: 1fr 1fr; } }
+    .inputs { display:grid; grid-template-columns: 1fr; gap:10px; }
+    .inputs input { width:100%; padding:10px; border-radius:8px; border:1px solid #222; background:#0f0f10; color:#fff; }
+    .row { display:flex; gap:8px; align-items:center; flex-wrap: wrap; }
+    .btn { display:inline-block; background:#111; border:1px solid #222; color:#fff; padding:8px 12px; border-radius:8px; cursor:pointer; }
+    .btn:hover { background:#131316; }
+    .list { max-height: 260px; overflow:auto; background:#0f0f10; border:1px solid #222; border-radius:8px; padding:8px; }
+    .pill { display:inline-block; padding:2px 8px; border-radius:999px; background:#121213; border:1px solid #232323; color:#c9c9c9; font-size:12px; }
+    @media(min-width: 900px){ .grid { grid-template-columns: 1fr 1fr; } .inputs { grid-template-columns: 1fr 1fr; } }
   </style>
 </head>
 <body>
   <div class="container">
     <a class="home" href="/">← Back to home</a>
     <h1>Routed API</h1>
-    <div class="badge">Base URL: https://routed.onrender.com</div>
+    <div class="badge" id="baseBadge">Base URL: https://routed.onrender.com</div>
+
+    <div class="panel" id="interactive">
+      <h2>Quick setup</h2>
+      <p class="muted">Paste your values to personalize the examples and use the interactive tools below.</p>
+      <div class="inputs">
+        <div>
+          <label>Base URL</label>
+          <input id="baseUrl" placeholder="https://routed.onrender.com" />
+        </div>
+        <div>
+          <label>Tenant ID</label>
+          <input id="tenantId" placeholder="e.g. tnt_..." />
+        </div>
+        <div>
+          <label>Developer Key</label>
+          <input id="devKey" placeholder="Paste your developer key" />
+        </div>
+        <div>
+          <label>Admin Token (optional)</label>
+          <input id="adminToken" placeholder="Only needed for admin operations" />
+        </div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button class="btn" id="saveCfg">Save</button>
+        <span id="saveMsg" class="muted"></span>
+      </div>
+    </div>
 
     <div class="panel">
       <h2>Get your Developer Key</h2>
@@ -40,7 +74,7 @@
       <p>
         Download: <a href="/downloads/Routed-latest.dmg">Routed for macOS</a>
       </p>
-      <pre><code># store your key securely in an environment variable
+      <pre><code id="envSnippet"># store your key securely in an environment variable
 export ROUTED_API_KEY="&lt;your developer key&gt;"  # do not commit this
 BASE_URL="https://routed.onrender.com"</code></pre>
     </div>
@@ -48,7 +82,7 @@ BASE_URL="https://routed.onrender.com"</code></pre>
     <div class="panel">
       <h2>HTTP Auth</h2>
       <p>Use a Bearer token with your developer key:</p>
-      <pre><code>curl -s -H "Authorization: Bearer $ROUTED_API_KEY" "$BASE_URL/v1/health/deep"</code></pre>
+      <pre><code id="healthCmd">curl -s -H "Authorization: Bearer $ROUTED_API_KEY" "$BASE_URL/v1/health/deep"</code></pre>
     </div>
 
     <div class="panel">
@@ -57,53 +91,35 @@ BASE_URL="https://routed.onrender.com"</code></pre>
         <div>
           <h3>Create a channel</h3>
           <p class="muted">Create a channel bound to a topic name. Returns a short_id you can share.</p>
-          <pre><code>curl -s \
-  -X POST "$BASE_URL/v1/admin/channels/create" \
-  -H "Authorization: Bearer $ROUTED_API_KEY" \
+          <pre><code id="createChannelCmd">curl -s \
+  -X POST "$BASE_URL/v1/dev/channels/create" \
   -H "Content-Type: application/json" \
   -d '{
-    "tenant_id": "&lt;tenant-id&gt;",
+    "tenantId": "&lt;tenant-id&gt;",
     "name": "My Channel",
-    "topic_name": "runs.finished"
+    "topic": "runs.finished"
   }'</code></pre>
         </div>
         <div>
           <h3>List channels</h3>
-          <pre><code>curl -s \
-  "$BASE_URL/v1/admin/channels/list?tenant_id=&lt;tenant-id&gt;" \
-  -H "Authorization: Bearer $ROUTED_API_KEY"</code></pre>
-        </div>
-      </div>
-    </div>
-
-    <div class="panel">
-      <h2>Manage phone numbers</h2>
-      <div class="grid">
-        <div>
-          <h3>Add/ensure subscription</h3>
-          <p class="muted">Ensure a phone number exists and is subscribed to a topic.</p>
-          <pre><code>curl -s \
-  -X POST "$BASE_URL/v1/admin/users/ensure" \
-  -H "Authorization: Bearer $ROUTED_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tenant_id": "&lt;tenant-id&gt;",
-    "phone": "+14155551234",
-    "topic": "runs.finished"
-  }'</code></pre>
-        </div>
-        <div>
-          <h3>Remove subscription</h3>
-          <p class="muted">Unsubscribe an email from a topic (email supported for legacy). For phone-based removal, contact support.</p>
-          <pre><code>curl -s \
-  -X POST "$BASE_URL/v1/admin/users/remove" \
-  -H "Authorization: Bearer $ROUTED_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tenant_id": "&lt;tenant-id&gt;",
-    "email": "user@example.com",
-    "topic": "runs.finished"
-  }'</code></pre>
+          <pre><code id="listChannelsCmd">curl -s \
+  "$BASE_URL/v1/dev/channels/list?tenant_id=&lt;tenant-id&gt;"</code></pre>
+          <div class="panel" style="margin-top:10px">
+            <div class="row">
+              <button class="btn" id="btnLoad">Load my channels</button>
+              <span class="muted" id="loadMsg"></span>
+            </div>
+            <div style="margin-top:8px">
+              <label>Channel</label>
+              <select id="channelSelect" style="width:100%; padding:8px; border-radius:8px; border:1px solid #222; background:#0f0f10; color:#fff"></select>
+            </div>
+            <div class="row" style="margin-top:8px">
+              <input id="newPhones" placeholder="+14155551234, +14155556789 (adds via dev API)" style="flex:1; padding:8px; border-radius:8px; border:1px solid #222; background:#0f0f10; color:#fff" />
+              <button class="btn" id="btnAddPhones">Add</button>
+            </div>
+            <div class="list" id="usersList" style="margin-top:8px"></div>
+            <div class="muted" style="margin-top:6px">Tip: Removing emails requires an Admin Token. Phone removal is not yet supported on the public API.</div>
+          </div>
         </div>
       </div>
     </div>
@@ -111,7 +127,7 @@ BASE_URL="https://routed.onrender.com"</code></pre>
     <div class="panel">
       <h2>Send a message</h2>
       <p class="muted">Send to all subscribers of a topic. Include an optional URL in payload.link to open on click.</p>
-      <pre><code>curl -s \
+      <pre><code id="sendCmd">curl -s \
   -X POST "$BASE_URL/v1/messages" \
   -H "Authorization: Bearer $ROUTED_API_KEY" \
   -H "Content-Type: application/json" \
@@ -121,16 +137,201 @@ BASE_URL="https://routed.onrender.com"</code></pre>
     "body": "#123 passed in 2m 14s",
     "payload": { "link": "https://ci.example.com/builds/123" }
   }'</code></pre>
+      <div class="panel" style="margin-top:10px">
+        <div class="row">
+          <label>Title</label>
+          <input id="msgTitle" placeholder="Routed" style="flex:1; padding:8px; border-radius:8px; border:1px solid #222; background:#0f0f10; color:#fff" />
+        </div>
+        <div class="row" style="margin-top:6px">
+          <label>Body</label>
+          <input id="msgBody" placeholder="Hello from the browser" style="flex:1; padding:8px; border-radius:8px; border:1px solid #222; background:#0f0f10; color:#fff" />
+        </div>
+        <div class="row" style="margin-top:6px">
+          <label>Link</label>
+          <input id="msgLink" placeholder="https://www.google.com" style="flex:1; padding:8px; border-radius:8px; border:1px solid #222; background:#0f0f10; color:#fff" />
+        </div>
+        <div class="row" style="margin-top:8px">
+          <button class="btn" id="btnSend">Send to selected channel topic</button>
+          <span class="muted" id="sendMsg"></span>
+        </div>
+      </div>
     </div>
 
     <div class="panel">
       <h2>Developer sandbox (optional)</h2>
       <p class="muted">Provision a demo tenant, publisher, topic, and user for quick testing.</p>
-      <pre><code>curl -s -X POST "$BASE_URL/v1/dev/sandbox/provision" | jq .</code></pre>
+      <pre><code id="provisionCmd">curl -s -X POST "$BASE_URL/v1/dev/sandbox/provision" | jq .</code></pre>
     </div>
 
     <p class="muted">Need something else? Open an issue or contact us.</p>
   </div>
+
+  <script>
+    (function(){
+      const $ = (id) => document.getElementById(id);
+      const defBase = (location && location.origin && location.origin.startsWith('http')) ? location.origin : 'https://routed.onrender.com';
+      const state = {
+        baseUrl: localStorage.getItem('API_BASE_URL') || defBase,
+        tenantId: localStorage.getItem('API_TENANT_ID') || '',
+        devKey: localStorage.getItem('API_DEV_KEY') || '',
+        adminToken: localStorage.getItem('API_ADMIN_TOKEN') || ''
+      };
+
+      // hydrate inputs
+      $('#baseUrl').value = state.baseUrl;
+      $('#tenantId').value = state.tenantId;
+      $('#devKey').value = state.devKey;
+      $('#adminToken').value = state.adminToken;
+      $('#baseBadge').textContent = 'Base URL: ' + state.baseUrl;
+
+      function esc(s){ return String(s||'').replace(/`/g,'\`'); }
+      function updateSnippets(){
+        const BASE = state.baseUrl;
+        const KEY = state.devKey || '$ROUTED_API_KEY';
+        const TEN = state.tenantId || '<tenant-id>';
+        const topic = (window._selected && window._selected.topic) ? window._selected.topic : 'runs.finished';
+        $('#envSnippet').textContent = `# store your key securely in an environment variable\nexport ROUTED_API_KEY="${esc(state.devKey || '<your developer key>')}"  # do not commit this\nBASE_URL="${esc(BASE)}"`;
+        $('#healthCmd').textContent = `curl -s -H "Authorization: Bearer ${KEY}" "${BASE}/v1/health/deep"`;
+        $('#createChannelCmd').textContent = `curl -s \\\n  -X POST "${BASE}/v1/dev/channels/create" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "tenantId": "${esc(TEN)}",\n    "name": "My Channel",\n    "topic": "runs.finished"\n  }'`;
+        $('#listChannelsCmd').textContent = `curl -s \n  "${BASE}/v1/dev/channels/list?tenant_id=${esc(TEN)}"`;
+        $('#sendCmd').textContent = `curl -s \\\n  -X POST "${BASE}/v1/messages" \\\n  -H "Authorization: Bearer ${KEY}" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "topic": "${esc(topic)}",\n    "title": "Build finished",\n    "body": "#123 passed in 2m 14s",\n    "payload": { "link": "https://ci.example.com/builds/123" }\n  }'`;
+        $('#provisionCmd').textContent = `curl -s -X POST "${BASE}/v1/dev/sandbox/provision" | jq .`;
+      }
+      updateSnippets();
+
+      $('#saveCfg').addEventListener('click', () => {
+        state.baseUrl = $('#baseUrl').value.trim() || defBase;
+        state.tenantId = $('#tenantId').value.trim();
+        state.devKey = $('#devKey').value.trim();
+        state.adminToken = $('#adminToken').value.trim();
+        localStorage.setItem('API_BASE_URL', state.baseUrl);
+        localStorage.setItem('API_TENANT_ID', state.tenantId);
+        localStorage.setItem('API_DEV_KEY', state.devKey);
+        localStorage.setItem('API_ADMIN_TOKEN', state.adminToken);
+        $('#baseBadge').textContent = 'Base URL: ' + state.baseUrl;
+        $('#saveMsg').textContent = 'Saved.';
+        setTimeout(() => $('#saveMsg').textContent = '', 1500);
+        updateSnippets();
+      });
+
+      async function jsonFetch(path, opts){
+        const url = state.baseUrl.replace(/\/$/,'') + path;
+        const res = await fetch(url, opts || { cache: 'no-store' });
+        const text = await res.text();
+        let j = null; try { j = JSON.parse(text); } catch {}
+        if (!res.ok) throw new Error(j && j.error ? j.error : ('HTTP ' + res.status + ' ' + text));
+        return j;
+      }
+
+      async function loadChannels(){
+        if (!state.tenantId) { $('#loadMsg').textContent = 'Enter a Tenant ID above.'; return; }
+        $('#loadMsg').textContent = 'Loading...';
+        try {
+          const j = await jsonFetch(`/v1/dev/channels/list?tenant_id=${encodeURIComponent(state.tenantId)}`);
+          const sel = $('#channelSelect');
+          sel.innerHTML = '';
+          (j.channels || j || []).forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = JSON.stringify({ topic: c.topic, short_id: c.short_id });
+            opt.textContent = `${c.name} (${c.short_id})`;
+            sel.appendChild(opt);
+          });
+          $('#loadMsg').textContent = `Loaded ${(j.channels||j||[]).length} channels.`;
+          sel.dispatchEvent(new Event('change'));
+        } catch (e) {
+          $('#loadMsg').textContent = e.message || String(e);
+        }
+      }
+
+      async function loadUsers(shortId){
+        const list = $('#usersList');
+        list.innerHTML = '';
+        if (!shortId) return;
+        try {
+          const j = await jsonFetch(`/v1/dev/channels/${encodeURIComponent(shortId)}/users`);
+          (j.users || j || []).forEach(u => {
+            const row = document.createElement('div');
+            row.className = 'row';
+            const label = document.createElement('div');
+            label.textContent = u.email || u.phone || u.user_id || JSON.stringify(u);
+            row.appendChild(label);
+            if (u.email && state.adminToken) {
+              const btn = document.createElement('button');
+              btn.className = 'btn';
+              btn.textContent = 'Remove';
+              btn.addEventListener('click', async () => {
+                btn.disabled = true;
+                try {
+                  await jsonFetch('/v1/admin/users/remove', {
+                    method: 'POST',
+                    headers: { 'Content-Type':'application/json', 'Authorization': 'Bearer ' + state.adminToken },
+                    body: JSON.stringify({ tenant_id: state.tenantId, email: u.email, topic: window._selected.topic }),
+                    cache: 'no-store'
+                  });
+                  await loadUsers(shortId);
+                } catch (e) { alert(e.message||String(e)); }
+                btn.disabled = false;
+              });
+              row.appendChild(btn);
+            }
+            list.appendChild(row);
+          });
+        } catch (e) {
+          const err = document.createElement('div'); err.textContent = e.message || String(e); list.appendChild(err);
+        }
+      }
+
+      $('#btnLoad').addEventListener('click', loadChannels);
+      $('#channelSelect').addEventListener('change', (ev) => {
+        let sel = null; try { sel = JSON.parse(ev.target.value || '{}'); } catch {}
+        window._selected = sel || null;
+        updateSnippets();
+        loadUsers(sel && sel.short_id);
+      });
+
+      $('#btnAddPhones').addEventListener('click', async () => {
+        if (!state.tenantId) { alert('Enter a Tenant ID above.'); return; }
+        if (!window._selected || !window._selected.topic) { alert('Select a channel first.'); return; }
+        const raw = ($('#newPhones').value||'').trim(); if (!raw) { alert('Enter one or more E.164 phone numbers.'); return; }
+        const phones = raw.split(/[\s,]+/).map(s => s.trim()).filter(Boolean);
+        try {
+          for (const phone of phones) {
+            await jsonFetch('/v1/dev/users/ensure', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ tenant_id: state.tenantId, phone, topic: window._selected.topic }),
+              cache: 'no-store'
+            });
+          }
+          $('#newPhones').value='';
+          await loadUsers(window._selected.short_id);
+        } catch (e) { alert(e.message||String(e)); }
+      });
+
+      $('#btnSend').addEventListener('click', async () => {
+        if (!state.devKey) { alert('Enter your Developer Key above.'); return; }
+        if (!window._selected || !window._selected.topic) { alert('Select a channel first.'); return; }
+        const title = ($('#msgTitle').value||'Routed').trim();
+        const body = ($('#msgBody').value||'Hello from the browser').trim();
+        const link = ($('#msgLink').value||'').trim();
+        const payload = link ? { link } : null;
+        $('#sendMsg').textContent = 'Sending...';
+        try {
+          await jsonFetch('/v1/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + state.devKey },
+            body: JSON.stringify({ topic: window._selected.topic, title, body, payload }),
+            cache: 'no-store'
+          });
+          $('#sendMsg').textContent = 'Sent.';
+          setTimeout(()=> $('#sendMsg').textContent = '', 1500);
+        } catch (e) {
+          $('#sendMsg').textContent = e.message || String(e);
+        }
+      });
+
+    })();
+  </script>
 </body>
 <!-- build: redeploy trigger -->
 </html>

@@ -1,5 +1,4 @@
-import fetch from 'node-fetch';
-
+// Uses global fetch (Node 18+)
 const BASE_URL = process.env.BASE_URL || 'https://routed.onrender.com';
 const ADMIN_TOKEN = process.env.HUB_ADMIN_TOKEN || '';
 
@@ -19,7 +18,8 @@ async function main() {
 
   // Health
   const deep = await jfetch(`${BASE_URL}/v1/health/deep`);
-  if (!deep || deep.status !== 'ok') throw new Error('Health check failed');
+  const healthy = !!(deep && (deep.ok === true || deep.status === 'ok'));
+  if (!healthy) throw new Error(`Health check failed: ${JSON.stringify(deep)}`);
   console.log('[TEST] health ok');
 
   // Provision sandbox

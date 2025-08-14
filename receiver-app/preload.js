@@ -16,9 +16,12 @@ contextBridge.exposeInMainWorld('receiver', {
   appVersion: () => ipcRenderer.invoke('app:version'),
   devGet: () => ipcRenderer.invoke('dev:get'),
   devProvision: () => ipcRenderer.invoke('dev:provision'),
+  devSetBaseUrl: (url) => ipcRenderer.invoke('dev:setBaseUrl', url),
+  devGetBaseUrl: () => ipcRenderer.invoke('dev:getBaseUrl'),
   adminChannelsList: (tenantId) => ipcRenderer.invoke('admin:channels:list', tenantId),
   adminChannelsCreate: (args) => ipcRenderer.invoke('admin:channels:create', args),
   adminChannelsUsers: (shortId) => ipcRenderer.invoke('admin:channels:users', shortId),
   adminUsersEnsure: (args) => ipcRenderer.invoke('admin:users:ensure', args),
   devSendMessage: (args) => ipcRenderer.invoke('dev:sendMessage', args),
+  devSetApiKey: (key) => ipcRenderer.invoke('dev:setApiKey', key),
 });
