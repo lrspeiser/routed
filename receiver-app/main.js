@@ -126,26 +126,48 @@ async function createWindow() {
 
 function createTray() {
   const assetBase = app.isPackaged ? process.resourcesPath : __dirname;
-  // Prefer dedicated monochrome template assets if available
   const template1x = path.join(assetBase, 'assets', 'trayTemplate.png');
   const template2x = path.join(assetBase, 'assets', 'trayTemplate@2x.png');
+  writeLog(`Tray: assetBase=${assetBase}`);
+  writeLog(`Tray: template1x exists=${fs.existsSync(template1x)} path=${template1x}`);
+  writeLog(`Tray: template2x exists=${fs.existsSync(template2x)} path=${template2x}`);
+
   let trayImg;
-  if (fs.existsSync(template1x)) {
-    try {
+  try {
+    if (fs.existsSync(template1x)) {
       trayImg = nativeImage.createFromPath(template1x);
-      // Attach @2x if present
-      if (fs.existsSync(template2x)) {
-        try { trayImg.addRepresentation({ scaleFactor: 2.0, filename: template2x }); } catch {}
+      // If too large/small, normalize to 18x18 points for menu bar clarity
+      const sz = trayImg.getSize?.();
+      if (sz && (sz.width !== 18 || sz.height !== 18)) {
+        try {
+          trayImg = trayImg.resize({ width: 18, height: 18, quality: 'best' });
+          writeLog(`Tray: resized 1x to 18x18`);
+        } catch (e) { writeLog('Tray: resize 1x failed ' + String(e)); }
       }
-      try { trayImg.setTemplateImage(true); } catch {}
-    } catch {}
-  }
-  // Fallback to app icon (non-template colored) if template assets missing
+      if (fs.existsSync(template2x)) {
+        try {
+          const buf2x = fs.readFileSync(template2x);
+          trayImg.addRepresentation({ scaleFactor: 2.0, data: buf2x });
+          writeLog('Tray: added @2x representation');
+        } catch (e) { writeLog('Tray: add @2x failed ' + String(e)); }
+      }
+      try { trayImg.setTemplateImage(true); writeLog('Tray: setTemplateImage(true)'); } catch (e) { writeLog('Tray: setTemplateImage error ' + String(e)); }
+    }
+  } catch (e) { writeLog('Tray: error creating template image ' + String(e)); }
+
+  // Fallback to app icon (non-template colored) if template assets missing or image empty
   if (!trayImg || trayImg.isEmpty?.()) {
+    writeLog('Tray: using fallback app icon');
     trayImg = nativeImage.createFromPath(path.join(assetBase, 'routed_icon.png'));
     try { trayImg.setTemplateImage(false); } catch {}
+  } else {
+    writeLog(`Tray: final image size=${JSON.stringify(trayImg.getSize?.())}`);
   }
+
   tray = new Tray(trayImg);
+  // Set a short title as a debug fallback so we see presence even if icon fails
+  try { tray.setTitle('R'); } catch {}
+
   const login = app.getLoginItemSettings?.() || { openAtLogin: false };
   const contextMenu = Menu.buildFromTemplate([
     { label: 'Open', click: () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } } },
