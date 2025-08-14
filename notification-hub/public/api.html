@@ -47,16 +47,8 @@
           <input id="baseUrl" placeholder="https://routed.onrender.com" />
         </div>
         <div>
-          <label>Tenant ID</label>
-          <input id="tenantId" placeholder="e.g. tnt_..." />
-        </div>
-        <div>
           <label>Developer Key</label>
           <input id="devKey" placeholder="Paste your developer key" />
-        </div>
-        <div>
-          <label>Admin Token (optional)</label>
-          <input id="adminToken" placeholder="Only needed for admin operations" />
         </div>
       </div>
       <div class="row" style="margin-top:8px">
@@ -92,18 +84,19 @@ BASE_URL="https://routed.onrender.com"</code></pre>
           <h3>Create a channel</h3>
           <p class="muted">Create a channel bound to a topic name. Returns a short_id you can share.</p>
           <pre><code id="createChannelCmd">curl -s \
-  -X POST "$BASE_URL/v1/dev/channels/create" \
+  -X POST "$BASE_URL/v1/channels/create" \
+  -H "Authorization: Bearer $ROUTED_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "tenantId": "&lt;tenant-id&gt;",
     "name": "My Channel",
-    "topic": "runs.finished"
+    "topic_name": "runs.finished"
   }'</code></pre>
         </div>
         <div>
           <h3>List channels</h3>
           <pre><code id="listChannelsCmd">curl -s \
-  "$BASE_URL/v1/dev/channels/list?tenant_id=&lt;tenant-id&gt;"</code></pre>
+  -H "Authorization: Bearer $ROUTED_API_KEY" \
+  "$BASE_URL/v1/channels/list"</code></pre>
           <div class="panel" style="margin-top:10px">
             <div class="row">
               <button class="btn" id="btnLoad">Load my channels</button>
@@ -118,7 +111,6 @@ BASE_URL="https://routed.onrender.com"</code></pre>
               <button class="btn" id="btnAddPhones">Add</button>
             </div>
             <div class="list" id="usersList" style="margin-top:8px"></div>
-            <div class="muted" style="margin-top:6px">Tip: Removing emails requires an Admin Token. Phone removal is not yet supported on the public API.</div>
           </div>
         </div>
       </div>
@@ -172,28 +164,23 @@ BASE_URL="https://routed.onrender.com"</code></pre>
       const defBase = (location && location.origin && location.origin.startsWith('http')) ? location.origin : 'https://routed.onrender.com';
       const state = {
         baseUrl: localStorage.getItem('API_BASE_URL') || defBase,
-        tenantId: localStorage.getItem('API_TENANT_ID') || '',
-        devKey: localStorage.getItem('API_DEV_KEY') || '',
-        adminToken: localStorage.getItem('API_ADMIN_TOKEN') || ''
+        devKey: localStorage.getItem('API_DEV_KEY') || ''
       };
 
       // hydrate inputs
       $('#baseUrl').value = state.baseUrl;
-      $('#tenantId').value = state.tenantId;
       $('#devKey').value = state.devKey;
-      $('#adminToken').value = state.adminToken;
       $('#baseBadge').textContent = 'Base URL: ' + state.baseUrl;
 
       function esc(s){ return String(s||'').replace(/`/g,'\`'); }
       function updateSnippets(){
         const BASE = state.baseUrl;
         const KEY = state.devKey || '$ROUTED_API_KEY';
-        const TEN = state.tenantId || '<tenant-id>';
         const topic = (window._selected && window._selected.topic) ? window._selected.topic : 'runs.finished';
         $('#envSnippet').textContent = `# store your key securely in an environment variable\nexport ROUTED_API_KEY="${esc(state.devKey || '<your developer key>')}"  # do not commit this\nBASE_URL="${esc(BASE)}"`;
         $('#healthCmd').textContent = `curl -s -H "Authorization: Bearer ${KEY}" "${BASE}/v1/health/deep"`;
-        $('#createChannelCmd').textContent = `curl -s \\\n  -X POST "${BASE}/v1/dev/channels/create" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "tenantId": "${esc(TEN)}",\n    "name": "My Channel",\n    "topic": "runs.finished"\n  }'`;
-        $('#listChannelsCmd').textContent = `curl -s \n  "${BASE}/v1/dev/channels/list?tenant_id=${esc(TEN)}"`;
+        $('#createChannelCmd').textContent = `curl -s \\\n  -X POST "${BASE}/v1/channels/create" \\\n  -H "Authorization: Bearer ${KEY}" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "name": "My Channel",\n    "topic_name": "runs.finished"\n  }'`;
+        $('#listChannelsCmd').textContent = `curl -s \\\n  -H "Authorization: Bearer ${KEY}" \\\n  "${BASE}/v1/channels/list"`;
         $('#sendCmd').textContent = `curl -s \\\n  -X POST "${BASE}/v1/messages" \\\n  -H "Authorization: Bearer ${KEY}" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "topic": "${esc(topic)}",\n    "title": "Build finished",\n    "body": "#123 passed in 2m 14s",\n    "payload": { "link": "https://ci.example.com/builds/123" }\n  }'`;
         $('#provisionCmd').textContent = `curl -s -X POST "${BASE}/v1/dev/sandbox/provision" | jq .`;
       }
@@ -201,13 +188,9 @@ BASE_URL="https://routed.onrender.com"</code></pre>
 
       $('#saveCfg').addEventListener('click', () => {
         state.baseUrl = $('#baseUrl').value.trim() || defBase;
-        state.tenantId = $('#tenantId').value.trim();
         state.devKey = $('#devKey').value.trim();
-        state.adminToken = $('#adminToken').value.trim();
         localStorage.setItem('API_BASE_URL', state.baseUrl);
-        localStorage.setItem('API_TENANT_ID', state.tenantId);
         localStorage.setItem('API_DEV_KEY', state.devKey);
-        localStorage.setItem('API_ADMIN_TOKEN', state.adminToken);
         $('#baseBadge').textContent = 'Base URL: ' + state.baseUrl;
         $('#saveMsg').textContent = 'Saved.';
         setTimeout(() => $('#saveMsg').textContent = '', 1500);
@@ -224,10 +207,10 @@ BASE_URL="https://routed.onrender.com"</code></pre>
       }
 
       async function loadChannels(){
-        if (!state.tenantId) { $('#loadMsg').textContent = 'Enter a Tenant ID above.'; return; }
+        if (!state.devKey) { $('#loadMsg').textContent = 'Enter your Developer Key above.'; return; }
         $('#loadMsg').textContent = 'Loading...';
         try {
-          const j = await jsonFetch(`/v1/dev/channels/list?tenant_id=${encodeURIComponent(state.tenantId)}`);
+          const j = await jsonFetch(`/v1/channels/list`, { headers: { 'Authorization': 'Bearer ' + state.devKey } });
           const sel = $('#channelSelect');
           sel.innerHTML = '';
           (j.channels || j || []).forEach(c => {
@@ -248,24 +231,24 @@ BASE_URL="https://routed.onrender.com"</code></pre>
         list.innerHTML = '';
         if (!shortId) return;
         try {
-          const j = await jsonFetch(`/v1/dev/channels/${encodeURIComponent(shortId)}/users`);
+          const j = await jsonFetch(`/v1/channels/${encodeURIComponent(shortId)}/users`, { headers: { 'Authorization': 'Bearer ' + state.devKey } });
           (j.users || j || []).forEach(u => {
             const row = document.createElement('div');
             row.className = 'row';
             const label = document.createElement('div');
             label.textContent = u.email || u.phone || u.user_id || JSON.stringify(u);
             row.appendChild(label);
-            if (u.email && state.adminToken) {
+            if (u.email) {
               const btn = document.createElement('button');
               btn.className = 'btn';
               btn.textContent = 'Remove';
               btn.addEventListener('click', async () => {
                 btn.disabled = true;
                 try {
-                  await jsonFetch('/v1/admin/users/remove', {
+                  await jsonFetch('/v1/users/remove', {
                     method: 'POST',
-                    headers: { 'Content-Type':'application/json', 'Authorization': 'Bearer ' + state.adminToken },
-                    body: JSON.stringify({ tenant_id: state.tenantId, email: u.email, topic: window._selected.topic }),
+                    headers: { 'Content-Type':'application/json', 'Authorization': 'Bearer ' + state.devKey },
+                    body: JSON.stringify({ email: u.email, topic: window._selected.topic }),
                     cache: 'no-store'
                   });
                   await loadUsers(shortId);
@@ -290,16 +273,16 @@ BASE_URL="https://routed.onrender.com"</code></pre>
       });
 
       $('#btnAddPhones').addEventListener('click', async () => {
-        if (!state.tenantId) { alert('Enter a Tenant ID above.'); return; }
+        if (!state.devKey) { alert('Enter your Developer Key above.'); return; }
         if (!window._selected || !window._selected.topic) { alert('Select a channel first.'); return; }
         const raw = ($('#newPhones').value||'').trim(); if (!raw) { alert('Enter one or more E.164 phone numbers.'); return; }
         const phones = raw.split(/[\s,]+/).map(s => s.trim()).filter(Boolean);
         try {
           for (const phone of phones) {
-            await jsonFetch('/v1/dev/users/ensure', {
+            await jsonFetch('/v1/users/ensure', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ tenant_id: state.tenantId, phone, topic: window._selected.topic }),
+              headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + state.devKey },
+              body: JSON.stringify({ phone, topic: window._selected.topic }),
               cache: 'no-store'
             });
           }
