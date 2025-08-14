@@ -55,6 +55,8 @@ async function main() {
   await app.register(health);
   const devPublic = (await import('./routes/dev_public')).default;
   await app.register(devPublic);
+  const verifyRoutes = (await import('./routes/verify')).default;
+  await app.register(verifyRoutes);
 
   const stopTtl = startTtlSweeper();
 

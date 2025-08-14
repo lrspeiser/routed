@@ -38,6 +38,32 @@
   <div class="row" style="opacity:.7">Before connecting, we’ll check your server health.</div>
   <div class="row" id="health">Checking server…</div>
 
+  <div id="regOverlay" style="position:fixed; inset:0; background:rgba(255,253,250,0.98); display:none; padding:16px; z-index:9999; overflow:auto">
+    <h3>Register your phone</h3>
+    <div id="regStepPhone">
+      <div class="row" style="display:flex; gap:8px; align-items:center">
+        <select id="country" style="width:160px">
+          <option value="US" selected>United States (+1)</option>
+          <option value="CA">Canada (+1)</option>
+          <option value="GB">United Kingdom (+44)</option>
+          <option value="AU">Australia (+61)</option>
+        </select>
+        <input id="phoneInput" placeholder="+14155551234" style="flex:1" />
+      </div>
+      <button id="sendCodeBtn">Send Code</button>
+      <div id="regError" style="color:#b91c1c; margin-top:6px"></div>
+    </div>
+    <div id="regStepCode" style="display:none">
+      <div class="row">
+        <label>Enter the code we texted you</label>
+        <input id="codeInput" placeholder="123456" />
+      </div>
+      <button id="verifyCodeBtn">Verify</button>
+      <div id="regError2" style="color:#b91c1c; margin-top:6px"></div>
+      <div class="row" style="font-size:12px; opacity:.7">Didn’t get it? Wait a moment and try again.</div>
+    </div>
+  </div>
+
   <div class="row" style="margin-top:16px">
     <div style="display:flex; gap:8px; border-bottom:1px solid var(--border); padding-bottom:6px">
       <button id="tabClient" style="flex:1">Client</button>
@@ -501,6 +527,12 @@
       } catch {}
 
       const healthy = await checkHealth();
+      // Registration gate
+      let verified = false;
+      try { const d = await window.receiver.devGet(); verified = !!(d && d.verifiedUserId && d.verifiedPhone); } catch {}
+      const overlay = document.getElementById('regOverlay');
+      if (!verified) { overlay.style.display = 'block'; showTab('settings'); }
+
       try {
         const saved = localStorage.getItem('ROUTED_PHONE');
         if (saved) {
@@ -563,6 +595,39 @@
     });
     document.getElementById('toggleCurl').addEventListener('click', (e) => { e.preventDefault(); const p = document.getElementById('curlPanel'); p.style.display = p.style.display === 'none' ? '' : 'none'; if (p.style.display !== 'none') updateCurl(); });
     document.getElementById('quitBtn').addEventListener('click', () => { try { window.receiver.appQuit(); } catch {} });
+
+    // Registration overlay handlers
+    (function(){
+      const countryEl = document.getElementById('country');
+      const phoneEl = document.getElementById('phoneInput');
+      const codeEl = document.getElementById('codeInput');
+      const stepPhone = document.getElementById('regStepPhone');
+      const stepCode = document.getElementById('regStepCode');
+      const err1 = document.getElementById('regError');
+      const err2 = document.getElementById('regError2');
+      document.getElementById('sendCodeBtn').addEventListener('click', async () => {
+        err1.textContent='';
+        const country = (countryEl.value||'US').toUpperCase();
+        const phone = (phoneEl.value||'').trim();
+        if (!phone) { err1.textContent = 'Enter your phone number'; return; }
+        const ok = await window.receiver.verifyStart({ phone, country });
+        if (!ok || ok.ok === false) { err1.textContent = 'Failed to send code. Try again.'; return; }
+        stepPhone.style.display='none'; stepCode.style.display='block';
+      });
+      document.getElementById('verifyCodeBtn').addEventListener('click', async () => {
+        err2.textContent='';
+        const phone = (phoneEl.value||'').trim();
+        const code = (codeEl.value||'').trim();
+        if (!code) { err2.textContent='Enter the code'; return; }
+        const res = await window.receiver.verifyCheck({ phone, code });
+        if (!res || res.ok === false) { err2.textContent='Invalid code. Try again.'; return; }
+        try { localStorage.setItem('ROUTED_PHONE', phone); } catch {}
+        document.getElementById('regOverlay').style.display='none';
+        showToast('Verified', 'Your phone is verified.');
+        // Optionally auto-connect post verification
+        const ok = await preflightOrFail(); if (ok) { await connectWithPhone(phone); await ensureDevChannelForPhone(phone); showTab('dev'); }
+      });
+    })();
 
     // Settings handlers for phone/connect
     document.getElementById('savePhoneBtn').addEventListener('click', () => {

@@ -24,4 +24,7 @@ contextBridge.exposeInMainWorld('receiver', {
   adminUsersEnsure: (args) => ipcRenderer.invoke('admin:users:ensure', args),
   devSendMessage: (args) => ipcRenderer.invoke('dev:sendMessage', args),
   devSetApiKey: (key) => ipcRenderer.invoke('dev:setApiKey', key),
+  // Verification
+  verifyStart: (args) => ipcRenderer.invoke('verify:start', args),
+  verifyCheck: (args) => ipcRenderer.invoke('verify:check', args),
 });

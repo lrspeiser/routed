@@ -327,6 +327,48 @@ ipcMain.handle('admin:sockets', async () => {
 });
 
 // Developer/Channels IPC
+
+// Verification IPC
+ipcMain.handle('verify:start', async (_evt, { phone, country }) => {
+  try {
+    const res = await fetch(new URL('/v1/verify/start', baseUrl()).toString(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, country }),
+      cache: 'no-store',
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
+    writeLog(`verify:start → ok for ${phone}`);
+    return { ok: true };
+  } catch (e) {
+    writeLog('verify:start error: ' + String(e));
+    return { ok: false, error: String(e) };
+  }
+});
+
+ipcMain.handle('verify:check', async (_evt, { phone, code }) => {
+  try {
+    const res = await fetch(new URL('/v1/verify/check', baseUrl()).toString(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, code }),
+      cache: 'no-store',
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok || !j.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
+    const d = loadDev() || {};
+    d.verifiedPhone = j.phone;
+    d.verifiedUserId = j.userId;
+    d.verifiedTenantId = j.tenantId;
+    saveDev(d);
+    writeLog(`verify:check → ok user=${j.userId}`);
+    return { ok: true, userId: j.userId };
+  } catch (e) {
+    writeLog('verify:check error: ' + String(e));
+    return { ok: false, error: String(e) };
+  }
+});
 ipcMain.handle('dev:get', async () => {
   const d = loadDev();
   writeLog(`dev:get → ${d ? 'ok' : 'none'}`);
