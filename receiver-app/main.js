@@ -272,7 +272,7 @@ ipcMain.handle('subscriptions:remove', async (_evt, id) => {
   return store.subscriptions;
 });
 
-ipcMain.handle('resolve-channel', async (_evt, id, resolveBaseUrl) => {
+ipcMain.handle('resolve-channel', async (_evt, id, resolveBaseUrl) => {
   try {
     const res = await fetch(new URL(`/api/channel/resolve/${encodeURIComponent(id)}`, resolveBaseUrl || DEFAULT_RESOLVE_URL_FALLBACK).toString(), { cache: 'no-store' });
     if (!res.ok) throw new Error(`resolve failed ${res.status}`);
