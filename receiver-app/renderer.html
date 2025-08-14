@@ -290,9 +290,9 @@
       try {
         // Provision tenant if needed and ensure phone user on hub
         let d = await window.receiver.devGet();
-        if (!d || !d.tenantId) { devlog('dev:provision (pre-connect)'); await window.receiver.devProvision(); d = await window.receiver.devGet(); }
-        if (!d || !d.tenantId) { devlog('dev:provision failed'); return; }
-        const ensured = await window.receiver.adminUsersEnsure({ tenantId: d.tenantId, phone, topic: 'runs.finished' });
+        if (!d || !d.apiKey) { devlog('dev:provision (pre-connect)'); await window.receiver.devProvision(); d = await window.receiver.devGet(); }
+        if (!d || !d.apiKey) { devlog('dev:provision failed'); return; }
+        const ensured = await window.receiver.adminUsersEnsure({ phone, topic: 'runs.finished' });
         if (!ensured || !ensured.userId) { devlog('users:ensure failed'); return; }
         const userId = ensured.userId;
         devlog(`Resolved: base_url=${BASE_URL} user_id=${userId}`);
@@ -467,6 +467,7 @@
             const selected = channelSelect.value ? JSON.parse(channelSelect.value) : null;
             if (selected && selected.topic) topic = selected.topic;
           } catch {}
+          const endpoint = new URL('/v1/messages', BASE_URL).toString();
           const cmd = [
             'curl -X POST',
             "-H 'Authorization: Bearer " + apiKey + "'",
@@ -476,7 +477,7 @@
               "\"title\": \"Routed\", " +
               "\"body\": \"Hello from CLI\", " +
               "\"payload\": {\"url\": \"" + ((document.getElementById('linkUrl')?.value || 'https://www.google.com').replace(/"/g,'\\"')) + "\"}}'",
-            'https://routed.onrender.com/v1/messages'
+            endpoint
           ].join(' ');
           document.getElementById('curlCmd').textContent = cmd;
         } catch {}
@@ -499,16 +500,21 @@
         if (el && v) el.textContent = `v${v}`;
       } catch {}
 
-      await checkHealth();
+      const healthy = await checkHealth();
       try {
         const saved = localStorage.getItem('ROUTED_PHONE');
         if (saved) {
           try { document.getElementById('settingsPhone').value = saved; } catch {}
           try { document.getElementById('settingsPhoneView').textContent = saved; } catch {}
-          await connectWithPhone(saved);
-          await ensureDevChannelForPhone(saved);
-          showTab('dev');
-          try { document.getElementById('messageText')?.focus(); } catch {}
+          if (healthy) {
+            await connectWithPhone(saved);
+            await ensureDevChannelForPhone(saved);
+            showTab('dev');
+            try { document.getElementById('messageText')?.focus(); } catch {}
+          } else {
+            showToast('Cannot connect', 'Server is unreachable. Check Settings → Server and try again.');
+            showTab('settings');
+          }
         }
         // Debug: log sockets snapshot to help diagnose delivery
         try {

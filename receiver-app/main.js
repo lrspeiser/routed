@@ -382,14 +382,17 @@ ipcMain.handle('dev:setApiKey', async (_evt, key) => {
   }
 });
 
-ipcMain.handle('admin:channels:list', async (_evt, tenantId) => {
+ipcMain.handle('admin:channels:list', async (_evt, _tenantId) => {
   try {
-    const url = new URL(`/v1/dev/channels/list?tenant_id=${encodeURIComponent(tenantId)}`, baseUrl()).toString();
-    const res = await fetch(url, { cache: 'no-store' });
+    const dev = loadDev();
+    if (!dev || !dev.apiKey) throw new Error('Developer key not set');
+    const url = new URL('/v1/channels/list', baseUrl()).toString();
+    const res = await fetch(url, { cache: 'no-store', headers: { 'Authorization': `Bearer ${dev.apiKey}` } });
     const j = await res.json();
     if (!res.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
-    writeLog(`channels:list → ${Array.isArray(j.channels)? j.channels.length: 0}`);
-    return j.channels || [];
+    const channels = j.channels || j;
+    writeLog(`channels:list → ${Array.isArray(channels)? channels.length: 0}`);
+    return channels || [];
   } catch (e) {
     dialog.showErrorBox('List channels failed', String(e));
     writeLog(`channels:list error: ${String(e)}`);
@@ -399,14 +402,15 @@ ipcMain.handle('admin:channels:list', async (_evt, tenantId) => {
 
 ipcMain.handle('admin:channels:create', async (_evt, { tenantId, name, topic }) => {
   try {
-    const admin = isAdminMode();
-    const url = new URL(admin ? '/v1/admin/channels/create' : '/v1/dev/channels/create', baseUrl()).toString();
-    const headers = { 'Content-Type': 'application/json', ...(admin ? adminAuthHeaders() : {}) };
-    const body = admin ? { tenant_id: tenantId, name, topic_name: topic } : { tenantId, name, topic };
+    const dev = loadDev();
+    if (!dev || !dev.apiKey) throw new Error('Developer key not set');
+    const url = new URL('/v1/channels/create', baseUrl()).toString();
+    const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${dev.apiKey}` };
+    const body = { name, topic };
     const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body), cache: 'no-store' });
     const j = await res.json();
     if (!res.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
-    writeLog(`channels:create → ok name=${name} (admin=${admin})`);
+    writeLog(`channels:create → ok name=${name}`);
     return j;
   } catch (e) {
     dialog.showErrorBox('Create channel failed', String(e));
@@ -417,7 +421,9 @@ ipcMain.handle('admin:channels:create', async (_evt, { tenantId, name, topic }) 
 
 ipcMain.handle('admin:channels:users', async (_evt, shortId) => {
   try {
-    const res = await fetch(new URL(`/v1/dev/channels/${encodeURIComponent(shortId)}/users`, baseUrl()).toString(), { cache: 'no-store' });
+    const dev = loadDev();
+    if (!dev || !dev.apiKey) throw new Error('Developer key not set');
+    const res = await fetch(new URL(`/v1/channels/${encodeURIComponent(shortId)}/users`, baseUrl()).toString(), { cache: 'no-store', headers: { 'Authorization': `Bearer ${dev.apiKey}` } });
     const j = await res.json();
     if (!res.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
     writeLog(`channels:users(${shortId}) → ${Array.isArray(j.users)? j.users.length: 0}`);
@@ -431,14 +437,15 @@ ipcMain.handle('admin:channels:users', async (_evt, shortId) => {
 
 ipcMain.handle('admin:users:ensure', async (_evt, { tenantId, phone, topic }) => {
   try {
-    const admin = isAdminMode();
-    const url = new URL(admin ? '/v1/admin/users/ensure' : '/v1/dev/users/ensure', baseUrl()).toString();
-    const headers = { 'Content-Type': 'application/json', ...(admin ? adminAuthHeaders() : {}) };
-    const body = admin ? { tenant_id: tenantId, phone, topic } : { tenant_id: tenantId, phone, topic };
+    const dev = loadDev();
+    if (!dev || !dev.apiKey) throw new Error('Developer key not set');
+    const url = new URL('/v1/users/ensure', baseUrl()).toString();
+    const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${dev.apiKey}` };
+    const body = { phone, topic };
     const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body), cache: 'no-store' });
     const j = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
-    writeLog(`users:ensure → ok tenant=${tenantId} phone=${phone} (admin=${admin})`);
+    writeLog(`users:ensure → ok phone=${phone}`);
     return j;
   } catch (e) {
     dialog.showErrorBox('Add user failed', String(e));
