@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Routed API</title>
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <style>
+    :root { --bg:#0b0b0b; --panel:rgba(255,255,255,0.06); --text:#f5f5f5; --muted:#c9c9c9; --code:#111; --accent:#79ffe1; }
+    html, body { height: 100%; }
+    body { margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; background: var(--bg); color: var(--text); }
+    .container { max-width: 900px; margin: 0 auto; padding: 32px 20px 60px; }
+    a { color: var(--accent); }
+    h1 { font-size: 40px; margin: 0 0 8px 0; }
+    h2 { margin-top: 32px; }
+    p { color: var(--muted); }
+    .panel { background: var(--panel); border-radius: 12px; padding: 16px; margin: 14px 0; }
+    pre { background: #0f0f10; border-radius: 10px; padding: 14px; overflow-x: auto; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; color: #e6e6e6; }
+    .home { display:inline-block; margin-bottom: 16px; opacity:.9 }
+    .badge { display:inline-block; background: #1b1b1c; padding: 2px 8px; border-radius: 999px; font-size: 12px; color:#9be8dc; border:1px solid rgba(121,255,225,0.2) }
+    .grid { display:grid; grid-template-columns: 1fr; gap: 16px; }
+    .muted { color: var(--muted); }
+    .kbd { background:#111; border:1px solid #222; padding:2px 6px; border-radius:6px }
+    @media(min-width: 900px){ .grid { grid-template-columns: 1fr 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <a class="home" href="/">← Back to home</a>
+    <h1>Routed API</h1>
+    <div class="badge">Base URL: https://routed.onrender.com</div>
+
+    <div class="panel">
+      <h2>Get your Developer Key</h2>
+      <p>
+        Download and install the Routed desktop app. Open Settings and copy your <strong>Developer Key</strong>.
+        This key authorizes your HTTP requests. Keep it secret.
+      </p>
+      <p>
+        Download: <a href="/downloads/Routed-latest.dmg">Routed for macOS</a>
+      </p>
+      <pre><code># store your key securely in an environment variable
+export ROUTED_API_KEY="&lt;your developer key&gt;"  # do not commit this
+BASE_URL="https://routed.onrender.com"</code></pre>
+    </div>
+
+    <div class="panel">
+      <h2>HTTP Auth</h2>
+      <p>Use a Bearer token with your developer key:</p>
+      <pre><code>curl -s -H "Authorization: Bearer $ROUTED_API_KEY" "$BASE_URL/v1/health/deep"</code></pre>
+    </div>
+
+    <div class="panel">
+      <h2>Channels</h2>
+      <div class="grid">
+        <div>
+          <h3>Create a channel</h3>
+          <p class="muted">Create a channel bound to a topic name. Returns a short_id you can share.</p>
+          <pre><code>curl -s \
+  -X POST "$BASE_URL/v1/admin/channels/create" \
+  -H "Authorization: Bearer $ROUTED_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tenant_id": "&lt;tenant-id&gt;",
+    "name": "My Channel",
+    "topic_name": "runs.finished"
+  }'</code></pre>
+        </div>
+        <div>
+          <h3>List channels</h3>
+          <pre><code>curl -s \
+  "$BASE_URL/v1/admin/channels/list?tenant_id=&lt;tenant-id&gt;" \
+  -H "Authorization: Bearer $ROUTED_API_KEY"</code></pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Manage phone numbers</h2>
+      <div class="grid">
+        <div>
+          <h3>Add/ensure subscription</h3>
+          <p class="muted">Ensure a phone number exists and is subscribed to a topic.</p>
+          <pre><code>curl -s \
+  -X POST "$BASE_URL/v1/admin/users/ensure" \
+  -H "Authorization: Bearer $ROUTED_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tenant_id": "&lt;tenant-id&gt;",
+    "phone": "+14155551234",
+    "topic": "runs.finished"
+  }'</code></pre>
+        </div>
+        <div>
+          <h3>Remove subscription</h3>
+          <p class="muted">Unsubscribe an email from a topic (email supported for legacy). For phone-based removal, contact support.</p>
+          <pre><code>curl -s \
+  -X POST "$BASE_URL/v1/admin/users/remove" \
+  -H "Authorization: Bearer $ROUTED_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tenant_id": "&lt;tenant-id&gt;",
+    "email": "user@example.com",
+    "topic": "runs.finished"
+  }'</code></pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Send a message</h2>
+      <p class="muted">Send to all subscribers of a topic. Include an optional URL in payload.link to open on click.</p>
+      <pre><code>curl -s \
+  -X POST "$BASE_URL/v1/messages" \
+  -H "Authorization: Bearer $ROUTED_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "topic": "runs.finished",
+    "title": "Build finished",
+    "body": "#123 passed in 2m 14s",
+    "payload": { "link": "https://ci.example.com/builds/123" }
+  }'</code></pre>
+    </div>
+
+    <div class="panel">
+      <h2>Developer sandbox (optional)</h2>
+      <p class="muted">Provision a demo tenant, publisher, topic, and user for quick testing.</p>
+      <pre><code>curl -s -X POST "$BASE_URL/v1/dev/sandbox/provision" | jq .</code></pre>
+    </div>
+
+    <p class="muted">Need something else? Open an issue or contact us.</p>
+  </div>
+</body>
+</html>
+
