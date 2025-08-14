@@ -13,7 +13,11 @@ RUN npm run build
 FROM node:20-alpine as runner
 WORKDIR /usr/src/app
 ENV NODE_ENV=production
+# App server code
 COPY --from=build /usr/src/app/dist ./dist
+# Static assets for website
+COPY --from=build /usr/src/app/public ./public
+COPY --from=build /usr/src/app/images ./images
 COPY package.json ./
 RUN npm install --omit=dev
 EXPOSE 8080
