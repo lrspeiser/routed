@@ -84,10 +84,11 @@ export default function Page() {
       return;
     }
     // Create server-side channel for persistence & association
+    // DEPRECATION: tenantId is an internal concept; user-facing flows use developer key to infer tenant.
     try {
       const resp = await fetch('/api/admin/channels/create', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tenantId: sb.tenantId, name: channelName, topic: 'runs.finished' }),
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Api-Key': sb.apiKey },
+        body: JSON.stringify({ name: channelName, topic: 'runs.finished' }),
       });
       const jr = await resp.json();
       if (!resp.ok) { setLog(`Channel DB create failed: ${JSON.stringify(jr)}`); }
@@ -138,8 +139,8 @@ export default function Page() {
     if (!sandbox || !allowedEmail) return;
     try {
       const res = await fetch('/api/admin/emails/add', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: allowedEmail, tenantId: sandbox.tenantId, topic: 'runs.finished' }),
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Api-Key': sandbox.apiKey },
+        body: JSON.stringify({ email: allowedEmail, topic: 'runs.finished' }),
       });
       const j = await res.json();
       if (!res.ok) {
@@ -158,14 +159,13 @@ export default function Page() {
     if (!sandbox) return;
     try {
       if (channelShortId) {
-        const res = await fetch(`/api/admin/channels/users/${encodeURIComponent(channelShortId)}`, { cache: 'no-store' });
+        const res = await fetch(`/api/admin/channels/users/${encodeURIComponent(channelShortId)}`, { cache: 'no-store', headers: { 'X-Api-Key': sandbox.apiKey } });
         const j = await res.json();
         setEmails(j.users || []);
       } else {
         const url = new URL('/api/admin/emails/list', window.location.origin);
-        url.searchParams.set('tenantId', sandbox.tenantId);
         url.searchParams.set('topic', 'runs.finished');
-        const res = await fetch(url.toString(), { cache: 'no-store' });
+        const res = await fetch(url.toString(), { cache: 'no-store', headers: { 'X-Api-Key': sandbox.apiKey } });
         const j = await res.json();
         setEmails(j.users || []);
       }
@@ -176,8 +176,8 @@ export default function Page() {
     if (!sandbox) return;
     try {
       const res = await fetch('/api/admin/emails/remove', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tenantId: sandbox.tenantId, email, topic: 'runs.finished' }),
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Api-Key': sandbox.apiKey },
+        body: JSON.stringify({ email, topic: 'runs.finished' }),
       });
       if (!res.ok) throw new Error('remove failed');
       await refreshEmails();
@@ -211,7 +211,7 @@ export default function Page() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         <div style={{ background: '#0b1020', color: '#e6e9f5', padding: 16, borderRadius: 12 }}>
           <h3>0) Connection Self-Test</h3>
-          <p style={{ opacity: 0.8, marginTop: -8 }}>Verifies hub admin, WS and delivery before enabling inputs.</p>
+          <p style={{ opacity: 0.8, marginTop: -8 }}>Verifies hub, WS and delivery before enabling inputs. Admin token not required for user flows.</p>
           <button type="button" disabled={selfTestRunning} onClick={async () => {
             console.log('[UI] Self-test clicked');
             setLog((prev) => (prev ? prev + '\n' : '') + new Date().toISOString() + ' Self-test starting…');

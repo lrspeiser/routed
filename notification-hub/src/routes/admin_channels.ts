@@ -15,6 +15,12 @@ function makeShortId(): string {
   return Math.random().toString(36).slice(2, 8);
 }
 
+async function authPublisher(apiKey?: string) {
+  if (!apiKey) return null;
+  const { rows } = await pool.query(`select id, tenant_id from publishers where api_key=$1`, [apiKey]);
+  return rows[0] ?? null;
+}
+
 export default async function routes(fastify: FastifyInstance) {
   // Create a channel bound to a topic
   fastify.post('/v1/admin/channels/create', async (req, reply) => {
@@ -67,6 +73,48 @@ export default async function routes(fastify: FastifyInstance) {
     }
   });
 
+  // Publisher-scoped channel create (infer tenant from API key)
+  // DEPRECATION: Tenant ID is not required from users; inferred by developer key.
+  fastify.post('/v1/channels/create', async (req, reply) => {
+    const apiKey = (req.headers.authorization || '').replace('Bearer ', '');
+    const pub = await authPublisher(apiKey);
+    if (!pub) return reply.status(401).send({ error: 'unauthorized' });
+    const { name, topic_name, short_id } = (req.body ?? {}) as any;
+    const topicName = (topic_name as string) || 'runs.finished';
+    if (!name) return reply.status(400).send({ error: 'missing name' });
+    try {
+      const result = await withTxn(async (c) => {
+        const tr = await c.query(
+          `insert into topics (tenant_id, name) values ($1,$2)
+           on conflict (tenant_id,name) do update set name=excluded.name
+           returning id`,
+          [pub.tenant_id, topicName]
+        );
+        const topicId = tr.rows[0].id;
+        let sid = (short_id as string) || makeShortId();
+        let ok = false;
+        for (let i = 0; i < 5 && !ok; i++) {
+          try {
+            const ins = await c.query(
+              `insert into channels (tenant_id, topic_id, name, short_id) values ($1,$2,$3,$4) returning id, short_id`,
+              [pub.tenant_id, topicId, name, sid]
+            );
+            ok = true;
+            sid = ins.rows[0].short_id;
+          } catch (e: any) {
+            const msg = String(e.message || e);
+            if (msg.includes('unique') || msg.includes('duplicate')) sid = makeShortId();
+            else throw e;
+          }
+        }
+        return { short_id: sid };
+      });
+      return reply.send(result);
+    } catch (e: any) {
+      return reply.status(500).send({ error: 'internal_error', detail: String(e?.message || e) });
+    }
+  });
+
   // List channels for a tenant
   fastify.get('/v1/admin/channels/list', async (req, reply) => {
     requireAdmin(req);
@@ -79,6 +127,21 @@ export default async function routes(fastify: FastifyInstance) {
        where c.tenant_id=$1
        order by c.created_at desc`,
       [tenantId]
+    );
+    return reply.send({ channels: rows });
+  });
+
+  // Publisher-scoped list
+  fastify.get('/v1/channels/list', async (req, reply) => {
+    const apiKey = (req.headers.authorization || '').replace('Bearer ', '');
+    const pub = await authPublisher(apiKey);
+    if (!pub) return reply.status(401).send({ error: 'unauthorized' });
+    const { rows } = await pool.query(
+      `select c.id, c.short_id, c.name, t.name as topic
+       from channels c join topics t on t.id=c.topic_id
+       where c.tenant_id=$1
+       order by c.created_at desc`,
+      [pub.tenant_id]
     );
     return reply.send({ channels: rows });
   });
@@ -103,6 +166,29 @@ export default async function routes(fastify: FastifyInstance) {
     const users = rows.map((r) => ({ user_id: r.user_id, email: r.email, phone: r.phone, online: isUserOnline(r.user_id) }));
     return reply.send({ users });
   });
-}
 
+  // Publisher-scoped users for channel short id (must belong to same tenant)
+  fastify.get('/v1/channels/:short_id/users', async (req, reply) => {
+    const apiKey = (req.headers.authorization || '').replace('Bearer ', '');
+    const pub = await authPublisher(apiKey);
+    if (!pub) return reply.status(401).send({ error: 'unauthorized' });
+    const params = req.params as any;
+    const shortId = params.short_id as string;
+    const { rows: chRows } = await pool.query(
+      `select tenant_id, topic_id from channels where short_id=$1`,
+      [shortId]
+    );
+    if (chRows.length === 0) return reply.status(404).send({ error: 'not_found' });
+    const { tenant_id, topic_id } = chRows[0];
+    if (tenant_id !== pub.tenant_id) return reply.status(403).send({ error: 'forbidden' });
+    const { rows } = await pool.query(
+      `select u.id as user_id, u.email as email, u.phone as phone from users u
+       join subscriptions s on s.user_id=u.id and s.tenant_id=u.tenant_id and s.topic_id=$2
+       where u.tenant_id=$1 order by lower(coalesce(u.phone,u.email)) asc`,
+      [tenant_id, topic_id]
+    );
+    const users = rows.map((r) => ({ user_id: r.user_id, email: r.email, phone: r.phone, online: isUserOnline(r.user_id) }));
+    return reply.send({ users });
+  });
+}
 
