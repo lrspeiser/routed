@@ -8,6 +8,24 @@ function requireEnv(name: string): string {
   return v;
 }
 
+function twilioAuthHeader(): string {
+  // Prefer API Key SID/Secret if present; otherwise fall back to Account SID + Auth Token
+  const accountSid = requireEnv('TWILIO_ACCOUNT_SID');
+  const apiKeySid = process.env.TWILIO_API_KEY_SID;
+  const apiKeySecret = process.env.TWILIO_API_KEY_SECRET;
+  let user: string;
+  let pass: string;
+  if (apiKeySid && apiKeySecret) {
+    user = apiKeySid;
+    pass = apiKeySecret;
+  } else {
+    const authToken = requireEnv('TWILIO_AUTH_TOKEN');
+    user = accountSid;
+    pass = authToken;
+  }
+  return 'Basic ' + Buffer.from(user + ':' + pass).toString('base64');
+}
+
 export default async function routes(fastify: FastifyInstance) {
   fastify.post('/v1/verify/start', async (req, reply) => {
     try {
@@ -16,8 +34,6 @@ export default async function routes(fastify: FastifyInstance) {
       const country = (body.country || 'US').toUpperCase();
       if (!phone) return reply.status(400).send({ error: 'missing_phone' });
 
-      const accountSid = requireEnv('TWILIO_ACCOUNT_SID');
-      const authToken = requireEnv('TWILIO_AUTH_TOKEN');
       const serviceSid = requireEnv('TWILIO_VERIFY_SERVICE_SID');
 
       const url = `https://verify.twilio.com/v2/Services/${encodeURIComponent(serviceSid)}/Verifications`;
@@ -28,7 +44,7 @@ export default async function routes(fastify: FastifyInstance) {
       const res = await fetch(url, {
         method: 'POST',
         headers: {
-          'Authorization': 'Basic ' + Buffer.from(accountSid + ':' + authToken).toString('base64'),
+          'Authorization': twilioAuthHeader(),
           'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: params.toString(),
@@ -48,8 +64,6 @@ export default async function routes(fastify: FastifyInstance) {
       const code = String(body.code || '').trim();
       if (!phone || !code) return reply.status(400).send({ error: 'missing_phone_or_code' });
 
-      const accountSid = requireEnv('TWILIO_ACCOUNT_SID');
-      const authToken = requireEnv('TWILIO_AUTH_TOKEN');
       const serviceSid = requireEnv('TWILIO_VERIFY_SERVICE_SID');
 
       const url = `https://verify.twilio.com/v2/Services/${encodeURIComponent(serviceSid)}/VerificationCheck`;
@@ -60,7 +74,7 @@ export default async function routes(fastify: FastifyInstance) {
       const res = await fetch(url, {
         method: 'POST',
         headers: {
-          'Authorization': 'Basic ' + Buffer.from(accountSid + ':' + authToken).toString('base64'),
+          'Authorization': twilioAuthHeader(),
           'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: params.toString(),
