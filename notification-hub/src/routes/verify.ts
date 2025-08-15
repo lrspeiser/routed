@@ -33,7 +33,7 @@ export default async function routes(fastify: FastifyInstance) {
         },
         body: params.toString(),
       });
-      const j = await res.json().catch(() => ({}));
+      const j: any = await res.json().catch(() => ({} as any));
       if (!res.ok) return reply.status(res.status).send({ error: 'twilio_error', details: j });
       return reply.send({ ok: true });
     } catch (e: any) {
@@ -65,9 +65,9 @@ export default async function routes(fastify: FastifyInstance) {
         },
         body: params.toString(),
       });
-      const j = await res.json().catch(() => ({}));
+      const j: any = await res.json().catch(() => ({} as any));
       if (!res.ok) return reply.status(res.status).send({ error: 'twilio_error', details: j });
-      if ((j.status || '').toLowerCase() !== 'approved') {
+      if ((String(j.status || '')).toLowerCase() !== 'approved') {
         return reply.status(400).send({ error: 'invalid_code' });
       }
 
