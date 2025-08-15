@@ -30,3 +30,20 @@ contextBridge.exposeInMainWorld('receiver', {
   verifyStart: (args) => ipcRenderer.invoke('verify:start', args),
   verifyCheck: (args) => ipcRenderer.invoke('verify:check', args),
 });
+
+// Scripts bridge (scaffold)
+contextBridge.exposeInMainWorld('scripts', {
+  list: () => ipcRenderer.invoke('scripts:list'),
+  get: (id) => ipcRenderer.invoke('scripts:get', id),
+  create: (payload) => ipcRenderer.invoke('scripts:create', payload),
+  update: (id, payload) => ipcRenderer.invoke('scripts:update', { id, payload }),
+  remove: (id) => ipcRenderer.invoke('scripts:delete', id),
+  enableToggle: (id, enabled) => ipcRenderer.invoke('scripts:enableToggle', { id, enabled }),
+  runNow: (id) => ipcRenderer.invoke('scripts:runNow', id),
+  test: (id) => ipcRenderer.invoke('scripts:test', id),
+  logsTail: (id) => ipcRenderer.invoke('scripts:logs:tail', id),
+  logsRead: (id) => ipcRenderer.invoke('scripts:logs:read', id),
+  logsClear: (id) => ipcRenderer.invoke('scripts:logs:clear', id),
+  webhookUrl: (id) => ipcRenderer.invoke('scripts:webhook:url', id),
+  aiGenerate: (args) => ipcRenderer.invoke('scripts:ai:generate', args),
+});

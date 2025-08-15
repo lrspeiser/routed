@@ -22,7 +22,8 @@
     ],
     "extraResources": [
       { "from": "routed_icon.png", "to": "routed_icon.png" },
-      { "from": "assets", "to": "assets" }
+      { "from": "assets", "to": "assets" },
+      { "from": "resources", "to": "resources" }
     ],
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "mac": {

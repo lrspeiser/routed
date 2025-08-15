@@ -1,2 +1,4 @@
 notification-hub/public/downloads/Routed-0.1.0-mac-arm64.dmg -filter -diff -merge -text
 notification-hub/public/downloads/*.dmg filter=lfs diff=lfs merge=lfs -text
+# Route Deno binaries via LFS
+receiver-app/resources/bin/* filter=lfs diff=lfs merge=lfs -text

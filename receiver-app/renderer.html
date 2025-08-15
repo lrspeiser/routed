@@ -68,6 +68,7 @@
     <div style="display:flex; gap:8px; border-bottom:1px solid var(--border); padding-bottom:6px">
       <button id="tabClient" style="flex:1">Client</button>
       <button id="tabDev" style="flex:1">Developer</button>
+      <button id="tabScripts" style="flex:1">Scripts</button>
       <button id="tabSettings" title="Settings" style="width:42px">⚙︎</button>
     </div>
   </div>
@@ -148,6 +149,50 @@
     </div>
   </div>
 
+
+  <div id="scriptsTab" class="row" style="display:none">
+    <h3>Scripts</h3>
+    <div class="row" style="display:flex; gap:8px; align-items:center">
+      <input id="newScriptName" placeholder="Name (e.g., RSS Poller)" />
+      <select id="newScriptMode" style="width:160px">
+        <option value="poller" selected>Auto-run</option>
+        <option value="webhook">Webhook</option>
+      </select>
+      <button id="createScriptBtn">Create</button>
+    </div>
+    <div class="row">
+      <h4 style="margin:8px 0 4px">Your scripts</h4>
+      <ul id="scriptsList" style="margin:0; padding-left:18px"></ul>
+    </div>
+    <div id="scriptEdit" style="display:none; margin-top:12px">
+      <h4 id="scriptTitle" style="margin:8px 0 4px"></h4>
+      <div id="scriptMeta" style="font-size:12px; opacity:.7; margin-bottom:6px"></div>
+      <div id="scriptActions" style="display:flex; gap:8px; align-items:center; margin:6px 0">
+        <label style="display:flex; gap:6px; align-items:center">
+          <input type="checkbox" id="scriptEnabled" /> Enabled
+        </label>
+        <button id="scriptRunNowBtn">Run Now</button>
+      <span id="webhookUrlView" style="font-size:12px; opacity:.8"></span>
+        <button id="copyWebhookUrlBtn" title="Copy Webhook URL">Copy URL</button>
+        <button id="copyWebhookCurlBtn" title="Copy cURL">Copy cURL</button>
+        <button id="sendWebhookTestBtn" title="POST test JSON">Send Test</button
+      </div>
+      <textarea id="scriptCode" style="width:100%; height:220px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace"></textarea>
+      <div style="display:flex; gap:8px; margin-top:8px; align-items:center; flex-wrap: wrap">
+        <button id="showLogsBtn">Show Logs</button>
+        <button id="clearScriptLogsBtn">Clear Logs</button>
+        <button id="saveScriptBtn">Save</button>
+        <button id="testScriptBtn">Test</button>
+        <button id="runNowScriptBtn">Run Now</button>
+        <button id="showLogsBtn">Show Logs</button>
+      </div>
+      cdiv id="scriptOutput" style="margin-top:8px; background:#fbf7ef; color:var(--green-ink); padding:8px; border-radius:8px; border:1px solid var(--border); white-space:pre-wrap"ec/dive
+      cdiv style="display:flex; gap:8px; margin-top:6px"e
+        cbutton id="saveAndTestBtn"eSave + Testc/buttone
+        cbutton id="copyOutputBtn"eCopy Outputc/buttone
+      c/dive
+    </div>
+  </div>
 
   <div id="settingsTab" class="row" style="display:none">
     <h3>Settings</h3>
@@ -394,15 +439,128 @@
     // Tabs
     const clientTab = document.getElementById('clientTab');
     const devTab = document.getElementById('devTab');
+    const scriptsTab = document.getElementById('scriptsTab');
     const settingsTab = document.getElementById('settingsTab');
     function showTab(which) {
       clientTab.style.display = which === 'client' ? '' : 'none';
       devTab.style.display = which === 'dev' ? '' : 'none';
+      scriptsTab.style.display = which === 'scripts' ? '' : 'none';
       settingsTab.style.display = which === 'settings' ? '' : 'none';
     }
     document.getElementById('tabClient').addEventListener('click', () => showTab('client'));
     document.getElementById('tabDev').addEventListener('click', () => showTab('dev'));
+    document.getElementById('tabScripts').addEventListener('click', () => showTab('scripts'));
     document.getElementById('tabSettings').addEventListener('click', () => showTab('settings'));
+
+    // Scripts tab logic (scaffold)\n    // AI generate scaffolding\n    const aiPanel = document.createElement('div');\n    aiPanel.style.marginTop = '8px';\n    aiPanel.innerHTML = `\n      <div style="margin-top:8px; border-top:1px solid var(--border); padding-top:8px">\n        <h4 style="margin:8px 0 4px">Rewrite with AI</h4>\n        <div style="display:flex; gap:8px; align-items:flex-start">\n          <textarea id="aiPrompt" placeholder="Describe what the script should do (e.g., poll https://api.example.com and notify when X)" style="flex:1; height:80px"></textarea>\n          <button id="aiGenerateBtn">Generate</button>\n        </div>\n      </div>\n    `;\n    document.getElementById('scriptEdit').appendChild(aiPanel);\n    document.getElementById('aiGenerateBtn').addEventListener('click', async () => {\n      try {\n        const id = window.__currentScriptId; if (!id) return;\n        const s = await window.scripts.get(id); if (!s) return;\n        const prompt = (document.getElementById('aiPrompt').value||'').trim();\n        if (!prompt) { alert('Enter a prompt'); return; }\n        const resp = await window.scripts.aiGenerate({ mode: s.mode, prompt, currentCode: s.__code, topic: (s.manifest && s.manifest.defaultTopic) || 'runs.finished' });\n        if (resp && resp.ok && resp.code) {\n          document.getElementById('scriptCode').value = resp.code;\n          await window.scripts.update(id, { code: resp.code, manifest: (resp.manifestDelta||{}) });\n          showToast('AI generated code applied','');\n        } else {\n          showToast('AI generate failed', (resp && resp.error) || '');\n        }\n      } catch (e) { devlog('ai generate failed ' + String(e)); }\n    });
+
+    // Scripts tab logic (scaffold)
+    const scriptsListEl = document.getElementById('scriptsList');
+    async function refreshScriptsList() {
+      try {
+        const items = await window.scripts.list();
+        scriptsListEl.innerHTML = '';
+        (items || []).forEach(s => {
+          const li = document.createElement('li');
+          const a = document.createElement('a'); a.href = '#'; a.textContent = `${s.name} (${s.mode})`;
+          a.addEventListener('click', async () => openScriptEditor(s.id));
+          li.appendChild(a); scriptsListEl.appendChild(li);
+        });
+      } catch (e) { devlog('scripts:list failed ' + String(e)); }
+    }
+    async function openScriptEditor(id) {
+      try {
+        const s = await window.scripts.get(id);
+        if (!s) { devlog('script not found'); return; }
+        window.__currentScriptId = s.id;
+        document.getElementById('scriptTitle').textContent = s.name || s.id;
+        document.getElementById('scriptMeta').textContent = `Mode: ${s.mode}`;
+        document.getElementById('scriptCode').value = (s.__code || '');
+        const enabledEl = document.getElementById('scriptEnabled'); enabledEl.checked = !!s.enabled;
+        const urlEl = document.getElementById('webhookUrlView');
+        if (s.mode === 'webhook') {
+          const u = await window.scripts.webhookUrl(s.id);
+          urlEl.textContent = u ? `Webhook: ${u}` : '';
+        } else { urlEl.textContent = ''; }
+        document.getElementById('scriptEdit').style.display = '';
+      } catch (e) { devlog('open editor failed ' + String(e)); }
+    }
+    document.getElementById('createScriptBtn').addEventListener('click', async () => {
+      const name = (document.getElementById('newScriptName').value||'').trim();
+      const mode = (document.getElementById('newScriptMode').value||'poller');
+      if (!name) { alert('Enter a script name'); return; }
+      const r = await window.scripts.create({ name, mode });
+      document.getElementById('newScriptName').value = '';
+      await refreshScriptsList();
+      try { await openScriptEditor(r.id); } catch {}
+    });
+    // Save + Test handlers
+    document.getElementById('saveScriptBtn').addEventListener('click', async () => {
+      try {
+        const id = window.__currentScriptId; if (!id) return;
+        const code = document.getElementById('scriptCode').value;
+        await window.scripts.update(id, { code });
+        showToast('Saved','');
+      } catch (e) { devlog('save failed ' + String(e)); }
+    });
+    document.getElementById('testScriptBtn').addEventListener('click', async () => {
+      try {
+        const id = window.__currentScriptId; if (!id) return;
+        const outEl = document.getElementById('scriptOutput'); outEl.textContent = 'Running test...';
+        const res = await window.scripts.test(id);
+        outEl.textContent = (res && res.ok ? '[ok]\n' : '[error]\n') + (res?.stdout || '') + (res?.stderr || '');
+      } catch (e) { devlog('test failed ' + String(e)); }
+    });
+    document.getElementById('saveAndTestBtn').addEventListener('click', async () => {
+      try { const id = window.__currentScriptId; if (!id) return; await window.scripts.update(id, { code: document.getElementById('scriptCode').value }); const res = await window.scripts.test(id); const outEl = document.getElementById('scriptOutput'); outEl.textContent = (res && res.ok ? '[ok]\n' : '[error]\n') + (res?.stdout || '') + (res?.stderr || ''); } catch (e) { devlog('save+test failed ' + String(e)); }
+    });
+    document.getElementById('copyOutputBtn').addEventListener('click', async () => { try { await navigator.clipboard.writeText(document.getElementById('scriptOutput').textContent || ''); showToast('Copied output',''); } catch {} });
+
+    // Enable toggle and run now
+    document.getElementById('scriptEnabled').addEventListener('change', async (e) => {
+      try {
+        const id = window.__currentScriptId; if (!id) return;
+        const enabled = e.target.checked;
+        const res = await window.scripts.enableToggle(id, enabled);
+        const urlEl = document.getElementById('webhookUrlView');
+        if (enabled) {
+          const u = await window.scripts.webhookUrl(id);
+          if (u) urlEl.textContent = `Webhook: ${u}`;
+        } else { urlEl.textContent = ''; }
+        showToast(enabled ? 'Enabled' : 'Disabled','');
+        await refreshScriptsList();
+      } catch (err) { devlog('enable toggle failed ' + String(err)); }
+    });
+    document.getElementById('scriptRunNowBtn').addEventListener('click', async () => {
+      try { const id = window.__currentScriptId; if (!id) return; const res = await window.scripts.runNow(id); const outEl = document.getElementById('scriptOutput'); outEl.textContent = (res && res.ok ? '[ok]\n' : '[error]\n') + (res?.stdout || '') + (res?.stderr || ''); } catch (e) { devlog('run now failed ' + String(e)); }
+    });
+
+    // Logs handlers
+    document.getElementById('showLogsBtn').addEventListener('click', async () => {
+      try {
+        const id = window.__currentScriptId; if (!id) return;
+        const r = await window.scripts.logsRead(id);
+        const outEl = document.getElementById('scriptOutput');
+        if (r && r.ok) { outEl.textContent = r.logs || ''; }
+      } catch (e) { devlog('logs read failed ' + String(e)); }
+    });
+    document.getElementById('clearScriptLogsBtn').addEventListener('click', async () => {
+      try { const id = window.__currentScriptId; if (!id) return; await window.scripts.logsClear(id); showToast('Cleared logs',''); } catch (e) { devlog('logs clear failed ' + String(e)); }
+    });
+
+    // Webhook test helpers
+    document.getElementById('copyWebhookUrlBtn').addEventListener('click', async () => {
+      try { const id = window.__currentScriptId; if (!id) return; const u = await window.scripts.webhookUrl(id); if (u) await navigator.clipboard.writeText(u); showToast('Copied URL',''); } catch {}
+    });
+    document.getElementById('copyWebhookCurlBtn').addEventListener('click', async () => {
+      try { const id = window.__currentScriptId; if (!id) return; const u = await window.scripts.webhookUrl(id); if (!u) return; const cmd = `curl -s -X POST -H 'content-type: application/json' -d '{"ok":true,"time":"${new Date().toISOString()}"}' ${u}`; await navigator.clipboard.writeText(cmd); showToast('Copied cURL',''); } catch {}
+    });
+    document.getElementById('sendWebhookTestBtn').addEventListener('click', async () => {
+      try { const id = window.__currentScriptId; if (!id) return; const u = await window.scripts.webhookUrl(id); if (!u) return; const res = await fetch(u, { method: 'POST', headers: { 'content-type':'application/json' }, body: JSON.stringify({ ok: true, time: new Date().toISOString() }) }); const txt = await res.text().catch(()=> ''); const outEl = document.getElementById('scriptOutput'); outEl.textContent = `[${res.status}]\n` + txt; } catch (e) { devlog('webhook test failed ' + String(e)); }
+    });
+
+    // Initial load
+    refreshScriptsList();
 
     // Dev console handlers
     const devIdEl = document.getElementById('devId');

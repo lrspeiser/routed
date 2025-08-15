@@ -326,6 +326,377 @@ ipcMain.handle('admin:sockets', async () => {
   }
 });
 
+// Scripts Orchestrator (scaffold)
+class ScriptsOrchestrator {
+  constructor(baseDirResolver) {
+    this._resolveBase = baseDirResolver;
+    this._scriptsRoot = null;
+    this._registry = { scripts: [] };
+    this._loaded = false;
+    this._timers = new Map(); // id -> NodeJS.Timer
+    this._procs = new Map();  // id -> child process
+  }
+  scriptsRoot() {
+    if (!this._scriptsRoot) {
+      try { this._scriptsRoot = path.join(app.getPath('userData'), 'scripts'); } catch { this._scriptsRoot = path.join(process.cwd(), 'scripts'); }
+      try { fs.mkdirSync(this._scriptsRoot, { recursive: true }); } catch {}
+    }
+    return this._scriptsRoot;
+  }
+  registryPath() { return path.join(this.scriptsRoot(), 'scripts.json'); }
+  loadRegistry() {
+    if (this._loaded) return;
+    try { this._registry = JSON.parse(fs.readFileSync(this.registryPath(), 'utf8')); } catch { this._registry = { scripts: [] }; }
+    this._loaded = true;
+  }
+  saveRegistry() { try { fs.writeFileSync(this.registryPath(), JSON.stringify(this._registry, null, 2)); } catch {}
+  }
+  list() { this.loadRegistry(); return this._registry.scripts || []; }
+  get(id) {
+    this.loadRegistry();
+    const meta = (this._registry.scripts || []).find(s => s.id === id) || null;
+    if (!meta) return null;
+    const dir = path.join(this.scriptsRoot(), id);
+    let manifest = null; let code = '';
+    try { manifest = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8')); } catch {}
+    try { code = fs.readFileSync(path.join(dir, 'script.ts'), 'utf8'); } catch {}
+    return { ...(meta||{}), manifest, __code: code };
+  }
+  _slug(name) { return String(name).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,64) || 'script'; }
+  _newId(base) {
+    const ts = Date.now().toString(36);
+    let id = `${base}-${ts}`;
+    if (this.get(id)) id = `${base}-${ts}-${Math.floor(Math.random()*1e4)}`;
+    return id;
+  }
+  create({ name, mode, topic }) {
+    this.loadRegistry();
+    const base = this._slug(name || 'script');
+    const id = this._newId(base);
+    const dir = path.join(this.scriptsRoot(), id);
+    try { fs.mkdirSync(dir, { recursive: true }); fs.mkdirSync(path.join(dir, 'logs'), { recursive: true }); fs.mkdirSync(path.join(dir, 'data'), { recursive: true }); } catch {}
+    const manifest = {
+      id, name: name || id, mode: mode || 'poller', enabled: false,
+      defaultTopic: topic || 'runs.finished', schedule: { type: 'interval', everyMinutes: 5 },
+      runtime: { port: null }, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+    };
+    const entry = mode === 'webhook' ?
+`// ${id} - webhook template\nexport async function onRequest(req, ctx) {\n  const body = await req.json().catch(() => ({}));\n  await ctx.notify({ title: 'Webhook', body: JSON.stringify(body).slice(0, 200) });\n  return new Response(JSON.stringify({ ok: true }), { headers: { 'content-type': 'application/json' } });\n}\n` :
+`// ${id} - poller template\nexport async function handler(ctx) {\n  const res = await fetch('https://example.com', { method: 'GET' });\n  await ctx.notify({ title: 'Poller', body: 'Status ' + res.status });\n}\n`;
+    try { fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify(manifest, null, 2)); } catch {}
+    try { fs.writeFileSync(path.join(dir, 'script.ts'), entry); } catch {}
+    this._registry.scripts = [...(this._registry.scripts||[]), { id, name: manifest.name, mode: manifest.mode, enabled: false, createdAt: manifest.createdAt, updatedAt: manifest.updatedAt }];
+    this.saveRegistry();
+    return { id, dir };
+  }
+  update(id, { name, mode, code, manifest }) {
+    this.loadRegistry();
+    const dir = path.join(this.scriptsRoot(), id);
+    const metaIdx = (this._registry.scripts||[]).findIndex(s => s.id === id);
+    if (metaIdx < 0) return { ok: false, error: 'not_found' };
+    if (name) this._registry.scripts[metaIdx].name = name;
+    if (mode) this._registry.scripts[metaIdx].mode = mode;
+    this._registry.scripts[metaIdx].updatedAt = new Date().toISOString();
+    try {
+      if (code != null) fs.writeFileSync(path.join(dir, 'script.ts'), String(code));
+      if (manifest) {
+        const existing = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8'));
+        const merged = { ...existing, ...manifest, updatedAt: new Date().toISOString() };
+        fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify(merged, null, 2));
+      }
+      this.saveRegistry();
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: String(e) };
+    }
+  }
+  _denoPath() {
+    // Resolve bundled deno binary (macOS now, cross-platform later)
+    const resBase = app.isPackaged ? process.resourcesPath : path.join(__dirname);
+    const binDir = path.join(resBase, 'resources', 'bin');
+    const arch = process.arch; // 'arm64' or 'x64'
+    const platform = process.platform; // 'darwin'|'win32'|'linux'
+    let p;
+    if (platform === 'darwin') {
+      p = path.join(binDir, arch === 'arm64' ? 'deno-darwin-arm64' : 'deno-darwin-x64');
+    } else if (platform === 'win32') {
+      p = path.join(binDir, 'deno.exe');
+    } else {
+      p = path.join(binDir, 'deno-linux');
+    }
+    try { if (fs.existsSync(p)) return p; } catch {}
+    return null; // not found; caller should handle
+  }
+  _runnerEntry() {
+    const resBase = app.isPackaged ? process.resourcesPath : path.join(__dirname);
+    return path.join(resBase, 'resources', 'runner', 'runner_shim.ts');
+  }
+  async _allocPort() {
+    return await new Promise((resolve) => {
+      const net = require('net');
+      const srv = net.createServer();
+      srv.listen(0, '127.0.0.1', () => {
+        const port = srv.address().port;
+        try { srv.close(); } catch {}
+        resolve(port);
+      });
+    });
+  }
+  _writeRuntimeConfig(id) {
+    const dir = path.join(this.scriptsRoot(), id);
+    const d = (() => { try { return JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'dev.json'), 'utf8')); } catch { return null; } })();
+    const cfgDir = path.join(dir, '.runner');
+    try { fs.mkdirSync(cfgDir, { recursive: true }); } catch {}
+    const cfg = {
+      scriptId: id,
+      hubBaseUrl: (d && d.hubUrl) || process.env.HUB_URL || process.env.BASE_URL || 'https://routed.onrender.com',
+      apiKey: d && d.apiKey ? d.apiKey : null,
+      defaultTopic: 'runs.finished',
+      dataDir: path.join(dir, 'data'),
+      logLevel: 'info',
+      port: null,
+    };
+    try { fs.writeFileSync(path.join(cfgDir, 'config.json'), JSON.stringify(cfg, null, 2)); } catch {}
+    return { cfgPath: path.join(cfgDir, 'config.json'), dir };
+  }
+  async test(id) {
+    const meta = this.get(id);
+    if (!meta) return { ok: false, error: 'not_found' };
+    const deno = this._denoPath();
+    if (!deno) return { ok: false, error: 'deno_missing', hint: 'Place deno binary under receiver-app/resources/bin (deno-darwin-arm64 or deno-darwin-x64) and rebuild.' };
+    const entry = this._runnerEntry();
+    const { cfgPath, dir } = this._writeRuntimeConfig(id);
+    const args = [
+      'run',
+      '--quiet',
+      '--allow-net',
+      `--allow-read=${dir}`,
+      `--allow-write=${dir}`,
+      entry,
+      '--config', cfgPath,
+      '--entry', path.join(dir, 'script.ts'),
+      '--mode', 'poller',
+      '--oneshot'
+    ];
+    const { spawn } = require('child_process');
+    return await new Promise((resolve) => {
+      let out = '';
+      let err = '';
+      let code = null;
+      let proc;
+      try { proc = spawn(deno, args, { stdio: ['ignore', 'pipe', 'pipe'] }); } catch (e) { return resolve({ ok: false, error: String(e) }); }
+      proc.stdout.on('data', (b) => { out += b.toString(); });
+      proc.stderr.on('data', (b) => { err += b.toString(); });
+      proc.on('close', (c) => { code = c; resolve({ ok: c === 0, code: c, stdout: out, stderr: err }); });
+    });
+  }
+  async runNow(id) {
+    const meta = this.get(id);
+    if (!meta) return { ok: false, error: 'not_found' };
+    const deno = this._denoPath();
+    if (!deno) return { ok: false, error: 'deno_missing' };
+    const entry = this._runnerEntry();
+    const { cfgPath, dir } = this._writeRuntimeConfig(id);
+    const args = [
+      'run',
+      '--quiet',
+      '--allow-net',
+      `--allow-read=${dir}`,
+      `--allow-write=${dir}`,
+      entry,
+      '--config', cfgPath,
+      '--entry', path.join(dir, 'script.ts'),
+      '--mode', 'poller',
+      '--oneshot'
+    ];
+    const { spawn } = require('child_process');
+    return await new Promise((resolve) => {
+      let out = '';
+      let err = '';
+      let code = null;
+      let proc;
+      try { proc = spawn(deno, args, { stdio: ['ignore', 'pipe', 'pipe'] }); } catch (e) { return resolve({ ok: false, error: String(e) }); }
+      proc.stdout.on('data', (b) => { out += b.toString(); });
+      proc.stderr.on('data', (b) => { err += b.toString(); });
+      proc.on('close', (c) => { code = c; resolve({ ok: c === 0, code: c, stdout: out, stderr: err }); });
+    });
+  }
+  async _startWebhook(id) {
+    const deno = this._denoPath();
+    if (!deno) return { ok: false, error: 'deno_missing' };
+    const dir = path.join(this.scriptsRoot(), id);
+    let manifest;
+    try { manifest = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8')); } catch { return { ok: false, error: 'manifest_missing' }; }
+    if (!manifest.runtime) manifest.runtime = {};
+    if (!manifest.runtime.port) {
+      manifest.runtime.port = await this._allocPort();
+      try { fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify(manifest, null, 2)); } catch {}
+    }
+    const entry = this._runnerEntry();
+    const { cfgPath } = this._writeRuntimeConfig(id);
+    try {
+      const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+      cfg.port = manifest.runtime.port;
+      fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
+    } catch {}
+    const args = [
+      'run',
+      '--quiet',
+      '--allow-net',
+      `--allow-read=${dir}`,
+      `--allow-write=${dir}`,
+      entry,
+      '--config', cfgPath,
+      '--entry', path.join(dir, 'script.ts'),
+      '--mode', 'webhook'
+    ];
+    const { spawn } = require('child_process');
+    try {
+      const proc = spawn(deno, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+      this._procs.set(id, proc);
+      proc.on('close', (code) => { this._procs.delete(id); });
+      return { ok: true, port: manifest.runtime.port };
+    } catch (e) {
+      return { ok: false, error: String(e) };
+    }
+  }
+  async enableToggle(id, enabled) {
+    this.loadRegistry();
+    const metaIdx = (this._registry.scripts || []).findIndex(s => s.id === id);
+    if (metaIdx < 0) return { ok: false, error: 'not_found' };
+    const dir = path.join(this.scriptsRoot(), id);
+    let manifest = null;
+    try { manifest = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8')); } catch {}
+    if (!manifest) return { ok: false, error: 'manifest_missing' };
+    manifest.enabled = !!enabled;
+    try { fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify(manifest, null, 2)); } catch {}
+    this._registry.scripts[metaIdx].updatedAt = new Date().toISOString();
+    this._registry.scripts[metaIdx].enabled = !!enabled;
+    this.saveRegistry();
+    // Cleanup prior
+    const t = this._timers.get(id); if (t) { clearInterval(t); this._timers.delete(id); }
+    const p = this._procs.get(id); if (p) { try { p.kill(); } catch {} this._procs.delete(id); }
+    if (!enabled) return { ok: true };
+    if (manifest.mode === 'webhook') {
+      return await this._startWebhook(id);
+    } else {
+      // poller
+      const everyMin = (manifest.schedule && (manifest.schedule.everyMinutes || manifest.schedule.everyMs/60000)) || 5;
+      const ms = manifest.schedule && manifest.schedule.everyMs ? Number(manifest.schedule.everyMs) : Number(everyMin) * 60 * 1000;
+      const timer = setInterval(() => { this.runNow(id).catch(()=>{}); }, ms);
+      this._timers.set(id, timer);
+      // fire once now
+      this.runNow(id).catch(()=>{});
+      return { ok: true, intervalMs: ms };
+    }
+  }
+  webhookUrl(id) {
+    try {
+      const dir = path.join(this.scriptsRoot(), id);
+      const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8'));
+      const port = manifest && manifest.runtime && manifest.runtime.port;
+      if (!port) return null;
+      return `http://127.0.0.1:${port}/`;
+    } catch { return null; }
+  }
+}
+const scriptsOrch = new ScriptsOrchestrator(() => app.getPath('userData'));
+
+// IPC (scaffold + basic actions)
+ipcMain.handle('scripts:list', async () => scriptsOrch.list());
+ipcMain.handle('scripts:get', async (_evt, id) => scriptsOrch.get(id));
+ipcMain.handle('scripts:create', async (_evt, payload) => scriptsOrch.create(payload));
+ipcMain.handle('scripts:update', async (_evt, { id, payload }) => scriptsOrch.update(id, payload));
+ipcMain.handle('scripts:delete', async () => ({ ok: false, error: 'not_implemented' }));
+ipcMain.handle('scripts:enableToggle', async (_evt, { id, enabled }) => scriptsOrch.enableToggle(id, enabled));
+ipcMain.handle('scripts:runNow', async (_evt, id) => scriptsOrch.runNow(id));
+ipcMain.handle('scripts:test', async (_evt, id) => scriptsOrch.test(id));
+ipcMain.handle('scripts:logs:tail', async () => ({ ok: false, error: 'not_implemented' }));
+ipcMain.handle('scripts:logs:read', async (_evt, id) => { try { return { ok: true, logs: fs.readFileSync(path.join(scriptsOrch.scriptsRoot(), id, 'logs', 'current.log'), 'utf8') }; } catch { return { ok: true, logs: '' }; } });
+ipcMain.handle('scripts:logs:clear', async (_evt, id) => { try { fs.writeFileSync(path.join(scriptsOrch.scriptsRoot(), id, 'logs', 'current.log'), ''); return { ok: true }; } catch (e) { return { ok: false, error: String(e) }; } });
+ipcMain.handle('scripts:webhook:url', async (_evt, id) => scriptsOrch.webhookUrl(id));
+ipcMain.handle('scripts:ai:generate', async (_evt, { mode, prompt, currentCode, topic }) =e {
+  try {
+    const OPENAI_API_KEY = process.env.OPENAI_API_KEY || process.env.OPENAI_API_TOKEN;
+    if (!OPENAI_API_KEY) {
+      return { ok: false, error: 'missing_openai_key', hint: 'Set OPENAI_API_KEY in the environment before launching the app.' };
+    }
+    const safeMode = (mode === 'webhook') ? 'webhook' : 'poller';
+    const t = (topic && String(topic).trim()) || 'runs.finished';
+
+    // Load prompt guide (best-effort)
+    let guide = '';
+    try {
+      const resBase = app.isPackaged ? process.resourcesPath : __dirname;
+      const p = path.join(resBase, 'resources', 'ai', 'prompt_guides.md');
+      guide = fs.readFileSync(p, 'utf8');
+    } catch {}
+
+    const system = [
+      'You are GPT-5 generating a single-file TypeScript script for Deno.',
+      'Target: Electron-bundled Deno runner providing ctx.notify({ title, body, payload?, topic? }).',
+      'Constraints:',
+      '- No external npm imports; use built-ins (fetch, URL, crypto).',
+      '- Do not access environment variables; use ctx and file-local state only.',
+      '- For poller mode: export async function handler(ctx).',
+      '- For webhook mode: export async function onRequest(req, ctx) returning Response.',
+      'Quality: concise, robust, handle errors, reasonable timeouts.',
+    ].join('\n');
+
+    const user = [
+      '# SDK and Guardrails',
+      guide || '(no guide available)',
+      '',
+      '# Mode',
+      `mode: ${safeMode}`,
+      '',
+      '# Default Topic',
+      `defaultTopic: ${t}`,
+      '',
+      '# Current Script (for rewrite, optional)',
+      currentCode ? '```ts\n' + String(currentCode).slice(0, 20000) + '\n```' : '(none)',
+      '',
+      '# Intent',
+      String(prompt || '(no prompt provided)')
+    ].join('\n');
+
+    const body = {
+      model: 'gpt-5',
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: user }
+      ],
+      temperature: 0.2,
+      max_tokens: 3000,
+    };
+
+    const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify(body),
+    });
+    if (!resp.ok) {
+      const txt = await resp.text().catch(() =e '');
+      return { ok: false, error: `openai_error_${resp.status}`, detail: txt.slice(0, 4000) };
+    }
+    const data = await resp.json();
+    const content = data?.choices?.[0]?.message?.content || '';
+
+    // Extract code block if present; else return as-is
+    const code = (() =e {
+      const m = content.match(/```[a-zA-Z]*\n([\s\S]*?)```/);
+      return (m && m[1]) ? m[1] : content;
+    })();
+
+    return { ok: true, code, manifestDelta: { defaultTopic: t } };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+});
+
 // Developer/Channels IPC
 
 // Verification IPC
