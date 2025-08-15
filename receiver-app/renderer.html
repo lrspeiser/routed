@@ -112,7 +112,13 @@
     <div class="row" id="usersSection" style="display:none">
       <h4 style="margin:8px 0 4px">Team Members</h4>
       <ul id="usersList" style="margin:0; padding-left:18px"></ul>
-      <div style="display:flex; gap:8px; margin-top:6px">
+      <div style="display:flex; gap:8px; margin-top:6px; align-items:center">
+        <select id="addCountry" style="width:160px">
+          <option value="US" selected>United States (+1)</option>
+          <option value="CA">Canada (+1)</option>
+          <option value="GB">United Kingdom (+44)</option>
+          <option value="AU">Australia (+61)</option>
+        </select>
         <input id="addPhones" placeholder="+14155551234" />
         <button id="addUsersBtn">Add</button>
       </div>
@@ -171,9 +177,15 @@
         <div>
           <button id="editPhoneBtn">Edit</button>
           <button id="connectNowBtn">Connect</button>
-        </div>
+          <button id="logoutBtn">Logout</button>
       </div>
       <div id="phoneEdit" style="display:none; margin-top:8px; display:flex; gap:8px; align-items:center">
+        <select id="settingsCountry" style="width:160px">
+          <option value="US" selected>United States (+1)</option>
+          <option value="CA">Canada (+1)</option>
+          <option value="GB">United Kingdom (+44)</option>
+          <option value="AU">Australia (+61)</option>
+        </select>
         <input id="settingsPhone" placeholder="+14155551234" style="flex:1" />
         <button id="savePhoneBtn">Save</button>
         <button id="cancelPhoneBtn">Cancel</button>
@@ -432,8 +444,10 @@
       if (!selected) { alert('Choose a channel'); return; }
       const raw = (document.getElementById('addPhones').value || '').trim();
       if (!raw) { alert('Enter phone numbers'); return; }
-      const phones = raw.split(/[,\s]+/).map((p) => p.trim()).filter(Boolean);
-      for (const phone of phones) {
+      const phones = raw.split(/[\n,\s]+/).map((p) => p.trim()).filter(Boolean);
+      const country = (document.getElementById('addCountry')?.value || 'US').toUpperCase();
+      for (let p of phones) {
+        const phone = normalizePhone(country, p);
         await window.receiver.adminUsersEnsure({ tenantId: d.tenantId, phone, topic: selected.topic });
       }
       document.getElementById('addPhones').value = '';
@@ -481,6 +495,28 @@
           // Do NOT re-ensure here to avoid duplicate subscriptions; connectWithPhone already ensured
         }
       } catch {}
+    }
+
+    // Phone helpers (global)
+    function dialCodeFor(country) {
+      switch ((country||'US').toUpperCase()) {
+        case 'US': return '1';
+        case 'CA': return '1';
+        case 'GB': return '44';
+        case 'AU': return '61';
+        default: return '1';
+      }
+    }
+    function normalizePhone(country, input) {
+      const raw = String(input || '').trim();
+      if (!raw) return '';
+      if (raw.startsWith('+')) {
+        const rest = raw.slice(1).replace(/[^0-9]/g, '');
+        return '+' + rest;
+      }
+      const digits = raw.replace(/[^0-9]/g, '');
+      const dial = dialCodeFor(country);
+      return '+' + dial + digits;
     }
 
     function updateCurl() {
@@ -531,11 +567,17 @@
       let verified = false;
       try { const d = await window.receiver.devGet(); verified = !!(d && d.verifiedUserId && d.verifiedPhone); } catch {}
       const overlay = document.getElementById('regOverlay');
-      if (!verified) { overlay.style.display = 'block'; showTab('settings'); }
+      if (!verified) {
+        // Hard reset any stale local data on first run when not verified
+        try { await window.receiver.devReset(); } catch {}
+        try { localStorage.removeItem('ROUTED_PHONE'); } catch {}
+        overlay.style.display = 'block';
+        showTab('settings');
+      }
 
       try {
         const saved = localStorage.getItem('ROUTED_PHONE');
-        if (saved) {
+        if (verified && saved) {
           try { document.getElementById('settingsPhone').value = saved; } catch {}
           try { document.getElementById('settingsPhoneView').textContent = saved; } catch {}
           if (healthy) {
@@ -605,18 +647,22 @@
       const stepCode = document.getElementById('regStepCode');
       const err1 = document.getElementById('regError');
       const err2 = document.getElementById('regError2');
+
       document.getElementById('sendCodeBtn').addEventListener('click', async () => {
         err1.textContent='';
         const country = (countryEl.value||'US').toUpperCase();
-        const phone = (phoneEl.value||'').trim();
-        if (!phone) { err1.textContent = 'Enter your phone number'; return; }
+        const phoneRaw = (phoneEl.value||'').trim();
+        if (!phoneRaw) { err1.textContent = 'Enter your phone number'; return; }
+        const phone = normalizePhone(country, phoneRaw);
         const ok = await window.receiver.verifyStart({ phone, country });
         if (!ok || ok.ok === false) { err1.textContent = 'Failed to send code. Try again.'; return; }
         stepPhone.style.display='none'; stepCode.style.display='block';
       });
+
       document.getElementById('verifyCodeBtn').addEventListener('click', async () => {
         err2.textContent='';
-        const phone = (phoneEl.value||'').trim();
+        const country = (countryEl.value||'US').toUpperCase();
+        const phone = normalizePhone(country, (phoneEl.value||'').trim());
         const code = (codeEl.value||'').trim();
         if (!code) { err2.textContent='Enter the code'; return; }
         const res = await window.receiver.verifyCheck({ phone, code });
@@ -627,18 +673,39 @@
         // Optionally auto-connect post verification
         const ok = await preflightOrFail(); if (ok) { await connectWithPhone(phone); await ensureDevChannelForPhone(phone); showTab('dev'); }
       });
+
+      // Settings-level logout button
+      document.getElementById('logoutBtn').addEventListener('click', async () => {
+        try {
+          await window.receiver.devReset();
+          localStorage.removeItem('ROUTED_PHONE');
+          document.getElementById('settingsPhoneView').textContent = '';
+          document.getElementById('settingsPhone').value = '';
+          document.getElementById('regOverlay').style.display = 'block';
+          showToast('Logged out','');
+          showTab('settings');
+        } catch {}
+      });
     })();
 
     // Settings handlers for phone/connect
     document.getElementById('savePhoneBtn').addEventListener('click', () => {
-      const phone = (document.getElementById('settingsPhone').value || '').trim();
-      if (!phone) { alert('Enter your phone'); return; }
-      try { localStorage.setItem('ROUTED_PHONE', phone); document.getElementById('settingsPhoneView').textContent = phone; document.getElementById('phoneEdit').style.display='none'; showToast('Saved phone',''); } catch {}
+      const raw = (document.getElementById('settingsPhone').value || '').trim();
+      if (!raw) { alert('Enter your phone'); return; }
+      const country = (document.getElementById('settingsCountry')?.value || 'US').toUpperCase();
+      const phone = normalizePhone(country, raw);
+      try { localStorage.setItem('ROUTED_PHONE', phone); document.getElementById('settingsPhoneView').textContent = phone; document.getElementById('settingsPhone').value = phone; document.getElementById('phoneEdit').style.display='none'; showToast('Saved phone',''); } catch {}
     });
     document.getElementById('connectNowBtn').addEventListener('click', async () => {
-      const phone = (document.getElementById('settingsPhone').value || '').trim();
-      if (!phone) { alert('Enter your phone'); return; }
+      const raw = (document.getElementById('settingsPhone').value || '').trim();
+      if (!raw) { alert('Enter your phone'); return; }
+      const country = (document.getElementById('settingsCountry')?.value || 'US').toUpperCase();
+      const phone = normalizePhone(country, raw);
+      // Require verification before allowing connect
+      let verified = false; try { const d = await window.receiver.devGet(); verified = !!(d && d.verifiedUserId && d.verifiedPhone); } catch {}
+      if (!verified) { showToast('Verification required', 'Please verify your phone number first.'); document.getElementById('regOverlay').style.display='block'; return; }
       const ok = await preflightOrFail(); if (!ok) return;
+      try { localStorage.setItem('ROUTED_PHONE', phone); document.getElementById('settingsPhoneView').textContent = phone; document.getElementById('settingsPhone').value = phone; } catch {}
       await connectWithPhone(phone);
       await ensureDevChannelForPhone(phone);
       showTab('dev');

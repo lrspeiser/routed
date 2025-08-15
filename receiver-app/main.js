@@ -411,6 +411,19 @@ ipcMain.handle('dev:getBaseUrl', async () => {
   return baseUrl();
 });
 
+// Reset dev/app data
+ipcMain.handle('dev:reset', async () => {
+  try {
+    try { fs.unlinkSync(storePath()); } catch {}
+    try { fs.unlinkSync(devStorePath()); } catch {}
+    writeLog('dev:reset → cleared store and dev store');
+    return true;
+  } catch (e) {
+    writeLog('dev:reset error: ' + String(e));
+    return false;
+  }
+});
+
 ipcMain.handle('dev:setApiKey', async (_evt, key) => {
   try {
     const d = loadDev() || {};
