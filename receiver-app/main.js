@@ -55,11 +55,21 @@ function tryLoadLocalEnv() {
     if (!env.OPENAI_API_KEY && fs.existsSync(keyFile)) {
       env.OPENAI_API_KEY = fs.readFileSync(keyFile, 'utf8').trim();
     }
+    // Optional project/org/base overrides
+    const projFile = path.join(resBase, 'resources', 'ai', 'openai.project');
+    const orgFile = path.join(resBase, 'resources', 'ai', 'openai.org');
+    const baseFile = path.join(resBase, 'resources', 'ai', 'openai.base_url');
+    if (!env.OPENAI_PROJECT && fs.existsSync(projFile)) env.OPENAI_PROJECT = fs.readFileSync(projFile, 'utf8').trim();
+    if (!env.OPENAI_ORG && fs.existsSync(orgFile)) env.OPENAI_ORG = fs.readFileSync(orgFile, 'utf8').trim();
+    if (!env.OPENAI_BASE_URL && fs.existsSync(baseFile)) env.OPENAI_BASE_URL = fs.readFileSync(baseFile, 'utf8').trim().replace(/\/$/, '');
   } catch {}
   const hub = env.HUB_URL || env.BASE_URL;
   if (hub) OVERRIDE_BASE = hub;
   if (env.HUB_ADMIN_TOKEN) process.env.HUB_ADMIN_TOKEN = process.env.HUB_ADMIN_TOKEN || env.HUB_ADMIN_TOKEN;
   if (env.OPENAI_API_KEY) process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY || env.OPENAI_API_KEY;
+  if (env.OPENAI_PROJECT) process.env.OPENAI_PROJECT = process.env.OPENAI_PROJECT || env.OPENAI_PROJECT;
+  if (env.OPENAI_ORG) process.env.OPENAI_ORG = process.env.OPENAI_ORG || env.OPENAI_ORG;
+  if (env.OPENAI_BASE_URL) process.env.OPENAI_BASE_URL = process.env.OPENAI_BASE_URL || env.OPENAI_BASE_URL;
 }
 try { tryLoadLocalEnv(); } catch {}
 
@@ -288,7 +298,7 @@ app.on('activate', () => {
   writeLog('App activated');
 });
 
-app.on('before-quit', () => { isQuitting = true; });
+app.on('before-quit', () => { isQuitting = true; try { tray?.destroy?.(); } catch {} });
 
 ipcMain.handle('subscriptions:list', async () => {
   return loadStore().subscriptions || [];
@@ -712,12 +722,17 @@ ipcMain.handle('scripts:ai:generate', async (_evt, { mode, prompt, currentCode, 
       max_tokens: 3000,
     };
 
-    const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+    const base = (process.env.OPENAI_BASE_URL || 'https://api.openai.com').replace(/\/$/, '');
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${OPENAI_API_KEY}`,
+    };
+    if (process.env.OPENAI_PROJECT) headers['OpenAI-Project'] = process.env.OPENAI_PROJECT;
+    if (process.env.OPENAI_ORG) headers['OpenAI-Organization'] = process.env.OPENAI_ORG;
+
+    const resp = await fetch(`${base}/v1/chat/completions`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
-      },
+      headers,
       body: JSON.stringify(body),
     });
     if (!resp.ok) {
@@ -946,6 +961,23 @@ ipcMain.handle('dev:sendMessage', async (_evt, { topic, title, body, payload }) 
     dialog.showErrorBox('Send failed', String(e));
     writeLog(`sendMessage error: ${String(e)}`);
     return null;
+  }
+});
+
+// Safe external URL opener (http/https only)
+ipcMain.handle('app:openExternal', async (_evt, url) => {
+  try {
+    const u = String(url || '').trim();
+    if (!u) return { ok: false, error: 'empty_url' };
+    let parsed;
+    try { parsed = new URL(u); } catch { return { ok: false, error: 'invalid_url' }; }
+    if (!/^https?:$/.test(parsed.protocol)) return { ok: false, error: 'unsupported_protocol' };
+    writeLog('openExternal → ' + u);
+    await shell.openExternal(u).catch(() => {});
+    return { ok: true };
+  } catch (e) {
+    writeLog('openExternal error: ' + String(e));
+    return { ok: false, error: String(e) };
   }
 });
 

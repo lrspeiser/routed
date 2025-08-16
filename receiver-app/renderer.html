@@ -350,7 +350,19 @@
       card.style.border = '1px solid #ddd';
       card.style.borderRadius = '8px';
       card.style.padding = '8px';
-      card.innerHTML = `\u003cdiv style=\"font-weight:600\"\u003e${(data.title||'').replace(/\u003c/g,'\u0026lt;')}\u003c/div\u003e\u003cdiv\u003e${(data.body||'').replace(/\u003c/g,'\u0026lt;')}\u003c/div\u003e`;
+      const safeTitle = (data.title||'').replace(/\u003c/g,'\u0026lt;');
+      const safeBody = (data.body||'').replace(/\u003c/g,'\u0026lt;');
+      let linkHtml = '';
+      const url = data && data.payload && data.payload.url ? String(data.payload.url) : '';
+      if (url) {
+        const safeUrl = url.replace(/"/g,'&quot;');
+        linkHtml = `\u003cdiv style=\\"margin-top:6px\\"\u003e\u003ca href=\\"#\\" data-url=\\"${safeUrl}\\" class=\\"open-link\\"\u003eOpen link\u003c/a\u003e\u003c/div\u003e`;
+      }
+      card.innerHTML = `\u003cdiv style=\\"font-weight:600\\"\u003e${safeTitle}\u003c/div\u003e\u003cdiv\u003e${safeBody}\u003c/div\u003e${linkHtml}`;
+      const a = card.querySelector('a.open-link');
+      if (a) {
+        a.addEventListener('click', async (e) => { e.preventDefault(); const u = a.getAttribute('data-url'); if (u) { try { await window.receiver.openExternal(u); } catch {} } });
+      }
       notifList.prepend(card);
       try { devlog('Client: received notification'); } catch {}
     }
@@ -410,7 +422,7 @@
                     devlog('Client: duplicate message suppressed');
                   }
                 }
-              } catch {}
+              } catch (e) { try { devlog('WS message parse error ' + String(e)); } catch {} }
             };
             candidate.onclose = (e) => {
               if (!opened) {
@@ -655,7 +667,11 @@
       const prev = btn.disabled; btn.disabled = true;
       try { devlog(`Client: sending message topic=${selected.topic} body=${text}`); } catch {}
       const link = (document.getElementById('linkUrl').value || '').trim();
-      const payload = link ? { url: link.startsWith('http') ? link : 'https://' + link } : null;
+      let payload = null;
+      if (link) {
+        const u = link.startsWith('http') ? link : 'https://' + link;
+        try { new URL(u); payload = { url: u }; } catch { payload = null; }
+      }
       const res = await window.receiver.devSendMessage({ topic: selected.topic, title: 'Routed', body: text, payload });
       try { devlog(`Client: send result ${res ? 'ok' : 'error'}`); } catch {}
       document.getElementById('messageText').value = '';
@@ -720,6 +736,8 @@
             if (selected && selected.topic) topic = selected.topic;
           } catch {}
           const endpoint = new URL('/v1/messages', BASE_URL).toString();
+          const link = (document.getElementById('linkUrl')?.value || 'https://www.google.com').trim();
+          const u = (link && (link.startsWith('http') ? link : 'https://' + link)) || '';
           const cmd = [
             'curl -X POST',
             "-H 'Authorization: Bearer " + apiKey + "'",
@@ -728,7 +746,7 @@
               "\"topic\": \"" + topic + "\", " +
               "\"title\": \"Routed\", " +
               "\"body\": \"Hello from CLI\", " +
-              "\"payload\": {\"url\": \"" + ((document.getElementById('linkUrl')?.value || 'https://www.google.com').replace(/"/g,'\\"')) + "\"}}'",
+              "\"payload\": {\"url\": \"" + u.replace(/\"/g,'\\\"') + "\"}}'",
             endpoint
           ].join(' ');
           document.getElementById('curlCmd').textContent = cmd;

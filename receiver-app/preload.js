@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('receiver', {
   appShow: () => ipcRenderer.send('app:show'),
   appQuit: () => ipcRenderer.send('app:quit'),
   appVersion: () => ipcRenderer.invoke('app:version'),
+  openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
   devGet: () => ipcRenderer.invoke('dev:get'),
   devProvision: () => ipcRenderer.invoke('dev:provision'),
   devSetBaseUrl: (url) => ipcRenderer.invoke('dev:setBaseUrl', url),
