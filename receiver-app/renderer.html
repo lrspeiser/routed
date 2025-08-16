@@ -451,7 +451,40 @@
     document.getElementById('tabScripts').addEventListener('click', () => showTab('scripts'));
     document.getElementById('tabSettings').addEventListener('click', () => showTab('settings'));
 
-    // Scripts tab logic (scaffold)\n    // AI generate scaffolding\n    const aiPanel = document.createElement('div');\n    aiPanel.style.marginTop = '8px';\n    aiPanel.innerHTML = `\n      <div style="margin-top:8px; border-top:1px solid var(--border); padding-top:8px">\n        <h4 style="margin:8px 0 4px">Rewrite with AI</h4>\n        <div style="display:flex; gap:8px; align-items:flex-start">\n          <textarea id="aiPrompt" placeholder="Describe what the script should do (e.g., poll https://api.example.com and notify when X)" style="flex:1; height:80px"></textarea>\n          <button id="aiGenerateBtn">Generate</button>\n        </div>\n      </div>\n    `;\n    document.getElementById('scriptEdit').appendChild(aiPanel);\n    document.getElementById('aiGenerateBtn').addEventListener('click', async () => {\n      try {\n        const id = window.__currentScriptId; if (!id) return;\n        const s = await window.scripts.get(id); if (!s) return;\n        const prompt = (document.getElementById('aiPrompt').value||'').trim();\n        if (!prompt) { alert('Enter a prompt'); return; }\n        const resp = await window.scripts.aiGenerate({ mode: s.mode, prompt, currentCode: s.__code, topic: (s.manifest && s.manifest.defaultTopic) || 'runs.finished' });\n        if (resp && resp.ok && resp.code) {\n          document.getElementById('scriptCode').value = resp.code;\n          await window.scripts.update(id, { code: resp.code, manifest: (resp.manifestDelta||{}) });\n          showToast('AI generated code applied','');\n        } else {\n          showToast('AI generate failed', (resp && resp.error) || '');\n        }\n      } catch (e) { devlog('ai generate failed ' + String(e)); }\n    });
+    // Scripts tab logic (scaffold)
+    // AI generate scaffolding
+    const aiPanel = document.createElement('div');
+    aiPanel.style.marginTop = '8px';
+    aiPanel.innerHTML = `
+      <div style="margin-top:8px; border-top:1px solid var(--border); padding-top:8px">
+        <h4 style="margin:8px 0 4px">Rewrite with AI</h4>
+        <div style="display:flex; gap:8px; align-items:flex-start">
+          <div style="flex:1; display:flex; flex-direction:column; gap:6px">
+            <textarea id="aiPrompt" placeholder="Describe what the script should do (e.g., poll https://api.example.com and notify when X)" style="width:100%; height:80px"></textarea>
+            <textarea id="aiContext" placeholder="Optional freeform context (anything useful: endpoints, sample JSON, auth notes, schemas, requirements, constraints)" style="width:100%; height:80px"></textarea>
+          </div>
+          <button id="aiGenerateBtn">Generate</button>
+        </div>
+      </div>
+    `;
+    document.getElementById('scriptEdit').appendChild(aiPanel);
+    document.getElementById('aiGenerateBtn').addEventListener('click', async () => {
+      try {
+        const id = window.__currentScriptId; if (!id) return;
+        const s = await window.scripts.get(id); if (!s) return;
+        const prompt = (document.getElementById('aiPrompt').value||'').trim();
+        const contextData = (document.getElementById('aiContext').value||'').trim();
+        if (!prompt) { alert('Enter a prompt'); return; }
+        const resp = await window.scripts.aiGenerate({ mode: s.mode, prompt, currentCode: s.__code, topic: (s.manifest && s.manifest.defaultTopic) || 'runs.finished', contextData });
+        if (resp && resp.ok && resp.code) {
+          document.getElementById('scriptCode').value = resp.code;
+          await window.scripts.update(id, { code: resp.code, manifest: (resp.manifestDelta||{}) });
+          showToast('AI generated code applied','');
+        } else {
+          showToast('AI generate failed', (resp && resp.error) || '');
+        }
+      } catch (e) { devlog('ai generate failed ' + String(e)); }
+    });
 
     // Scripts tab logic (scaffold)
     const scriptsListEl = document.getElementById('scriptsList');

@@ -615,7 +615,7 @@ ipcMain.handle('scripts:logs:tail', async () => ({ ok: false, error: 'not_implem
 ipcMain.handle('scripts:logs:read', async (_evt, id) => { try { return { ok: true, logs: fs.readFileSync(path.join(scriptsOrch.scriptsRoot(), id, 'logs', 'current.log'), 'utf8') }; } catch { return { ok: true, logs: '' }; } });
 ipcMain.handle('scripts:logs:clear', async (_evt, id) => { try { fs.writeFileSync(path.join(scriptsOrch.scriptsRoot(), id, 'logs', 'current.log'), ''); return { ok: true }; } catch (e) { return { ok: false, error: String(e) }; } });
 ipcMain.handle('scripts:webhook:url', async (_evt, id) => scriptsOrch.webhookUrl(id));
-ipcMain.handle('scripts:ai:generate', async (_evt, { mode, prompt, currentCode, topic }) => {
+ipcMain.handle('scripts:ai:generate', async (_evt, { mode, prompt, currentCode, topic, contextData }) => {
   try {
     const OPENAI_API_KEY = process.env.OPENAI_API_KEY || process.env.OPENAI_API_TOKEN;
     if (!OPENAI_API_KEY) {
@@ -655,6 +655,9 @@ ipcMain.handle('scripts:ai:generate', async (_evt, { mode, prompt, currentCode, 
       '',
       '# Current Script (for rewrite, optional)',
       currentCode ? '```ts\n' + String(currentCode).slice(0, 20000) + '\n```' : '(none)',
+      '',
+      '# Freeform Context (optional)',
+      contextData ? String(contextData).slice(0, 40000) : '(none)',
       '',
       '# Intent',
       String(prompt || '(no prompt provided)')
