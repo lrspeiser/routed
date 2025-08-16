@@ -1,0 +1,4 @@
+# Ignore local AI key material (do not commit)
+resources/ai/.env
+resources/ai/openai.env
+resources/ai/openai.key
