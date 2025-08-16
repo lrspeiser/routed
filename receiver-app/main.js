@@ -615,7 +615,7 @@ ipcMain.handle('scripts:logs:tail', async () => ({ ok: false, error: 'not_implem
 ipcMain.handle('scripts:logs:read', async (_evt, id) => { try { return { ok: true, logs: fs.readFileSync(path.join(scriptsOrch.scriptsRoot(), id, 'logs', 'current.log'), 'utf8') }; } catch { return { ok: true, logs: '' }; } });
 ipcMain.handle('scripts:logs:clear', async (_evt, id) => { try { fs.writeFileSync(path.join(scriptsOrch.scriptsRoot(), id, 'logs', 'current.log'), ''); return { ok: true }; } catch (e) { return { ok: false, error: String(e) }; } });
 ipcMain.handle('scripts:webhook:url', async (_evt, id) => scriptsOrch.webhookUrl(id));
-ipcMain.handle('scripts:ai:generate', async (_evt, { mode, prompt, currentCode, topic }) =e {
+ipcMain.handle('scripts:ai:generate', async (_evt, { mode, prompt, currentCode, topic }) => {
   try {
     const OPENAI_API_KEY = process.env.OPENAI_API_KEY || process.env.OPENAI_API_TOKEN;
     if (!OPENAI_API_KEY) {
@@ -679,14 +679,14 @@ ipcMain.handle('scripts:ai:generate', async (_evt, { mode, prompt, currentCode, 
       body: JSON.stringify(body),
     });
     if (!resp.ok) {
-      const txt = await resp.text().catch(() =e '');
+      const txt = await resp.text().catch(() => '');
       return { ok: false, error: `openai_error_${resp.status}`, detail: txt.slice(0, 4000) };
     }
     const data = await resp.json();
     const content = data?.choices?.[0]?.message?.content || '';
 
     // Extract code block if present; else return as-is
-    const code = (() =e {
+    const code = (() => {
       const m = content.match(/```[a-zA-Z]*\n([\s\S]*?)```/);
       return (m && m[1]) ? m[1] : content;
     })();
