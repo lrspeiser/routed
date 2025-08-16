@@ -665,7 +665,16 @@ ipcMain.handle('scripts:logs:read', async (_evt, id) => { try { return { ok: tru
 ipcMain.handle('scripts:logs:clear', async (_evt, id) => { try { fs.writeFileSync(path.join(scriptsOrch.scriptsRoot(), id, 'logs', 'current.log'), ''); return { ok: true }; } catch (e) { return { ok: false, error: String(e) }; } });
 ipcMain.handle('scripts:webhook:url', async (_evt, id) => scriptsOrch.webhookUrl(id));
 // Helper exported for testing: extract code block from LLM content
-const { extractCodeFromLLM } = (()=>{ try { const modPath = path.join(__dirname, 'utils', 'llm.js'); return require(modPath); } catch (e) { return { extractCodeFromLLM: (c)=>{ const m=String(c||'').match(/```[a-zA-Z]*\n([\s\S]*?)```/); return (m&&m[1])?m[1]:String(c||''); } }; })();
+let extractCodeFromLLM;
+try {
+  const modPath = path.join(__dirname, 'utils', 'llm.js');
+  ({ extractCodeFromLLM } = require(modPath));
+} catch (e) {
+  extractCodeFromLLM = function(c) {
+    const m = String(c || '').match(/```[a-zA-Z]*\n([\s\S]*?)```/);
+    return (m && m[1]) ? m[1] : String(c || '');
+  };
+}
 function extractCodeFromLLMContent(content) {
   const m = String(content || '').match(/```[a-zA-Z]*\n([\s\S]*?)```/);
   return (m && m[1]) ? m[1] : String(content || '');
