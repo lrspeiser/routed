@@ -870,7 +870,8 @@ ipcMain.handle('admin:channels:list', async (_evt, _tenantId) => {
     const dev = loadDev();
     if (!dev || !dev.apiKey) throw new Error('Developer key not set');
     const url = new URL('/v1/channels/list', baseUrl()).toString();
-    const res = await fetch(url, { cache: 'no-store', headers: { 'Authorization': `Bearer ${dev.apiKey}` } });
+    const headers = { 'Authorization': `Bearer ${dev.apiKey}`, 'X-Api-Key': dev.apiKey };
+    const res = await fetch(url, { cache: 'no-store', headers });
     const j = await res.json();
     if (!res.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
     const channels = j.channels || j;
@@ -888,7 +889,7 @@ ipcMain.handle('admin:channels:create', async (_evt, { tenantId, name, topic }) 
     const dev = loadDev();
     if (!dev || !dev.apiKey) throw new Error('Developer key not set');
     const url = new URL('/v1/channels/create', baseUrl()).toString();
-    const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${dev.apiKey}` };
+    const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${dev.apiKey}`, 'X-Api-Key': dev.apiKey };
     const body = { name, topic };
     const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body), cache: 'no-store' });
     const j = await res.json();
@@ -906,7 +907,8 @@ ipcMain.handle('admin:channels:users', async (_evt, shortId) => {
   try {
     const dev = loadDev();
     if (!dev || !dev.apiKey) throw new Error('Developer key not set');
-    const res = await fetch(new URL(`/v1/channels/${encodeURIComponent(shortId)}/users`, baseUrl()).toString(), { cache: 'no-store', headers: { 'Authorization': `Bearer ${dev.apiKey}` } });
+    const headers = { 'Authorization': `Bearer ${dev.apiKey}`, 'X-Api-Key': dev.apiKey };
+    const res = await fetch(new URL(`/v1/channels/${encodeURIComponent(shortId)}/users`, baseUrl()).toString(), { cache: 'no-store', headers });
     const j = await res.json();
     if (!res.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
     writeLog(`channels:users(${shortId}) → ${Array.isArray(j.users)? j.users.length: 0}`);
@@ -923,7 +925,7 @@ ipcMain.handle('admin:users:ensure', async (_evt, { tenantId, phone, topic }) =>
     const dev = loadDev();
     if (!dev || !dev.apiKey) throw new Error('Developer key not set');
     const url = new URL('/v1/users/ensure', baseUrl()).toString();
-    const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${dev.apiKey}` };
+    const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${dev.apiKey}`, 'X-Api-Key': dev.apiKey };
     const body = { phone, topic };
     const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body), cache: 'no-store' });
     const j = await res.json().catch(() => ({}));
@@ -947,9 +949,9 @@ ipcMain.handle('dev:sendMessage', async (_evt, { topic, title, body, payload }) 
     }
     if (!dev || !dev.apiKey) throw new Error('Developer not provisioned');
     const b = dev.hubUrl || baseUrl();
-    const res = await fetch(new URL('/v1/messages', b).toString(), {
+const res = await fetch(new URL('/v1/messages', b).toString(), {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${dev.apiKey}`, 'Content-Type': 'application/json' },
+      headers: { 'Authorization': `Bearer ${dev.apiKey}`, 'X-Api-Key': dev.apiKey, 'Content-Type': 'application/json' },
       body: JSON.stringify({ topic, title, body, payload: payload ?? null }),
       cache: 'no-store',
     });
