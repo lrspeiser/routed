@@ -664,6 +664,13 @@ ipcMain.handle('scripts:logs:tail', async () => ({ ok: false, error: 'not_implem
 ipcMain.handle('scripts:logs:read', async (_evt, id) => { try { return { ok: true, logs: fs.readFileSync(path.join(scriptsOrch.scriptsRoot(), id, 'logs', 'current.log'), 'utf8') }; } catch { return { ok: true, logs: '' }; } });
 ipcMain.handle('scripts:logs:clear', async (_evt, id) => { try { fs.writeFileSync(path.join(scriptsOrch.scriptsRoot(), id, 'logs', 'current.log'), ''); return { ok: true }; } catch (e) { return { ok: false, error: String(e) }; } });
 ipcMain.handle('scripts:webhook:url', async (_evt, id) => scriptsOrch.webhookUrl(id));
+// Helper exported for testing: extract code block from LLM content
+const { extractCodeFromLLM } = (()=>{ try { return require('./utils/llm'); } catch { return { extractCodeFromLLM: (c)=>{ const m=String(c||'').match(/```[a-zA-Z]*\n([\s\S]*?)```/); return (m&&m[1])?m[1]:String(c||''); } }; })();
+function extractCodeFromLLMContent(content) {
+  const m = String(content || '').match(/```[a-zA-Z]*\n([\s\S]*?)```/);
+  return (m && m[1]) ? m[1] : String(content || '');
+}
+
 ipcMain.handle('scripts:ai:generate', async (_evt, { mode, prompt, currentCode, topic, contextData }) => {
   try {
     const OPENAI_API_KEY = process.env.OPENAI_API_KEY || process.env.OPENAI_API_TOKEN;
@@ -742,11 +749,7 @@ ipcMain.handle('scripts:ai:generate', async (_evt, { mode, prompt, currentCode, 
     const data = await resp.json();
     const content = data?.choices?.[0]?.message?.content || '';
 
-    // Extract code block if present; else return as-is
-    const code = (() => {
-      const m = content.match(/```[a-zA-Z]*\n([\s\S]*?)```/);
-      return (m && m[1]) ? m[1] : content;
-    })();
+    const code = extractCodeFromLLMContent(content);
 
     return { ok: true, code, manifestDelta: { defaultTopic: t } };
   } catch (e) {
@@ -865,13 +868,29 @@ ipcMain.handle('dev:setApiKey', async (_evt, key) => {
   }
 });
 
+// Helper to try alternate API key header shapes on 401
+async function fetchWithApiKeyRetry(url, init, dev) {
+  const baseHeaders = init.headers || {};
+  const doFetch = async (headers) => await fetch(url, { ...init, headers });
+  // First attempt: Bearer + header variants
+  let res = await doFetch({ ...baseHeaders, 'Authorization': `Bearer ${dev.apiKey}`, 'X-Api-Key': dev.apiKey, 'X-API-Key': dev.apiKey });
+  if (res.status !== 401) return res;
+  // Second attempt: raw key in Authorization
+  res = await doFetch({ ...baseHeaders, 'Authorization': dev.apiKey, 'X-Api-Key': dev.apiKey, 'X-API-Key': dev.apiKey });
+  if (res.status !== 401) return res;
+  // Third attempt: auto-provision a fresh developer and retry once
+  try { await (async () => ipcMain.handlers?.['dev:provision']?.({}, {}))?.(); } catch {}
+  let fresh = loadDev();
+  if (!fresh || !fresh.apiKey) return res; // give up, return last 401
+  return await doFetch({ ...baseHeaders, 'Authorization': `Bearer ${fresh.apiKey}`, 'X-Api-Key': fresh.apiKey, 'X-API-Key': fresh.apiKey });
+}
+
 ipcMain.handle('admin:channels:list', async (_evt, _tenantId) => {
   try {
     const dev = loadDev();
     if (!dev || !dev.apiKey) throw new Error('Developer key not set');
     const url = new URL('/v1/channels/list', baseUrl()).toString();
-    const headers = { 'Authorization': `Bearer ${dev.apiKey}`, 'X-Api-Key': dev.apiKey };
-    const res = await fetch(url, { cache: 'no-store', headers });
+    const res = await fetchWithApiKeyRetry(url, { cache: 'no-store' }, dev);
     const j = await res.json();
     if (!res.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
     const channels = j.channels || j;
@@ -889,9 +908,8 @@ ipcMain.handle('admin:channels:create', async (_evt, { tenantId, name, topic }) 
     const dev = loadDev();
     if (!dev || !dev.apiKey) throw new Error('Developer key not set');
     const url = new URL('/v1/channels/create', baseUrl()).toString();
-    const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${dev.apiKey}`, 'X-Api-Key': dev.apiKey };
     const body = { name, topic };
-    const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body), cache: 'no-store' });
+    const res = await fetchWithApiKeyRetry(url, { method: 'POST', headers: { 'Content-Type':'application/json' }, body: JSON.stringify(body), cache: 'no-store' }, dev);
     const j = await res.json();
     if (!res.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
     writeLog(`channels:create → ok name=${name}`);
@@ -907,8 +925,7 @@ ipcMain.handle('admin:channels:users', async (_evt, shortId) => {
   try {
     const dev = loadDev();
     if (!dev || !dev.apiKey) throw new Error('Developer key not set');
-    const headers = { 'Authorization': `Bearer ${dev.apiKey}`, 'X-Api-Key': dev.apiKey };
-    const res = await fetch(new URL(`/v1/channels/${encodeURIComponent(shortId)}/users`, baseUrl()).toString(), { cache: 'no-store', headers });
+    const res = await fetchWithApiKeyRetry(new URL(`/v1/channels/${encodeURIComponent(shortId)}/users`, baseUrl()).toString(), { cache: 'no-store' }, dev);
     const j = await res.json();
     if (!res.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
     writeLog(`channels:users(${shortId}) → ${Array.isArray(j.users)? j.users.length: 0}`);
@@ -925,9 +942,8 @@ ipcMain.handle('admin:users:ensure', async (_evt, { tenantId, phone, topic }) =>
     const dev = loadDev();
     if (!dev || !dev.apiKey) throw new Error('Developer key not set');
     const url = new URL('/v1/users/ensure', baseUrl()).toString();
-    const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${dev.apiKey}`, 'X-Api-Key': dev.apiKey };
     const body = { phone, topic };
-    const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body), cache: 'no-store' });
+    const res = await fetchWithApiKeyRetry(url, { method: 'POST', headers: { 'Content-Type':'application/json' }, body: JSON.stringify(body), cache: 'no-store' }, dev);
     const j = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
     writeLog(`users:ensure → ok phone=${phone}`);
@@ -949,12 +965,12 @@ ipcMain.handle('dev:sendMessage', async (_evt, { topic, title, body, payload }) 
     }
     if (!dev || !dev.apiKey) throw new Error('Developer not provisioned');
     const b = dev.hubUrl || baseUrl();
-const res = await fetch(new URL('/v1/messages', b).toString(), {
+const res = await fetchWithApiKeyRetry(new URL('/v1/messages', b).toString(), {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${dev.apiKey}`, 'X-Api-Key': dev.apiKey, 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ topic, title, body, payload: payload ?? null }),
       cache: 'no-store',
-    });
+    }, dev);
     const j = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
     writeLog(`sendMessage → ok topic=${topic} title=${title}`);
