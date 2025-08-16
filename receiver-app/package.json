@@ -23,7 +23,10 @@
     "extraResources": [
       { "from": "routed_icon.png", "to": "routed_icon.png" },
       { "from": "assets", "to": "assets" },
-      { "from": "resources", "to": "resources" }
+      { "from": "resources", "to": "resources" },
+      { "from": "resources/ai/.env", "to": "resources/ai/.env" },
+      { "from": "resources/ai/openai.env", "to": "resources/ai/openai.env" },
+      { "from": "resources/ai/openai.key", "to": "resources/ai/openai.key" }
     ],
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "mac": {

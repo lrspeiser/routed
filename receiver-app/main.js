@@ -32,6 +32,14 @@ function tryLoadLocalEnv() {
   const homes = [];
   try { homes.push(path.join(app.getPath('home') || '', '.routed', '.env')); } catch {}
   try { homes.push(path.join(app.getPath('userData') || '', '.env')); } catch {}
+  // Packaged resources (bundled into app)
+  try {
+    const resBase = app.isPackaged ? process.resourcesPath : __dirname;
+    homes.push(path.join(resBase, 'resources', '.env'));
+    homes.push(path.join(resBase, 'resources', 'ai', '.env'));
+    homes.push(path.join(resBase, 'resources', 'ai', 'openai.env'));
+    homes.push(path.join(resBase, 'resources', 'ai', 'openai.key'));
+  } catch {}
   // Dev locations
   try { homes.push(path.join(__dirname, '.env')); } catch {}
   try { homes.push(path.join(process.cwd(), 'receiver-app', '.env')); } catch {}
@@ -40,9 +48,18 @@ function tryLoadLocalEnv() {
     const e = readEnvFile(f);
     env = { ...env, ...e };
   }
+  // Also support raw key file at resources/ai/openai.key
+  try {
+    const resBase = app.isPackaged ? process.resourcesPath : __dirname;
+    const keyFile = path.join(resBase, 'resources', 'ai', 'openai.key');
+    if (!env.OPENAI_API_KEY && fs.existsSync(keyFile)) {
+      env.OPENAI_API_KEY = fs.readFileSync(keyFile, 'utf8').trim();
+    }
+  } catch {}
   const hub = env.HUB_URL || env.BASE_URL;
   if (hub) OVERRIDE_BASE = hub;
   if (env.HUB_ADMIN_TOKEN) process.env.HUB_ADMIN_TOKEN = process.env.HUB_ADMIN_TOKEN || env.HUB_ADMIN_TOKEN;
+  if (env.OPENAI_API_KEY) process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY || env.OPENAI_API_KEY;
 }
 try { tryLoadLocalEnv(); } catch {}
 
