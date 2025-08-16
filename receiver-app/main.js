@@ -232,6 +232,28 @@ app.whenReady().then(async () => {
           { label: 'Quit', accelerator: isMac ? 'Command+Q' : 'Ctrl+Q', click: () => { isQuitting = true; app.quit(); } },
         ],
       },
+      {
+        label: 'Edit',
+        submenu: [
+          { role: 'undo' },
+          { role: 'redo' },
+          { type: 'separator' },
+          { role: 'cut' },
+          { role: 'copy' },
+          { role: 'paste' },
+          ...(isMac ? [{ role: 'pasteAndMatchStyle' }] : []),
+          { role: 'delete' },
+          { role: 'selectAll' },
+          ...(isMac ? [
+            { type: 'separator' },
+            { label: 'Speech', submenu: [{ role: 'startSpeaking' }, { role: 'stopSpeaking' }] },
+          ] : [])
+        ],
+      },
+      {
+        label: 'Window',
+        role: 'windowMenu',
+      },
     ];
     const menu = Menu.buildFromTemplate(template);
     Menu.setApplicationMenu(menu);
