@@ -172,10 +172,10 @@
           <input type="checkbox" id="scriptEnabled" /> Enabled
         </label>
         <button id="scriptRunNowBtn">Run Now</button>
-      <span id="webhookUrlView" style="font-size:12px; opacity:.8"></span>
+        <span id="webhookUrlView" style="font-size:12px; opacity:.8"></span>
         <button id="copyWebhookUrlBtn" title="Copy Webhook URL">Copy URL</button>
         <button id="copyWebhookCurlBtn" title="Copy cURL">Copy cURL</button>
-        <button id="sendWebhookTestBtn" title="POST test JSON">Send Test</button
+        <button id="sendWebhookTestBtn" title="POST test JSON">Send Test</button>
       </div>
       <textarea id="scriptCode" style="width:100%; height:220px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace"></textarea>
       <div style="display:flex; gap:8px; margin-top:8px; align-items:center; flex-wrap: wrap">
@@ -184,13 +184,12 @@
         <button id="saveScriptBtn">Save</button>
         <button id="testScriptBtn">Test</button>
         <button id="runNowScriptBtn">Run Now</button>
-        <button id="showLogsBtn">Show Logs</button>
       </div>
-      cdiv id="scriptOutput" style="margin-top:8px; background:#fbf7ef; color:var(--green-ink); padding:8px; border-radius:8px; border:1px solid var(--border); white-space:pre-wrap"ec/dive
-      cdiv style="display:flex; gap:8px; margin-top:6px"e
-        cbutton id="saveAndTestBtn"eSave + Testc/buttone
-        cbutton id="copyOutputBtn"eCopy Outputc/buttone
-      c/dive
+      <div id="scriptOutput" style="margin-top:8px; background:#fbf7ef; color:var(--green-ink); padding:8px; border-radius:8px; border:1px solid var(--border); white-space:pre-wrap"></div>
+      <div style="display:flex; gap:8px; margin-top:6px">
+        <button id="saveAndTestBtn">Save + Test</button>
+        <button id="copyOutputBtn">Copy Output</button>
+      </div>
     </div>
   </div>
 
