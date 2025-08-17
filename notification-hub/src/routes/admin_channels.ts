@@ -190,5 +190,68 @@ export default async function routes(fastify: FastifyInstance) {
     const users = rows.map((r) => ({ user_id: r.user_id, email: r.email, phone: r.phone, online: isUserOnline(r.user_id) }));
     return reply.send({ users });
   });
+
+  // Publisher-scoped: subscribe a phone number to a channel by short_id
+  // Body: { phone: string }
+  fastify.post('/v1/channels/:short_id/subscribe', async (req, reply) => {
+    const apiKey = (req.headers.authorization || '').replace('Bearer ', '');
+    const pub = await authPublisher(apiKey);
+    if (!pub) return reply.status(401).send({ error: 'unauthorized' });
+    const params = req.params as any;
+    const shortId = String(params.short_id || '').trim();
+    const body = (req.body ?? {}) as any;
+    const phone = String(body.phone || '').trim();
+    if (!shortId) return reply.status(400).send({ error: 'missing_short_id' });
+    if (!phone) return reply.status(400).send({ error: 'missing_phone' });
+
+    try {
+      // Resolve channel within publisher tenant
+      const { rows: chRows } = await pool.query(
+        `select tenant_id, topic_id from channels where short_id=$1`,
+        [shortId]
+      );
+      if (chRows.length === 0) return reply.status(404).send({ error: 'not_found' });
+      const { tenant_id, topic_id } = chRows[0];
+      if (tenant_id !== pub.tenant_id) return reply.status(403).send({ error: 'forbidden' });
+
+      // Ensure user and subscription
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        // Ensure user by phone
+        let userId: string | null = null;
+        await client.query('SAVEPOINT ensure_user');
+        try {
+          const r = await client.query(
+            `insert into users (tenant_id, phone) values ($1,$2)
+             on conflict (tenant_id, phone) do update set phone=excluded.phone
+             returning id`,
+            [tenant_id, phone]
+          );
+          userId = r.rows[0]?.id ?? null;
+        } catch (e) {
+          await client.query('ROLLBACK TO SAVEPOINT ensure_user');
+          const r2 = await client.query(`select id from users where tenant_id=$1 and phone=$2`, [tenant_id, phone]);
+          userId = r2.rows[0]?.id ?? null;
+        }
+        if (!userId) throw new Error('failed_to_ensure_user');
+        // Ensure subscription
+        await client.query(
+          `insert into subscriptions (tenant_id, user_id, topic_id) values ($1,$2,$3)
+           on conflict do nothing`,
+          [tenant_id, userId, topic_id]
+        );
+        await client.query('COMMIT');
+        return reply.send({ ok: true, userId });
+      } catch (e: any) {
+        await (async () => { try { await (pool as any).query('ROLLBACK'); } catch {} })();
+        return reply.status(500).send({ error: 'internal_error', detail: String(e?.message || e) });
+      } finally {
+        try { (client as any)?.release?.(); } catch {}
+      }
+    } catch (e: any) {
+      return reply.status(500).send({ error: 'internal_error', detail: String(e?.message || e) });
+    }
+  });
 }
 
