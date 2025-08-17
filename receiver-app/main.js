@@ -220,7 +220,7 @@ function createTray() {
   tray.on('click', () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } });
 }
 
-app.whenReady().then(async () => {
+if (!process.env.TEST_MODE && !process.env.VITEST) app.whenReady().then(async () => {
   try { app.setName('Routed'); } catch {}
   if (process.platform === 'darwin') {
     const assetBase = app.isPackaged ? process.resourcesPath : __dirname;
@@ -287,18 +287,20 @@ app.whenReady().then(async () => {
   } catch {}
 });
 
-app.on('window-all-closed', () => {
-  // Keep app running in tray on macOS
-  if (process.platform !== 'darwin') app.quit();
-  writeLog('All windows closed');
-});
+if (!process.env.TEST_MODE && !process.env.VITEST) {
+  app.on('window-all-closed', () => {
+    // Keep app running in tray on macOS
+    if (process.platform !== 'darwin') app.quit();
+    writeLog('All windows closed');
+  });
 
-app.on('activate', () => {
-  try { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } } catch {}
-  writeLog('App activated');
-});
+  app.on('activate', () => {
+    try { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } } catch {}
+    writeLog('App activated');
+  });
 
-app.on('before-quit', () => { isQuitting = true; try { tray?.destroy?.(); } catch {} });
+  app.on('before-quit', () => { isQuitting = true; try { tray?.destroy?.(); } catch {} });
+}
 
 ipcMain.handle('subscriptions:list', async () => {
   return loadStore().subscriptions || [];
@@ -689,12 +691,15 @@ ipcMain.handle('scripts:ai:generate', async (_evt, { mode, prompt, currentCode, 
     const safeMode = (mode === 'webhook') ? 'webhook' : 'poller';
     const t = (topic && String(topic).trim()) || 'runs.finished';
 
-    // Load prompt guide (best-effort)
+    // Load prompt guides (best-effort)
     let guide = '';
+    let devGuide = '';
     try {
       const resBase = app.isPackaged ? process.resourcesPath : __dirname;
-      const p = path.join(resBase, 'resources', 'ai', 'prompt_guides.md');
-      guide = fs.readFileSync(p, 'utf8');
+      const p1 = path.join(resBase, 'resources', 'ai', 'prompt_guides.md');
+      const p2 = path.join(resBase, 'resources', 'ai', 'dev_api_guide.md');
+      try { guide = fs.readFileSync(p1, 'utf8'); } catch {}
+      try { devGuide = fs.readFileSync(p2, 'utf8'); } catch {}
     } catch {}
 
     const system = [
@@ -711,6 +716,10 @@ ipcMain.handle('scripts:ai:generate', async (_evt, { mode, prompt, currentCode, 
     const user = [
       '# SDK and Guardrails',
       guide || '(no guide available)',
+      '',
+      '<<<ROUTED_API_GUIDE_START>>>',
+      devGuide || '(no developer API guide available)',
+      '<<<ROUTED_API_GUIDE_END>>>',
       '',
       '# Mode',
       `mode: ${safeMode}`,
