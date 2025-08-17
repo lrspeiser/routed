@@ -67,6 +67,14 @@ async function main() {
   const verifyRoutes = (await import('./routes/verify')).default;
   await app.register(verifyRoutes);
 
+  // Log all registered routes to aid debugging deployments
+  try {
+    const routes = app.printRoutes();
+    console.log('[ROUTES]\n' + routes);
+  } catch (e) {
+    console.warn('[ROUTES] printRoutes failed:', e);
+  }
+
   const stopTtl = startTtlSweeper();
 
   app.addHook('onClose', async () => {
