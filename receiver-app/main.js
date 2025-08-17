@@ -220,6 +220,55 @@ function createTray() {
   tray.on('click', () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } });
 }
 
+async function runSelfDiagnostics() {
+  try {
+    writeLog('diag: starting');
+    // Basic environment
+    try { writeLog(`diag: platform=${process.platform} arch=${process.arch} node=${process.version}`); } catch {}
+    try { writeLog(`diag: electron=${(process.versions && process.versions.electron) || 'unknown'}`); } catch {}
+
+    // Base URL health
+    const b = baseUrl();
+    writeLog(`diag: base_url=${b}`);
+    try {
+      const url = new URL('/v1/health/deep', b).toString();
+      const res = await fetch(url, { cache: 'no-store' });
+      const txt = await res.text().catch(() => '');
+      writeLog(`diag: health_deep status=${res.status} body=${txt.slice(0,200)}`);
+    } catch (e) { writeLog('diag: health_deep error ' + String(e)); }
+
+    // Developer key presence and validity
+    let dev = null; try { dev = loadDev(); } catch {}
+    const hasKey = !!(dev && dev.apiKey);
+    writeLog(`diag: dev_key_present=${hasKey}`);
+    if (hasKey) {
+      try {
+        const url = new URL('/v1/channels/list', b).toString();
+        const res = await fetchWithApiKeyRetry(url, { cache: 'no-store' }, dev);
+        const txt = await res.text().catch(() => '');
+        writeLog(`diag: channels_list status=${res.status} body=${txt.slice(0,200)}`);
+      } catch (e) { writeLog('diag: channels_list error ' + String(e)); }
+    }
+
+    // Deno presence for scripts runner
+    try {
+      const p = (scriptsOrch && scriptsOrch._denoPath && scriptsOrch._denoPath()) || null;
+      writeLog(`diag: deno_present=${!!p} path=${p || 'null'}`);
+    } catch (e) { writeLog('diag: deno check error ' + String(e)); }
+
+    // OpenAI key presence (do NOT log value)
+    try {
+      const hasOpenAI = !!(process.env.OPENAI_API_KEY || process.env.OPENAI_API_TOKEN);
+      writeLog(`diag: openai_key_present=${hasOpenAI}`);
+      if (process.env.OPENAI_BASE_URL) writeLog(`diag: openai_base_url=${process.env.OPENAI_BASE_URL}`);
+    } catch {}
+
+    writeLog('diag: done');
+  } catch (e) {
+    writeLog('diag: fatal error ' + String(e));
+  }
+}
+
 if (!process.env.TEST_MODE && !process.env.VITEST) app.whenReady().then(async () => {
   try { app.setName('Routed'); } catch {}
   if (process.platform === 'darwin') {
