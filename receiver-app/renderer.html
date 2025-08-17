@@ -385,19 +385,16 @@
         // New auth flow: complete SMS login and get tokens
         const login = await window.receiver.authCompleteSms({ phone, deviceName: 'Routed Desktop', wantDefaultOpenAIKey: true });
         if (!login || !login.user || !login.user.id) { devlog('auth:complete failed'); return; }
-        const userId = login.user.id;
-        devlog(`Resolved: base_url=${BASE_URL} user_id=${userId}`);
+        let userId = login.user.id;
         const base = BASE_URL;
-        const urlV1 = makeWsUrl(base, userId, '/v1/socket');
-        const urlAlt = makeWsUrl(base, userId, '/socket');
+        devlog(`Resolved: base_url=${base} user_id=${userId}`);
         let d = await window.receiver.devGet();
         if (!d || !d.apiKey) { devlog('dev:provision (pre-connect)'); await window.receiver.devProvision(); d = await window.receiver.devGet(); }
         if (!d || !d.apiKey) { devlog('dev:provision failed'); return; }
         const ensured = await window.receiver.adminUsersEnsure({ phone, topic: 'runs.finished' });
         if (!ensured || !ensured.userId) { devlog('users:ensure failed'); return; }
-        const userId = ensured.userId;
-        devlog(`Resolved: base_url=${BASE_URL} user_id=${userId}`);
-        const base = BASE_URL;
+        userId = ensured.userId;
+        devlog(`Resolved: base_url=${base} user_id=${userId}`);
         const urlV1 = makeWsUrl(base, userId, '/v1/socket');
         const urlAlt = makeWsUrl(base, userId, '/socket');
 
