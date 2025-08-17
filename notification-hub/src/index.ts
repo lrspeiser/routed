@@ -34,6 +34,15 @@ async function main() {
     prefix: '/',
   });
 
+  // Redirect for latest DMG to avoid storing large binaries in Git/LFS
+  app.get('/downloads/Routed-latest.dmg', async (req, reply) => {
+    const url = process.env.LATEST_DMG_URL;
+    if (url && /^https?:\/\//i.test(url)) {
+      return reply.redirect(302, url);
+    }
+    return reply.status(404).send({ error: 'not_configured' });
+  });
+
   // Serve site images from /images/
   await app.register(fastifyStatic, {
     root: path.join(__dirname, '..', 'images'),
