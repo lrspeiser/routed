@@ -6,6 +6,7 @@
 const { app, BrowserWindow, Notification, dialog, ipcMain, Tray, Menu, nativeImage, globalShortcut, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 let keytar; try { keytar = require('keytar'); } catch { keytar = null; }
 
@@ -110,6 +111,13 @@ function writeLog(line) {
   const out = `[${ts}] ${line}\n`;
   try { fs.appendFileSync(resolveLogPath(), out); } catch {}
   try { console.log(out.trim()); } catch {}
+}
+
+function withTimeoutSignal(ms) {
+  const ac = new AbortController();
+  const t = setTimeout(() => { try { ac.abort(); } catch {} }, ms);
+  const cancel = () => { try { clearTimeout(t); } catch {} };
+  return { signal: ac.signal, cancel };
 }
 
 function loadStore() {
@@ -235,8 +243,10 @@ async function runSelfDiagnostics() {
     writeLog(`diag: base_url=${b}`);
     try {
       const url = new URL('/v1/health/deep', b).toString();
-      const res = await fetch(url, { cache: 'no-store' });
+      const { signal, cancel } = withTimeoutSignal(5000);
+      const res = await fetch(url, { cache: 'no-store', signal }).catch((e) => { throw e; });
       const txt = await res.text().catch(() => '');
+      cancel();
       writeLog(`diag: health_deep status=${res.status} body=${txt.slice(0,200)}`);
     } catch (e) { writeLog('diag: health_deep error ' + String(e)); }
 
@@ -247,8 +257,10 @@ async function runSelfDiagnostics() {
     if (hasKey) {
       try {
         const url = new URL('/v1/channels/list', b).toString();
-        const res = await fetchWithApiKeyRetry(url, { cache: 'no-store' }, dev);
+        const { signal, cancel } = withTimeoutSignal(5000);
+        const res = await fetchWithApiKeyRetry(url, { cache: 'no-store', signal }, dev);
         const txt = await res.text().catch(() => '');
+        cancel();
         writeLog(`diag: channels_list status=${res.status} body=${txt.slice(0,200)}`);
       } catch (e) { writeLog('diag: channels_list error ' + String(e)); }
     }
@@ -292,6 +304,9 @@ if (!process.env.TEST_MODE && !process.env.VITEST) app.whenReady().then(async ()
   await createWindow();
   createTray();
   writeLog('App ready');
+
+  // Fire diagnostics in background (non-blocking)
+  try { setTimeout(() => { runSelfDiagnostics().catch(() => {}); }, 0); } catch {}
 
   // Basic app menu with Quit for macOS
   try {
