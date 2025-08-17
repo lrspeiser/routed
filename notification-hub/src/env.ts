@@ -19,4 +19,8 @@ export const ENV = {
   VAPID_PRIVATE: process.env.VAPID_PRIVATE ?? '',
   VAPID_SUBJECT: process.env.VAPID_SUBJECT ?? 'mailto:admin@example.com',
   DEFAULT_TTL_SEC: Number(process.env.DEFAULT_TTL_SEC ?? 86400),
+  // Auth/crypto
+  JWT_SIGNING_KEY: process.env.JWT_SIGNING_KEY || 'dev-insecure-jwt-key',
+  SECRET_ENC_KEY: process.env.SECRET_ENC_KEY || Buffer.alloc(32).toString('base64'),
+  DEFAULT_OPENAI_KEY: process.env.DEFAULT_OPENAI_KEY || '',
 };

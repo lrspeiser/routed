@@ -52,6 +52,15 @@ async function main() {
   await app.register(adminUsers);
   await app.register(adminTest);
   await app.register(adminChannels);
+  // Auth + secrets routes
+  const authComplete = (await import('./routes/auth_complete_sms')).default;
+  await app.register(authComplete);
+  const authRefresh = (await import('./routes/auth_refresh')).default;
+  await app.register(authRefresh);
+  const authLogout = (await import('./routes/auth_logout')).default;
+  await app.register(authLogout);
+  const secrets = (await import('./routes/secrets')).default;
+  await app.register(secrets);
   await app.register(health);
   const devPublic = (await import('./routes/dev_public')).default;
   await app.register(devPublic);
