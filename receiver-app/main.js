@@ -961,11 +961,16 @@ ipcMain.handle('admin:users:ensure', async (_evt, { tenantId, phone, topic }) =>
     if (!dev || !dev.apiKey) throw new Error('Developer key not set');
     const url = new URL('/v1/users/ensure', baseUrl()).toString();
     const body = { phone, topic };
+    writeLog(`users:ensure req → url=${url} phone=${phone} topic=${topic || 'runs.finished'}`);
     const res = await fetchWithApiKeyRetry(url, { method: 'POST', headers: { 'Content-Type':'application/json' }, body: JSON.stringify(body), cache: 'no-store' }, dev);
-    const j = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
-    writeLog(`users:ensure → ok phone=${phone}`);
-    return j;
+    const txt = await res.text().catch(() => '');
+    let j = null; try { j = JSON.parse(txt); } catch {}
+    if (!res.ok) {
+      writeLog(`users:ensure http_error status=${res.status} body=${txt.slice(0,400)}`);
+      throw new Error((j && j.error) ? j.error : `status ${res.status}`);
+    }
+    writeLog(`users:ensure → ok phone=${phone} userId=${j && j.userId ? j.userId : 'unknown'}`);
+    return j || {};
   } catch (e) {
     dialog.showErrorBox('Add user failed', String(e));
     writeLog(`users:ensure error: ${String(e)}`);
