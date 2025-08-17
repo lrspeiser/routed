@@ -1,15 +1,11 @@
+# Ignore local downloads artifacts (moved to Releases)
+notification-hub/public/downloads/
+
 # Environment files (never commit secrets)
 .env
+.env.*
 receiver-app/.env
 receiver-app/.env.local
-
-# Node
-node_modules/
-**/node_modules/
-
-# Build outputs
-**/dist/
-**/.DS_Store
 
 # Node
 node_modules/
@@ -19,10 +15,6 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-
-# Environments
-.env
-.env.*
 
 # Build outputs
 .next/
@@ -51,4 +43,4 @@ receiver-app/.server.local.json
 # Logs
 logs/
 *.log
-README_PRIVATE.mdnotification-hub/public/downloads/
+README_PRIVATE.md
