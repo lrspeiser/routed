@@ -7,6 +7,7 @@ const { app, BrowserWindow, Notification, dialog, ipcMain, Tray, Menu, nativeIma
 const path = require('path');
 const fs = require('fs');
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
+let keytar; try { keytar = require('keytar'); } catch { keytar = null; }
 
 let mainWindow;
 let tray;
@@ -907,6 +908,48 @@ ipcMain.handle('dev:setBaseUrl', async (_evt, url) => {
   }
 });
 
+// Simple token manager for access/refresh
+const TOKEN_SERVICE = 'routed';
+let _access = { token: null, exp: 0 };
+let _session = { deviceId: null, refreshToken: null };
+async function keychainSet(account, secret) { try { if (keytar) await keytar.setPassword(TOKEN_SERVICE, account, secret); } catch (e) { writeLog('keychain set error ' + String(e)); } }
+async function keychainGet(account) { try { if (keytar) return await keytar.getPassword(TOKEN_SERVICE, account); } catch (e) { writeLog('keychain get error ' + String(e)); } return null; }
+async function keychainDelete(account) { try { if (keytar) await keytar.deletePassword(TOKEN_SERVICE, account); } catch (e) { writeLog('keychain del error ' + String(e)); } }
+function parseJwtExp(token) { try { const [,b,] = token.split('.'); const j = JSON.parse(Buffer.from(b,'base64').toString('utf8')); return (j.exp||0)*1000; } catch { return 0; } }
+async function tmInitFromKeychain() {
+  _session.deviceId = await keychainGet('deviceId');
+  _session.refreshToken = await keychainGet('refreshToken');
+  writeLog(`auth: init session device=${_session.deviceId? 'yes':'no'} refresh=${_session.refreshToken? 'yes':'no'}`);
+}
+async function tmSetSession({ deviceId, refreshToken, accessToken }) {
+  _session.deviceId = deviceId || null;
+  _session.refreshToken = refreshToken || null;
+  await keychainSet('deviceId', deviceId || '');
+  await keychainSet('refreshToken', refreshToken || '');
+  if (accessToken) { _access.token = accessToken; _access.exp = parseJwtExp(accessToken); }
+}
+async function tmClear() {
+  _session.deviceId = null; _session.refreshToken = null; _access = { token: null, exp: 0 };
+  await keychainDelete('deviceId'); await keychainDelete('refreshToken');
+}
+async function getAccessToken() {
+  const skew = 5000;
+  const now = Date.now();
+  if (_access.token && (_access.exp - now) > skew) return _access.token;
+  if (!_session.deviceId || !_session.refreshToken) throw new Error('no_session');
+  const url = new URL('/auth/refresh', baseUrl()).toString();
+  writeLog('auth: refreshing access');
+  const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refreshToken: _session.refreshToken, deviceId: _session.deviceId }), cache: 'no-store' });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
+  _session.refreshToken = j.refreshToken || _session.refreshToken;
+  await keychainSet('refreshToken', _session.refreshToken);
+  _access.token = j.accessToken || null; _access.exp = parseJwtExp(_access.token || '');
+  return _access.token;
+}
+
+(async () => { try { await tmInitFromKeychain(); } catch {} })();
+
 ipcMain.handle('dev:getBaseUrl', async () => {
   return baseUrl();
 });
@@ -1027,6 +1070,49 @@ ipcMain.handle('admin:users:ensure', async (_evt, { tenantId, phone, topic }) =>
     writeLog(`users:ensure error: ${String(e)}`);
     return null;
   }
+});
+
+// Auth IPC handlers
+ipcMain.handle('auth:completeSms', async (_evt, { phone, deviceName, wantDefaultOpenAIKey }) => {
+  try {
+    const url = new URL('/auth/complete-sms', baseUrl()).toString();
+    const body = { phone, deviceName: deviceName || os.hostname?.() || 'device', wantDefaultOpenAIKey: !!wantDefaultOpenAIKey };
+    writeLog(`auth:complete req → ${url} phone=${phone}`);
+    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), cache: 'no-store' });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
+    await tmSetSession({ deviceId: j.deviceId, refreshToken: j.refreshToken, accessToken: j.accessToken });
+    writeLog('auth:complete → ok');
+    return j;
+  } catch (e) {
+    writeLog('auth:complete error: ' + String(e));
+    if (!QUIET_ERRORS) { try { dialog.showErrorBox('Login failed', String(e)); } catch {} }
+    return null;
+  }
+});
+
+ipcMain.handle('auth:logout', async () => {
+  try {
+    const at = await getAccessToken().catch(() => null);
+    if (at) {
+      const res = await fetch(new URL('/auth/logout', baseUrl()).toString(), { method: 'POST', headers: { 'Content-Type':'application/json', 'Authorization': `Bearer ${at}` }, body: JSON.stringify({ deviceId: _session.deviceId }) });
+      await res.text().catch(() => '');
+    }
+  } catch {}
+  await tmClear();
+  writeLog('auth:logout → ok');
+  return true;
+});
+
+ipcMain.handle('auth:logoutAll', async () => {
+  try {
+    const at = await getAccessToken();
+    const res = await fetch(new URL('/auth/logout-all', baseUrl()).toString(), { method: 'POST', headers: { 'Content-Type':'application/json', 'Authorization': `Bearer ${at}` } });
+    await res.text().catch(() => '');
+  } catch {}
+  await tmClear();
+  writeLog('auth:logout-all → ok');
+  return true;
 });
 
 ipcMain.handle('dev:sendMessage', async (_evt, { topic, title, body, payload }) => {

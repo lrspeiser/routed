@@ -382,7 +382,14 @@
 
     async function connectWithPhone(phone) {
       try {
-        // Provision tenant if needed and ensure phone user on hub
+        // New auth flow: complete SMS login and get tokens
+        const login = await window.receiver.authCompleteSms({ phone, deviceName: 'Routed Desktop', wantDefaultOpenAIKey: true });
+        if (!login || !login.user || !login.user.id) { devlog('auth:complete failed'); return; }
+        const userId = login.user.id;
+        devlog(`Resolved: base_url=${BASE_URL} user_id=${userId}`);
+        const base = BASE_URL;
+        const urlV1 = makeWsUrl(base, userId, '/v1/socket');
+        const urlAlt = makeWsUrl(base, userId, '/socket');
         let d = await window.receiver.devGet();
         if (!d || !d.apiKey) { devlog('dev:provision (pre-connect)'); await window.receiver.devProvision(); d = await window.receiver.devGet(); }
         if (!d || !d.apiKey) { devlog('dev:provision failed'); return; }
