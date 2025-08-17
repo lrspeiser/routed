@@ -14,6 +14,8 @@ let isQuitting = false;
 // Point app directly at the hub for all actions
 let OVERRIDE_BASE = null;
 const DEFAULT_RESOLVE_URL_FALLBACK = 'https://routed.onrender.com';
+// Suppress modal error popups for background operations; rely on log and renderer toasts
+const QUIET_ERRORS = true;
 function readEnvFile(file) {
   try {
     const txt = fs.readFileSync(file, 'utf8');
@@ -886,7 +888,7 @@ ipcMain.handle('dev:provision', async () => {
     writeLog(`provision → success tenantId=${dev.tenantId} (admin=${admin})`);
     return dev;
   } catch (e) {
-    dialog.showErrorBox('Provision failed', String(e));
+    if (!QUIET_ERRORS) { try { dialog.showErrorBox('Provision failed', String(e)); } catch {} }
     writeLog(`dev:provision error: ${String(e)}`);
     return null;
   }
@@ -964,7 +966,7 @@ ipcMain.handle('admin:channels:list', async (_evt, _tenantId) => {
     writeLog(`channels:list → ${Array.isArray(channels)? channels.length: 0}`);
     return channels || [];
   } catch (e) {
-    dialog.showErrorBox('List channels failed', String(e));
+    if (!QUIET_ERRORS) { try { dialog.showErrorBox('List channels failed', String(e)); } catch {} }
     writeLog(`channels:list error: ${String(e)}`);
     return [];
   }
@@ -982,7 +984,7 @@ ipcMain.handle('admin:channels:create', async (_evt, { tenantId, name, topic }) 
     writeLog(`channels:create → ok name=${name}`);
     return j;
   } catch (e) {
-    dialog.showErrorBox('Create channel failed', String(e));
+    if (!QUIET_ERRORS) { try { dialog.showErrorBox('Create channel failed', String(e)); } catch {} }
     writeLog(`channels:create error: ${String(e)}`);
     return null;
   }
@@ -998,7 +1000,7 @@ ipcMain.handle('admin:channels:users', async (_evt, shortId) => {
     writeLog(`channels:users(${shortId}) → ${Array.isArray(j.users)? j.users.length: 0}`);
     return j.users || [];
   } catch (e) {
-    dialog.showErrorBox('Fetch channel users failed', String(e));
+    if (!QUIET_ERRORS) { try { dialog.showErrorBox('Fetch channel users failed', String(e)); } catch {} }
     writeLog(`channels:users error: ${String(e)}`);
     return [];
   }
@@ -1021,7 +1023,7 @@ ipcMain.handle('admin:users:ensure', async (_evt, { tenantId, phone, topic }) =>
     writeLog(`users:ensure → ok phone=${phone} userId=${j && j.userId ? j.userId : 'unknown'}`);
     return j || {};
   } catch (e) {
-    dialog.showErrorBox('Add user failed', String(e));
+    if (!QUIET_ERRORS) { try { dialog.showErrorBox('Add user failed', String(e)); } catch {} }
     writeLog(`users:ensure error: ${String(e)}`);
     return null;
   }
@@ -1048,7 +1050,7 @@ const res = await fetchWithApiKeyRetry(new URL('/v1/messages', b).toString(), {
     writeLog(`sendMessage → ok topic=${topic} title=${title}`);
     return j;
   } catch (e) {
-    dialog.showErrorBox('Send failed', String(e));
+    if (!QUIET_ERRORS) { try { dialog.showErrorBox('Send failed', String(e)); } catch {} }
     writeLog(`sendMessage error: ${String(e)}`);
     return null;
   }
