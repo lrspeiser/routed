@@ -36,6 +36,7 @@ Thumbs.db
 
 # Receiver app local config (do not commit secrets)
 receiver-app/.server.local.json
+receiver-app/resources/bin/
 
 # Docker local config
 .docker-local/

@@ -1,2 +1,0 @@
-# Route Deno binaries via LFS
-receiver-app/resources/bin/* filter=lfs diff=lfs merge=lfs -text
