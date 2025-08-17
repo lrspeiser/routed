@@ -1,0 +1,12 @@
+{
+  "id": "sample-123",
+  "mode": "poller",
+  "defaultTopic": "runs.finished",
+  "runtime": {
+    "port": null
+  },
+  "schedule": {
+    "type": "interval",
+    "everyMinutes": 5
+  }
+}

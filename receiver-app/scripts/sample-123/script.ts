@@ -1,0 +1,1 @@
+export async function handler(ctx){ await ctx.notify({ title: "ok", body: "ok" }); }
