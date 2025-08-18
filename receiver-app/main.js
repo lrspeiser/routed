@@ -1134,7 +1134,7 @@ ipcMain.handle('dev:channels:subscribe', async (_evt, { shortId, phone }) => {
 });
 
 // Auth IPC handlers
-ipcMain.handle('auth:completeSms', async (_evt, { phone, deviceName, wantDefaultOpenAIKey }) => {
+ipcMain.handle('auth:completeSms', async (_evt, { phone, deviceName, wantDefaultOpenAIKey }) => {
   try {
     const b = baseUrl();
     const body = { phone, deviceName: deviceName || os.hostname?.() || 'device', wantDefaultOpenAIKey: !!wantDefaultOpenAIKey };
@@ -1151,16 +1151,18 @@ ipcMain.handle('auth:completeSms', async (_evt, { phone, deviceName, wantDefault
     if (attempt.res.status === 404) attempt = await tryPath('/auth/complete-sms');
     if (!attempt.res.ok) {
       writeLog(`auth:complete http_error status=${attempt.res.status} body=${attempt.txt.slice(0,400)} url=${attempt.url}`);
-      throw new Error((attempt.j && attempt.j.error) ? attempt.j.error : `status ${attempt.res.status}`);
+      // Soft-fail: return structured result so caller can continue without session tokens
+      return { ok: false, error: (attempt.j && attempt.j.error) ? attempt.j.error : `status ${attempt.res.status}` };
     }
     const j = attempt.j || {};
-    await tmSetSession({ deviceId: j.deviceId, refreshToken: j.refreshToken, accessToken: j.accessToken });
+    try { await tmSetSession({ deviceId: j.deviceId, refreshToken: j.refreshToken, accessToken: j.accessToken }); } catch {}
     writeLog('auth:complete → ok');
-    return j;
+    return { ok: true, ...j };
   } catch (e) {
     writeLog('auth:complete error: ' + String(e));
     if (!QUIET_ERRORS) { try { dialog.showErrorBox('Login failed', String(e)); } catch {} }
-    return null;
+    // Soft-fail so UI can proceed with WS using userId only
+    return { ok: false, error: String(e) };
   }
 });
 
