@@ -25,7 +25,7 @@ export default async function routes(fastify: FastifyInstance) {
   // Create a channel bound to a topic
   fastify.post('/v1/admin/channels/create', async (req, reply) => {
     requireAdmin(req);
-    const { tenant_id, name, topic_name, short_id } = (req.body ?? {}) as any;
+const { tenant_id, name, topic_name, short_id, allow_public } = (req.body ?? {}) as any;
     if (!tenant_id || !name || !topic_name) return reply.status(400).send({ error: 'missing tenant_id/name/topic_name' });
 
     try {
@@ -46,8 +46,8 @@ export default async function routes(fastify: FastifyInstance) {
         for (let i = 0; i < 5 && !ok; i++) {
           try {
             const ins = await c.query(
-              `insert into channels (tenant_id, topic_id, name, short_id) values ($1,$2,$3,$4) returning id, short_id`,
-              [tenant_id, topicId, name, sid]
+`insert into channels (tenant_id, topic_id, name, short_id, allow_public) values ($1,$2,$3,$4,$5) returning id, short_id`,
+              [tenant_id, topicId, name, sid, !!allow_public]
             );
             ok = true;
             sid = ins.rows[0].short_id;
@@ -79,7 +79,7 @@ export default async function routes(fastify: FastifyInstance) {
     const apiKey = (req.headers.authorization || '').replace('Bearer ', '');
     const pub = await authPublisher(apiKey);
     if (!pub) return reply.status(401).send({ error: 'unauthorized' });
-    const { name, topic_name, short_id } = (req.body ?? {}) as any;
+const { name, topic_name, short_id, allow_public } = (req.body ?? {}) as any;
     const topicName = (topic_name as string) || 'runs.finished';
     if (!name) return reply.status(400).send({ error: 'missing name' });
     try {
@@ -96,8 +96,8 @@ export default async function routes(fastify: FastifyInstance) {
         for (let i = 0; i < 5 && !ok; i++) {
           try {
             const ins = await c.query(
-              `insert into channels (tenant_id, topic_id, name, short_id) values ($1,$2,$3,$4) returning id, short_id`,
-              [pub.tenant_id, topicId, name, sid]
+`insert into channels (tenant_id, topic_id, name, short_id, allow_public) values ($1,$2,$3,$4,$5) returning id, short_id`,
+              [pub.tenant_id, topicId, name, sid, !!allow_public]
             );
             ok = true;
             sid = ins.rows[0].short_id;
@@ -113,6 +113,23 @@ export default async function routes(fastify: FastifyInstance) {
     } catch (e: any) {
       return reply.status(500).send({ error: 'internal_error', detail: String(e?.message || e) });
     }
+  });
+
+  // Public: list channels joined by a user
+  fastify.get('/v1/users/:user_id/channels', async (req, reply) => {
+    const params = req.params as any;
+    const userId = String(params.user_id || '').trim();
+    if (!userId) return reply.status(400).send({ error: 'missing_user_id' });
+    const { rows } = await pool.query(
+      `select c.short_id, c.name, t.name as topic, c.allow_public
+       from subscriptions s
+       join channels c on c.tenant_id=s.tenant_id and c.topic_id=s.topic_id
+       join topics t on t.id=c.topic_id
+       where s.user_id=$1
+       order by c.created_at desc`,
+      [userId]
+    );
+    return reply.send({ channels: rows });
   });
 
   // List channels for a tenant
@@ -189,6 +206,69 @@ export default async function routes(fastify: FastifyInstance) {
     );
     const users = rows.map((r) => ({ user_id: r.user_id, email: r.email, phone: r.phone, online: isUserOnline(r.user_id) }));
     return reply.send({ users });
+  });
+
+// Public join: any verified user may join if channel.allow_public=true
+  fastify.post('/v1/public/channels/:short_id/join', async (req, reply) => {
+    const params = req.params as any;
+    const shortId = String(params.short_id || '').trim();
+    const body = (req.body ?? {}) as any;
+    const phone = String(body.phone || '').trim();
+    if (!shortId) return reply.status(400).send({ error: 'missing_short_id' });
+    if (!phone) return reply.status(400).send({ error: 'missing_phone' });
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const ch = await client.query(`select tenant_id, topic_id, allow_public from channels where short_id=$1`, [shortId]);
+      if (ch.rowCount === 0) { await client.query('ROLLBACK'); return reply.status(404).send({ error: 'not_found' }); }
+      const { tenant_id, topic_id, allow_public } = ch.rows[0];
+      if (!allow_public) { await client.query('ROLLBACK'); return reply.status(403).send({ error: 'forbidden' }); }
+      // ensure user by phone under the channel's tenant
+      let userId: string | null = null;
+      const u = await client.query(
+        `insert into users (tenant_id, phone) values ($1,$2)
+         on conflict (tenant_id, phone) do update set phone=excluded.phone
+         returning id`,
+        [tenant_id, phone]
+      );
+      userId = u.rows[0]?.id || null;
+      if (!userId) { await client.query('ROLLBACK'); return reply.status(500).send({ error: 'user_ensure_failed' }); }
+      await client.query(
+        `insert into subscriptions (tenant_id, user_id, topic_id) values ($1,$2,$3)
+         on conflict do nothing`,
+        [tenant_id, userId, topic_id]
+      );
+      await client.query('COMMIT');
+      return reply.send({ ok: true, userId });
+    } catch (e: any) {
+      await (async () => { try { await (pool as any).query('ROLLBACK'); } catch {} })();
+      return reply.status(500).send({ error: 'internal_error', detail: String(e?.message || e) });
+    } finally {
+      try { (client as any)?.release?.(); } catch {}
+    }
+  });
+
+  // Public leave: remove self from a channel by short_id
+  fastify.delete('/v1/public/channels/:short_id/leave', async (req, reply) => {
+    const params = req.params as any;
+    const shortId = String(params.short_id || '').trim();
+    const body = (req.body ?? {}) as any;
+    const phone = String(body.phone || '').trim();
+    if (!shortId) return reply.status(400).send({ error: 'missing_short_id' });
+    if (!phone) return reply.status(400).send({ error: 'missing_phone' });
+    try {
+      const ch = await pool.query(`select tenant_id, topic_id from channels where short_id=$1`, [shortId]);
+      if (ch.rowCount === 0) return reply.status(404).send({ error: 'not_found' });
+      const { tenant_id, topic_id } = ch.rows[0];
+      const u = await pool.query(`select id from users where tenant_id=$1 and phone=$2`, [tenant_id, phone]);
+      const userId = u.rows[0]?.id;
+      if (!userId) return reply.send({ ok: true });
+      await pool.query(`delete from subscriptions where tenant_id=$1 and user_id=$2 and topic_id=$3`, [tenant_id, userId, topic_id]);
+      return reply.send({ ok: true });
+    } catch (e: any) {
+      return reply.status(500).send({ error: 'internal_error', detail: String(e?.message || e) });
+    }
   });
 
   // Publisher-scoped: subscribe a phone number to a channel by short_id

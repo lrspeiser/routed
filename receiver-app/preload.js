@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld('receiver', {
   adminUsersEnsure: (args) => ipcRenderer.invoke('admin:users:ensure', args),
   devSendMessage: (args) => ipcRenderer.invoke('dev:sendMessage', args),
   devSetApiKey: (key) => ipcRenderer.invoke('dev:setApiKey', key),
+  devChannelsSubscribe: (shortId, phone) => ipcRenderer.invoke('dev:channels:subscribe', { shortId, phone }),
   // Auth
   authCompleteSms: (args) => ipcRenderer.invoke('auth:completeSms', args),
   authLogout: () => ipcRenderer.invoke('auth:logout'),
