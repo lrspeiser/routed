@@ -877,9 +877,31 @@ ipcMain.handle('verify:check', async (_evt, { phone, code }) => {
     d.verifiedPhone = j.phone;
     d.verifiedUserId = j.userId;
     d.verifiedTenantId = j.tenantId;
+    // Ensure developer identity + API key in cloud immediately after verify
+    try {
+      const admin = isAdminMode();
+      const provUrl = new URL(admin ? '/v1/admin/sandbox/provision' : '/v1/dev/sandbox/provision', baseUrl()).toString();
+      if (!d.apiKey || !d.tenantId) {
+        writeLog('verify:check → provisioning developer identity');
+        const opts = { method: 'POST', cache: 'no-store', headers: admin ? { ...adminAuthHeaders(), 'Content-Type': 'application/json' } : undefined };
+        const pRes = await fetch(provUrl, opts);
+        const p = await pRes.json().catch(() => ({}));
+        if (pRes.ok && p && (p.apiKey || p.api_key)) {
+          d.hubUrl = baseUrl();
+          d.tenantId = p.tenantId || p.tenant_id || d.tenantId || null;
+          d.userId = p.userId || p.user_id || d.userId || null;
+          d.apiKey = p.apiKey || p.api_key;
+          writeLog('verify:check → developer key ensured');
+        } else {
+          writeLog('verify:check → provision skipped/failed ' + (p && p.error ? p.error : ''));
+        }
+      }
+    } catch (e) {
+      writeLog('verify:check → ensure developer failed: ' + String(e));
+    }
     saveDev(d);
     writeLog(`verify:check → ok user=${j.userId}`);
-    return { ok: true, userId: j.userId };
+    return { ok: true, userId: j.userId, tenantId: d.verifiedTenantId, apiKey: d.apiKey || null };
   } catch (e) {
     writeLog('verify:check error: ' + String(e));
     return { ok: false, error: String(e) };
@@ -1087,15 +1109,51 @@ ipcMain.handle('admin:users:ensure', async (_evt, { tenantId, phone, topic }) =>
   }
 });
 
+// Channel subscribe by code
+ipcMain.handle('dev:channels:subscribe', async (_evt, { shortId, phone }) => {
+  try {
+    const dev = loadDev();
+    if (!dev || !dev.apiKey) throw new Error('Developer key not set');
+    if (!phone) throw new Error('missing_phone');
+    const url = new URL(`/v1/channels/${encodeURIComponent(String(shortId||''))}/subscribe`, baseUrl()).toString();
+    writeLog(`channels:subscribe req → short_id=${shortId} phone=${phone}`);
+    const res = await fetchWithApiKeyRetry(url, { method: 'POST', headers: { 'Content-Type':'application/json' }, body: JSON.stringify({ phone }), cache: 'no-store' }, dev);
+    const txt = await res.text().catch(() => '');
+    let j = null; try { j = JSON.parse(txt); } catch {}
+    if (!res.ok || !(j && (j.ok || j.userId))) {
+      writeLog(`channels:subscribe http_error status=${res.status} body=${txt.slice(0,400)}`);
+      throw new Error((j && j.error) ? j.error : `status ${res.status}`);
+    }
+    writeLog(`channels:subscribe → ok userId=${j && j.userId ? j.userId : 'unknown'}`);
+    return j || { ok: true };
+  } catch (e) {
+    if (!QUIET_ERRORS) { try { dialog.showErrorBox('Join channel failed', String(e)); } catch {} }
+    writeLog(`channels:subscribe error: ${String(e)}`);
+    return null;
+  }
+});
+
 // Auth IPC handlers
 ipcMain.handle('auth:completeSms', async (_evt, { phone, deviceName, wantDefaultOpenAIKey }) => {
   try {
-    const url = new URL('/auth/complete-sms', baseUrl()).toString();
+    const b = baseUrl();
     const body = { phone, deviceName: deviceName || os.hostname?.() || 'device', wantDefaultOpenAIKey: !!wantDefaultOpenAIKey };
-    writeLog(`auth:complete req → ${url} phone=${phone}`);
-    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), cache: 'no-store' });
-    const j = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
+    async function tryPath(path) {
+      const url = new URL(path, b).toString();
+      writeLog(`auth:complete req → ${url} phone=${phone}`);
+      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), cache: 'no-store' });
+      const txt = await res.text().catch(() => '');
+      let j = null; try { j = JSON.parse(txt); } catch {}
+      return { res, txt, j, url };
+    }
+    // Try versioned path first, then unversioned
+    let attempt = await tryPath('/v1/auth/complete-sms');
+    if (attempt.res.status === 404) attempt = await tryPath('/auth/complete-sms');
+    if (!attempt.res.ok) {
+      writeLog(`auth:complete http_error status=${attempt.res.status} body=${attempt.txt.slice(0,400)} url=${attempt.url}`);
+      throw new Error((attempt.j && attempt.j.error) ? attempt.j.error : `status ${attempt.res.status}`);
+    }
+    const j = attempt.j || {};
     await tmSetSession({ deviceId: j.deviceId, refreshToken: j.refreshToken, accessToken: j.accessToken });
     writeLog('auth:complete → ok');
     return j;

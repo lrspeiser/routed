@@ -48,7 +48,7 @@
           <option value="GB">United Kingdom (+44)</option>
           <option value="AU">Australia (+61)</option>
         </select>
-        <input id="phoneInput" placeholder="+14155551234" style="flex:1" />
+        <input id="phoneInput" placeholder="6505551212" style="flex:1" />
       </div>
       <button id="sendCodeBtn">Send Code</button>
       <div id="regError" style="color:#b91c1c; margin-top:6px"></div>
@@ -77,7 +77,11 @@
   <div id="clientTab" class="row">
     <h3>Notifications</h3>
     <div id="status"></div>
-    <div id="notifList" style="margin-top:8px; display:flex; flex-direction:column; gap:8px"></div>
+    <div class="row" style="display:flex; gap:8px; align-items:center; margin-top:8px">
+      <input id="joinCode" placeholder="Enter channel code (e.g., abcd12)" />
+      <button id="joinBtn">Join Channel</button>
+    </div>
+    <div id="notifList" style="margin-top:8px; display:flex; flex-direction:column; gap:8px"></div
     <div class="row">
       <h4 style="margin:12px 0 4px">Log</h4>
       <div style="display:flex; gap:8px; align-items:center; margin-bottom:6px">
@@ -120,7 +124,7 @@
           <option value="GB">United Kingdom (+44)</option>
           <option value="AU">Australia (+61)</option>
         </select>
-        <input id="addPhones" placeholder="+14155551234" />
+        <input id="addPhones" placeholder="6505551212" />
         <button id="addUsersBtn">Add</button>
       </div>
     </div>
@@ -230,7 +234,7 @@
           <option value="GB">United Kingdom (+44)</option>
           <option value="AU">Australia (+61)</option>
         </select>
-        <input id="settingsPhone" placeholder="+14155551234" style="flex:1" />
+        <input id="settingsPhone" placeholder="6505551212" style="flex:1" />
         <button id="savePhoneBtn">Save</button>
         <button id="cancelPhoneBtn">Cancel</button>
       </div>
@@ -384,10 +388,14 @@
       try {
         // New auth flow: complete SMS login and get tokens
         const login = await window.receiver.authCompleteSms({ phone, deviceName: 'Routed Desktop', wantDefaultOpenAIKey: true });
-        if (!login || !login.user || !login.user.id) { devlog('auth:complete failed'); return; }
-        let userId = login.user.id;
+        if (!login) { devlog('auth:complete failed (no response)'); return; }
+        let userId = (login.user && login.user.id) ? login.user.id : (login.userId || null);
         const base = BASE_URL;
-        devlog(`Resolved: base_url=${base} user_id=${userId}`);
+        if (userId) {
+          devlog(`Resolved: base_url=${base} user_id=${userId}`);
+        } else {
+          devlog('auth:complete ok (no user id in response; will ensure)');
+        }
         let d = await window.receiver.devGet();
         if (!d || !d.apiKey) { devlog('dev:provision (pre-connect)'); await window.receiver.devProvision(); d = await window.receiver.devGet(); }
         if (!d || !d.apiKey) { devlog('dev:provision failed'); return; }
@@ -605,6 +613,20 @@
     });
     document.getElementById('sendWebhookTestBtn').addEventListener('click', async () => {
       try { const id = window.__currentScriptId; if (!id) return; const u = await window.scripts.webhookUrl(id); if (!u) return; const res = await fetch(u, { method: 'POST', headers: { 'content-type':'application/json' }, body: JSON.stringify({ ok: true, time: new Date().toISOString() }) }); const txt = await res.text().catch(()=> ''); const outEl = document.getElementById('scriptOutput'); outEl.textContent = `[${res.status}]\n` + txt; } catch (e) { devlog('webhook test failed ' + String(e)); }
+    });
+
+    // Join by channel code
+    document.getElementById('joinBtn').addEventListener('click', async () => {
+      try {
+        const code = (document.getElementById('joinCode').value || '').trim();
+        if (!code) { alert('Enter a channel code'); return; }
+        let d = await window.receiver.devGet();
+        if (!d || !d.verifiedPhone) { showToast('Not verified', 'Verify your phone in Settings first.'); return; }
+        const phone = d.verifiedPhone;
+        const res = await window.receiver.devChannelsSubscribe(code, phone);
+        if (res && (res.ok || res.userId)) showToast('Joined channel', `Code ${code}`);
+        else showToast('Join failed', (res && res.error) || '');
+      } catch (e) { devlog('join failed ' + String(e)); }
     });
 
     // Initial load
