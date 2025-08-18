@@ -775,12 +775,15 @@ function extractCodeFromLLMContent(content) {
 
 ipcMain.handle('scripts:ai:generate', async (_evt, { mode, prompt, currentCode, topic, contextData }) => {
   try {
+    let keySource = 'env';
     let OPENAI_API_KEY = process.env.OPENAI_API_KEY || process.env.OPENAI_API_TOKEN;
     if (!OPENAI_API_KEY) {
       // Fallback to key persisted from server into userData
       OPENAI_API_KEY = tryReadUserOpenAIKey();
+      keySource = OPENAI_API_KEY ? 'userData' : 'none';
     }
     if (!OPENAI_API_KEY) {
+      writeLog('ai:generate → missing_openai_key');
       return { ok: false, error: 'missing_openai_key', hint: 'No OpenAI key available. Either set OPENAI_API_KEY before launching, or let the server provision a default key during SMS auth.' };
     }
     const safeMode = (mode === 'webhook') ? 'webhook' : 'poller';
@@ -850,6 +853,12 @@ ipcMain.handle('scripts:ai:generate', async (_evt, { mode, prompt, currentCode, 
     if (process.env.OPENAI_PROJECT) headers['OpenAI-Project'] = process.env.OPENAI_PROJECT;
     if (process.env.OPENAI_ORG) headers['OpenAI-Organization'] = process.env.OPENAI_ORG;
 
+    // Debug log (redacted) to help diagnose 401/400 without leaking secrets
+    try {
+      const tail = String(OPENAI_API_KEY).slice(-6);
+      writeLog(`ai:generate → calling ${base}/v1/chat/completions model=gpt-5 key_source=${keySource} auth_tail=${tail}`);
+    } catch {}
+
     const resp = await fetch(`${base}/v1/chat/completions`, {
       method: 'POST',
       headers,
@@ -857,6 +866,7 @@ ipcMain.handle('scripts:ai:generate', async (_evt, { mode, prompt, currentCode, 
     });
     if (!resp.ok) {
       const txt = await resp.text().catch(() => '');
+      writeLog(`ai:generate http_error status=${resp.status} body=${txt.slice(0,400)}`);
       return { ok: false, error: `openai_error_${resp.status}`, detail: txt.slice(0, 4000) };
     }
     const data = await resp.json();
