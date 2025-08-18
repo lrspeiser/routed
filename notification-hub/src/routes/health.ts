@@ -3,6 +3,11 @@ import { pool } from '../db';
 import { connection } from '../queues';
 
 export default async function routes(fastify: FastifyInstance) {
+  // Shallow health for load balancers and uptime checks
+  fastify.get('/v1/health', async (_req, reply) => {
+    return reply.send({ ok: true, time: Date.now() });
+  });
+
   fastify.get('/v1/health/db', async (_req, reply) => {
     const started = Date.now();
     try {
