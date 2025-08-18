@@ -1,0 +1,9 @@
+{
+  "model": "gpt-5",
+  "messages": [
+    { "role": "system", "content": "You are GPT-5 generating a single-file TypeScript script for Deno. Target: Electron-bundled Deno runner providing ctx.notify({ title, body, payload?, topic? }). Constraints: - No external npm imports; use built-ins (fetch, URL, crypto). - Do not access environment variables; use ctx and file-local state only. - For poller mode: export async function handler(ctx). - For webhook mode: export async function onRequest(req, ctx) returning Response. Quality: concise, robust, handle errors, reasonable timeouts." },
+    { "role": "user", "content": "Mode: poller\nDefault Topic: runs.finished\nCurrent Script: (none)\nIntent: test request from console to mirror app behavior" }
+  ],
+  "temperature": 0.2,
+  "max_tokens": 3000
+}

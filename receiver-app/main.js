@@ -838,8 +838,8 @@ ipcMain.handle('scripts:ai:generate', async (_evt, { mode, prompt, currentCode, 
         { role: 'system', content: system },
         { role: 'user', content: user }
       ],
-      temperature: 0.2,
-      max_tokens: 3000,
+      // gpt-5 rejects temperature != 1 and max_tokens; use max_completion_tokens instead
+      max_completion_tokens: 3000,
     };
 
     const base = (process.env.OPENAI_BASE_URL || 'https://api.openai.com').replace(/\/$/, '');
