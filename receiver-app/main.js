@@ -800,6 +800,37 @@ ipcMain.handle('scripts:ai:generate', async (_evt, { mode, prompt, currentCode, 
       try { devGuide = fs.readFileSync(p2, 'utf8'); } catch {}
     } catch {}
 
+    // Build structured output schema for Responses API
+    const jsonSchema = {
+      name: 'routed_script_generation',
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['code'],
+        properties: {
+          code: { type: 'string', description: 'Complete TypeScript source for a single-file Deno script.' },
+          manifestDelta: {
+            type: 'object',
+            description: 'Optional manifest changes to apply to the script.',
+            additionalProperties: true,
+            properties: {
+              defaultTopic: { type: 'string', description: 'Default notification topic to use if not overridden.' }
+            }
+          },
+          summary: { type: 'string', description: 'One-paragraph summary of what the script does.' },
+          warnings: { type: 'array', items: { type: 'string' }, description: 'Any caveats or limitations.' }
+        }
+      }
+    };
+
+    // Compose instructions and input with an example JSON
+    const exampleJson = JSON.stringify({
+      code: 'export async function handler(ctx){ /* ... */ }',
+      manifestDelta: { defaultTopic: t },
+      summary: 'Polls an endpoint and notifies on changes.',
+      warnings: []
+    }, null, 2);
+
     const system = [
       'You are GPT-5 generating a single-file TypeScript script for Deno.',
       'Target: Electron-bundled Deno runner providing ctx.notify({ title, body, payload?, topic? }).',
@@ -809,9 +840,14 @@ ipcMain.handle('scripts:ai:generate', async (_evt, { mode, prompt, currentCode, 
       '- For poller mode: export async function handler(ctx).',
       '- For webhook mode: export async function onRequest(req, ctx) returning Response.',
       'Quality: concise, robust, handle errors, reasonable timeouts.',
+      '',
+      'Output strictly as JSON matching the provided schema. No prose outside JSON.'
     ].join('\n');
 
-    const user = [
+    const dev = (function(){ try { return loadDev(); } catch { return null; } })();
+    const safetyId = (dev && (dev.userId || dev.verifiedUserId || dev.tenantId)) ? `dev:${dev.userId || dev.verifiedUserId || dev.tenantId}` : 'dev:unknown';
+
+    const inputText = [
       '# SDK and Guardrails',
       guide || '(no guide available)',
       '',
@@ -832,17 +868,26 @@ ipcMain.handle('scripts:ai:generate', async (_evt, { mode, prompt, currentCode, 
       contextData ? String(contextData).slice(0, 40000) : '(none)',
       '',
       '# Intent',
-      String(prompt || '(no prompt provided)')
+      String(prompt || '(no prompt provided)'),
+      '',
+      '# JSON Output Example (conform to schema)',
+      '```json',
+      exampleJson,
+      '```'
     ].join('\n');
 
     const body = {
       model: 'gpt-5',
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: user }
+      instructions: system,
+      input: [
+        { type: 'message', role: 'user', content: [{ type: 'input_text', text: inputText }] }
       ],
-      // gpt-5 rejects temperature != 1 and max_tokens; use max_completion_tokens instead
-      max_completion_tokens: 3000,
+      text: {
+        format: { type: 'json_schema', json_schema: jsonSchema }
+      },
+      // Defaults for reasoning/temperature/etc are used intentionally per requirements
+      safety_identifier: safetyId,
+      store: false
     };
 
     const base = (process.env.OPENAI_BASE_URL || 'https://api.openai.com').replace(/\/$/, '');
@@ -853,28 +898,60 @@ ipcMain.handle('scripts:ai:generate', async (_evt, { mode, prompt, currentCode, 
     if (process.env.OPENAI_PROJECT) headers['OpenAI-Project'] = process.env.OPENAI_PROJECT;
     if (process.env.OPENAI_ORG) headers['OpenAI-Organization'] = process.env.OPENAI_ORG;
 
-    // Debug log (redacted) to help diagnose 401/400 without leaking secrets
+    // Debug log (redacted) to help diagnose without leaking secrets
     try {
       const tail = String(OPENAI_API_KEY).slice(-6);
-      writeLog(`ai:generate → calling ${base}/v1/chat/completions model=gpt-5 key_source=${keySource} auth_tail=${tail}`);
+      writeLog(`ai:generate → calling ${base}/v1/responses model=gpt-5 key_source=${keySource} auth_tail=${tail} safety_id=${safetyId}`);
     } catch {}
 
-    const resp = await fetch(`${base}/v1/chat/completions`, {
+    const resp = await fetch(`${base}/v1/responses`, {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
     });
+    const raw = await resp.text().catch(() => '');
     if (!resp.ok) {
-      const txt = await resp.text().catch(() => '');
-      writeLog(`ai:generate http_error status=${resp.status} body=${txt.slice(0,400)}`);
-      return { ok: false, error: `openai_error_${resp.status}`, detail: txt.slice(0, 4000) };
+      writeLog(`ai:generate http_error status=${resp.status} body=${raw.slice(0,400)}`);
+      return { ok: false, error: `openai_error_${resp.status}`, detail: raw.slice(0, 4000) };
     }
-    const data = await resp.json();
-    const content = data?.choices?.[0]?.message?.content || '';
 
-    const code = extractCodeFromLLMContent(content);
+    // Parse Responses API result and extract output_text
+    let data;
+    try { data = JSON.parse(raw); } catch { data = null; }
+    // Aggregate all output_text parts into one string
+    const outputItems = data && Array.isArray(data.output) ? data.output : [];
+    let outputText = '';
+    for (const item of outputItems) {
+      const parts = item && Array.isArray(item.content) ? item.content : [];
+      for (const p of parts) {
+        if (p && p.type === 'output_text' && typeof p.text === 'string') {
+          outputText += p.text;
+        }
+      }
+    }
 
-    return { ok: true, code, manifestDelta: { defaultTopic: t } };
+    if (!outputText) {
+      writeLog('ai:generate empty_output_text body_snippet=' + raw.slice(0, 800));
+      return { ok: false, error: 'empty_output_from_model', detail: raw.slice(0, 1200) };
+    }
+
+    // Expect structured JSON per schema
+    let parsed;
+    try { parsed = JSON.parse(outputText); } catch (e) {
+      writeLog('ai:generate parse_json_failed snippet=' + String(outputText).slice(0, 400));
+      // Fallback: try to extract code fence if model misbehaves
+      const code = extractCodeFromLLMContent(outputText);
+      return { ok: true, code, manifestDelta: { defaultTopic: t } };
+    }
+
+    const code = String(parsed.code || '');
+    const manifestDelta = parsed.manifestDelta && typeof parsed.manifestDelta === 'object' ? parsed.manifestDelta : { defaultTopic: t };
+    if (!code) {
+      writeLog('ai:generate schema_missing_code');
+      return { ok: false, error: 'schema_missing_code' };
+    }
+
+    return { ok: true, code, manifestDelta };
   } catch (e) {
     return { ok: false, error: String(e) };
   }

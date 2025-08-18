@@ -42,13 +42,14 @@ function userDataAIKeyPath() {
 }
 
 function parseArgs(argv) {
-  const out = { mode: 'poller', prompt: '', current: null, context: null };
+  const out = { mode: 'poller', prompt: '', current: null, context: null, max: 3000 };
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--mode' && i + 1 < argv.length) { out.mode = argv[++i]; continue; }
     if (a === '--prompt' && i + 1 < argv.length) { out.prompt = argv[++i]; continue; }
     if (a === '--current' && i + 1 < argv.length) { out.current = argv[++i]; continue; }
     if (a === '--context' && i + 1 < argv.length) { out.context = argv[++i]; continue; }
+    if (a === '--max' && i + 1 < argv.length) { out.max = Math.max(100, parseInt(argv[++i], 10) || 800); continue; }
   }
   return out;
 }
@@ -133,7 +134,7 @@ async function main() {
       { role: 'system', content: system },
       { role: 'user', content: user }
     ],
-    max_completion_tokens: 3000,
+    max_completion_tokens: args.max,
   };
 
   const headers = {
@@ -159,6 +160,9 @@ async function main() {
   let data = {};
   try { data = JSON.parse(text); } catch {}
   const content = data?.choices?.[0]?.message?.content || '';
+  if (!content) {
+    console.error('ai:generate(cli) empty_content: raw_body_snippet=' + text.slice(0, 800));
+  }
   const code = extractCodeFromLLMContent(content);
 
   console.log('--- GENERATED CODE START ---');
