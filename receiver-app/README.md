@@ -44,6 +44,20 @@ At runtime, use the UI Server field or `.server.local.json`.
 
 ## Auth flow notes (recurring issue and fix)
 
+### Packaged app SyntaxError: "Invalid or unexpected token"
+
+Symptom
+- Crash on startup with a stack like:
+  SyntaxError: Invalid or unexpected token
+  at .../app.asar/main.js:1137: ipcMain.handle('auth:completeSms', async (...) => { ... })
+
+Root cause
+- A stray non-ASCII/control character was inadvertently inserted near the arrow function token in main.js. When bundled into app.asar, V8 treats it as an invalid token and aborts.
+
+Fix and why it stays fixed
+- We replaced the line with a clean ASCII-only arrow function and added an in-file comment documenting the auth route fallback and soft-fail behavior.
+- We also documented this here so future edits don’t reintroduce non-ASCII or remove the fallback/soft-fail pattern.
+
 Symptoms you may see
 - App log shows: `auth:complete failed (no response)` even when `/v1/health/deep` is OK.
 - Health is green but login doesn’t proceed.
