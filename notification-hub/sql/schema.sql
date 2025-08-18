@@ -61,6 +61,7 @@ create table if not exists channels (
   topic_id uuid not null references topics(id) on delete cascade,
   name text not null,
   short_id text not null,
+  allow_public boolean not null default false,
   created_at timestamptz not null default now(),
   unique(tenant_id, short_id)
 );
