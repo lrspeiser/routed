@@ -1134,7 +1134,17 @@ ipcMain.handle('dev:channels:subscribe', async (_evt, { shortId, phone }) => {
 });
 
 // Auth IPC handlers
-ipcMain.handle('auth:completeSms', async (_evt, { phone, deviceName, wantDefaultOpenAIKey }) => {
+/**
+ * IMPORTANT: SMS auth completion handler must be resilient to route shape differences across deployments.
+ * Root cause of past failures:
+ * - Some deployments expose /v1/auth/complete-sms, others expose /auth/complete-sms (unversioned).
+ * - Historically we called only one path and threw on non-200, which the packaged app surfaced as a crash.
+ * The fix and why to keep it:
+ * - Always try /v1 first, then fallback to unversioned.
+ * - Soft-fail (return { ok:false, error }) instead of throwing so the UI can proceed to ensure the user and continue via WS.
+ * - This avoids brittle coupling to one route shape and prevents recurring login loops. Do not revert this pattern.
+ */
+ipcMain.handle('auth:completeSms', async (_evt, { phone, deviceName, wantDefaultOpenAIKey }) => {
   try {
     const b = baseUrl();
     const body = { phone, deviceName: deviceName || os.hostname?.() || 'device', wantDefaultOpenAIKey: !!wantDefaultOpenAIKey };
