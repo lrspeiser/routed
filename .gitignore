@@ -1,5 +1,6 @@
-# Ignore local downloads artifacts (moved to Releases)
+# Ignore local downloads artifacts (use external hosting or Releases)
 notification-hub/public/downloads/
+receiver-app/resources/bin/
 
 # Environment files (never commit secrets)
 .env
