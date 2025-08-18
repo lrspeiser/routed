@@ -29,6 +29,9 @@ async function main() {
   // Explicit WS upgrade handler sharing the same HTTP server
   setupWs(app);
 
+  // Health endpoints should be available regardless of static handling
+  await app.register(health);
+
   await app.register(fastifyStatic, {
     root: path.join(__dirname, '..', 'public'),
     prefix: '/',
@@ -70,7 +73,6 @@ async function main() {
   await app.register(authLogout);
   const secrets = (await import('./routes/secrets')).default;
   await app.register(secrets);
-  await app.register(health);
   const devPublic = (await import('./routes/dev_public')).default;
   await app.register(devPublic);
   const verifyRoutes = (await import('./routes/verify')).default;
