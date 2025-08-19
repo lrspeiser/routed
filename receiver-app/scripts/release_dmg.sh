@@ -28,10 +28,28 @@ codesign --verify --deep --strict --verbose=2 "$APP_DIR"
 # 3) Zip app for notarization (more stable than DMG for submit)
 ditto -c -k --keepParent "$APP_DIR" "$ZIP_PATH"
 
-# 4) Notarize using stored profile (configure once)
-# Create profile once with:
+# 4) Notarize using either a stored profile or direct ASC API key variables
+# Option A (preferred): store a profile once
 #   xcrun notarytool store-credentials --key /path/to/AuthKey_XXXX.p8 --key-id KEYID --issuer ISSUER-UUID --team-id F25JD2C29Z routed-notary
-xcrun notarytool submit "$DMG_PATH" --keychain-profile routed-notary --wait
+#   export NOTARY_PROFILE=routed-notary
+# Option B: provide variables each run (no profile needed)
+#   export NOTARY_KEY=~/Downloads/AuthKey_XXXX.p8
+#   export NOTARY_KEY_ID=KEYID12345
+#   export NOTARY_ISSUER=ISSUER-UUID
+#   export NOTARY_TEAM_ID=F25JD2C29Z
+if [[ -n "${NOTARY_PROFILE:-}" ]]; then
+  xcrun notarytool submit "$DMG_PATH" --keychain-profile "$NOTARY_PROFILE" --wait
+elif [[ -n "${NOTARY_KEY:-}" && -n "${NOTARY_KEY_ID:-}" && -n "${NOTARY_ISSUER:-}" && -n "${NOTARY_TEAM_ID:-}" ]]; then
+  xcrun notarytool submit "$DMG_PATH" \
+    --key "$NOTARY_KEY" \
+    --key-id "$NOTARY_KEY_ID" \
+    --issuer "$NOTARY_ISSUER" \
+    --team-id "$NOTARY_TEAM_ID" \
+    --wait
+else
+  echo "ERROR: Provide NOTARY_PROFILE or NOTARY_KEY/NOTARY_KEY_ID/NOTARY_ISSUER/NOTARY_TEAM_ID env vars." >&2
+  exit 1
+fi
 
 # 5) Staple both DMG and app
 xcrun stapler staple "$DMG_PATH"
