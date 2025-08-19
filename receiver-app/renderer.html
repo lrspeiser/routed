@@ -148,6 +148,7 @@
       <div style="display:flex; gap:8px; align-items:center; margin-bottom:6px">
         <button id="clearLogsBtn">Clear</button>
         <button id="copyLogsBtn">Copy</button>
+        <button id="showAppLogBtn" title="Show app log (main process)">Show App Log</button>
       </div>
       <pre id="devlog" style="height:200px; overflow:auto; background:#fbf7ef; color:var(--green-ink); padding:8px; border-radius:8px; border:1px solid var(--border)"></pre>
     </div>
@@ -349,6 +350,32 @@
       }
       try { window.receiver.debugLog(line); } catch {}
     }
+    // Wire Show App Log button
+    (function(){
+      try {
+        const btn = document.getElementById('showAppLogBtn');
+        if (btn) {
+          btn.addEventListener('click', async () => {
+            try {
+              await window.receiver.appLogsPoke().catch(()=>({}));
+              const meta = await window.receiver.appLogsPath().catch(()=>null);
+              if (meta && meta.ok) {
+                devlog(`[app.log] path=${meta.path} exists=${meta.exists} size=${meta.size}`);
+              }
+              const res = await window.receiver.appLogsRead({ maxChars: 40000 });
+              if (res && res.ok) {
+                if (!res.content) devlog('(app.log empty)');
+                else devlog(res.content);
+              } else {
+                devlog(`[app.log] error: ${res && res.error ? res.error : 'unknown'}`);
+              }
+            } catch (e) {
+              devlog('[app.log] exception: ' + String(e));
+            }
+          });
+        }
+      } catch {}
+    })();
     function addNotificationCard(data) {
       const card = document.createElement('div');
       card.style.border = '1px solid #ddd';
@@ -472,7 +499,32 @@
     }
     document.getElementById('tabClient').addEventListener('click', () => showTab('client'));
     document.getElementById('tabDev').addEventListener('click', () => showTab('dev'));
-    document.getElementById('tabScripts').addEventListener('click', () => showTab('scripts'));
+document.getElementById('tabScripts').addEventListener('click', async () => {
+      showTab('scripts');
+      // Immediately poke and read the app log so we can confirm the app is running
+      try {
+        await window.receiver.appLogsPoke().catch(() => ({}));
+        const meta = await window.receiver.appLogsPath().catch(() => null);
+        if (meta && meta.ok) {
+          devlog(`[app.log] path=${meta.path} exists=${meta.exists} size=${meta.size}`);
+        }
+        const res = await window.receiver.appLogsRead({ maxChars: 40000 }).catch(() => ({ ok: false, error: 'read_failed' }));
+        if (res && res.ok) {
+          const outEl = document.getElementById('scriptOutput');
+          const header = '--- app.log (tail) ---\n';
+          const text = res.content || '(app.log empty)';
+          if (outEl) {
+            outEl.textContent = header + text;
+          }
+          if (!res.content) devlog('(app.log empty)');
+          else devlog(res.content);
+        } else {
+          devlog(`[app.log] error: ${res && res.error ? res.error : 'unknown'}`);
+        }
+      } catch (e) {
+        devlog('[app.log] exception: ' + String(e));
+      }
+    });
     document.getElementById('tabSettings').addEventListener('click', () => showTab('settings'));
 
     // Scripts tab logic (scaffold)
@@ -499,15 +551,37 @@
         const prompt = (document.getElementById('aiPrompt').value||'').trim();
         const contextData = (document.getElementById('aiContext').value||'').trim();
         if (!prompt) { alert('Enter a prompt'); return; }
+        devlog('AI: generate starting');
         const resp = await window.scripts.aiGenerate({ mode: s.mode, prompt, currentCode: s.__code, topic: (s.manifest && s.manifest.defaultTopic) || 'runs.finished', contextData });
+        const outEl = document.getElementById('scriptOutput');
         if (resp && resp.ok && resp.code) {
           document.getElementById('scriptCode').value = resp.code;
           await window.scripts.update(id, { code: resp.code, manifest: (resp.manifestDelta||{}) });
-          showToast('AI generated code applied','');
+          devlog('AI: generate ok, code applied');
+          if (outEl) outEl.textContent = '[ok]\nAI generation succeeded and code was applied.';
         } else {
-          showToast('AI generate failed', (resp && resp.error) || '');
+          // Robust verbosity: show structured error and tail of app log
+          devlog('AI: generate error ' + JSON.stringify(resp || {}));
+          const header = '[error]\nAI generation failed. Details follow.\n';
+          const detail = (resp && (resp.detail || resp.error)) ? String(resp.detail || resp.error) : 'unknown_error';
+          if (outEl) outEl.textContent = header + detail;
         }
-      } catch (e) { devlog('ai generate failed ' + String(e)); }
+        // Always mirror app.log tail after attempt
+        try {
+          const meta = await window.receiver.appLogsPath().catch(() => null);
+          if (meta && meta.ok) devlog(`[app.log] path=${meta.path} exists=${meta.exists} size=${meta.size}`);
+          const tail = await window.receiver.appLogsRead({ maxChars: 40000 }).catch(() => ({ ok:false }));
+          if (tail && tail.ok && outEl) {
+            outEl.textContent += '\n\n--- app.log (tail) ---\n' + (tail.content || '(empty)');
+          }
+        } catch {}
+      } catch (e) {
+        devlog('AI: generate exception ' + String(e));
+        try {
+          const outEl = document.getElementById('scriptOutput');
+          if (outEl) outEl.textContent = '[exception]\n' + String(e);
+        } catch {}
+      }
     });
 
     // Scripts tab logic (scaffold)

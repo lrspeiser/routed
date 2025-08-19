@@ -79,25 +79,87 @@ function tryLoadLocalEnv() {
 // Read/write OpenAI key under userData so the server can provision it for the app
 function userDataAIPath(...segs) {
   try { return path.join(app.getPath('userData'), 'ai', ...segs); } catch { return path.join(process.cwd(), 'ai', ...segs); }
+// IMPORTANT: NEVER use placeholder or fallback keys for OpenAI. Only use a valid, server-provisioned key bound to the authorized user.
+// Key validity is strictly structural (non-empty, long enough, no whitespace). No placeholder acceptance of any kind.
+function isStructurallyValidOpenAIKey(key) {
+  try {
+    const k = String(key || '').trim();
+    if (!k) return false;
+    if (k.length < 20) return false;
+    if (/\s/.test(k)) return false;
+    return true;
+  } catch { return false; }
 }
 function tryReadUserOpenAIKey() {
   try {
     const p = userDataAIPath('openai.key');
-    if (fs.existsSync(p)) return (fs.readFileSync(p, 'utf8') || '').trim();
+    if (fs.existsSync(p)) {
+      const k = (fs.readFileSync(p, 'utf8') || '').trim();
+      if (!isStructurallyValidOpenAIKey(k)) {
+        writeLog('openai:key_read invalid; treating as missing (no placeholders, no fallbacks)');
+        return null;
+      }
+      return k;
+    }
   } catch {}
   return null;
 }
 function persistUserOpenAIKey(key) {
   try {
     if (!key) return false;
+    const k = String(key).trim();
+    if (!isStructurallyValidOpenAIKey(k)) {
+      writeLog('openai:key_persist rejected (invalid structure). Placeholders/fallbacks are forbidden.');
+      return false;
+    }
     const dir = userDataAIPath();
     try { fs.mkdirSync(dir, { recursive: true }); } catch {}
     const p = userDataAIPath('openai.key');
-    fs.writeFileSync(p, String(key).trim());
+    fs.writeFileSync(p, k);
     return true;
   } catch { return false; }
 }
+}
 
+// Always obtain OpenAI key from server when missing locally (no env fallbacks)
+async function ensureOpenAIKeyFromServer() {
+  // If already persisted locally, use it (avoid network each call)
+  try {
+    const existing = tryReadUserOpenAIKey();
+    if (existing) return { ok: true, key: existing, source: 'userData' };
+  } catch {}
+  try {
+    const dev = loadDev();
+    if (!dev || !dev.hubUrl) {
+      writeLog('openai:ensure_key → missing developer context');
+      return { ok: false, error: 'missing_developer_context' };
+    }
+    // IMPORTANT: We only ever acquire keys from the server for an already-authorized user/phone. No placeholders, no client-side defaults.
+    const admin = isAdminMode();
+    const provUrl = new URL(admin ? '/v1/admin/sandbox/provision' : '/v1/dev/sandbox/provision', baseUrl()).toString();
+    const opts = { method: 'POST', cache: 'no-store', headers: admin ? { ...adminAuthHeaders(), 'Content-Type': 'application/json' } : undefined };
+    writeLog(`openai:ensure_key → requesting from server (phone=${(dev && dev.verifiedPhone) ? dev.verifiedPhone : 'unknown'}) url=${provUrl}`);
+    const res = await fetch(provUrl, opts);
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      writeLog(`openai:ensure_key http_error status=${res.status} body=${JSON.stringify(j).slice(0,400)}`);
+      return { ok: false, error: 'server_request_failed', detail: j && j.error ? j.error : `status ${res.status}` };
+    }
+    const svKey = j.defaultOpenAIKey || j.openaiKey || j.openAIKey || null;
+    if (!isStructurallyValidOpenAIKey(svKey)) {
+      writeLog('openai:ensure_key → server returned invalid or missing key');
+      return { ok: false, error: 'server_invalid_key' };
+    }
+    const stored = persistUserOpenAIKey(svKey);
+    writeLog(`openai:ensure_key → ${stored ? 'stored' : 'store_failed'}`);
+    return { ok: true, key: svKey, source: 'server' };
+  } catch (e) {
+    writeLog('openai:ensure_key error: ' + String(e));
+    return { ok: false, error: String(e) };
+  }
+}
+
+  // IMPORTANT: Do not rely on env OPENAI_* for generation. Only server-provisioned keys stored under userData are used.
 try { tryLoadLocalEnv(); } catch {}
 
 function baseUrl() {
@@ -297,8 +359,8 @@ async function runSelfDiagnostics() {
     // OpenAI key presence (do NOT log value)
     try {
       const fileKey = tryReadUserOpenAIKey();
-      const hasOpenAI = !!(process.env.OPENAI_API_KEY || process.env.OPENAI_API_TOKEN || fileKey);
-      writeLog(`diag: openai_key_present=${hasOpenAI} (source=${process.env.OPENAI_API_KEY || process.env.OPENAI_API_TOKEN ? 'env' : (fileKey ? 'userData' : 'none')})`);
+      const hasOpenAI = !!fileKey; // We do not consider env as a valid source for generation
+      writeLog(`diag: openai_key_present=${hasOpenAI} (source=${fileKey ? 'userData' : 'none'})`);
       if (process.env.OPENAI_BASE_URL) writeLog(`diag: openai_base_url=${process.env.OPENAI_BASE_URL}`);
     } catch {}
 
@@ -447,6 +509,34 @@ ipcMain.on('show-notification', (_evt, payload) => {
 });
 
 ipcMain.handle('debug:log', async (_evt, line) => { writeLog(`[renderer] ${line}`); return true; });
+
+// App log helpers
+ipcMain.handle('app:logs:path', async () => {
+  try {
+    const p = resolveLogPath();
+    let exists = false; let size = 0;
+    try { const st = fs.statSync(p); exists = !!st; size = st.size || 0; } catch {}
+    return { ok: true, path: p, exists, size };
+  } catch (e) { return { ok: false, error: String(e) }; }
+});
+ipcMain.handle('app:logs:poke', async () => {
+  try { writeLog('poke: app log test line'); return { ok: true }; } catch (e) { return { ok: false, error: String(e) }; }
+});
+// Read app log content with optional maxChars limit
+ipcMain.handle('app:logs:read', async (_evt, opts) => {
+  try {
+    const p = resolveLogPath();
+    let content = '';
+    try { content = fs.readFileSync(p, 'utf8'); } catch {}
+    const max = opts && Number(opts.maxChars) > 0 ? Number(opts.maxChars) : 40000;
+    if (content && content.length > max) {
+      content = content.slice(-max);
+    }
+    return { ok: true, content };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+});
 
 // Quit + Version APIs
 ipcMain.on('app:quit', () => { isQuitting = true; try { app.quit(); } catch {} });
@@ -775,16 +865,18 @@ function extractCodeFromLLMContent(content) {
 
 ipcMain.handle('scripts:ai:generate', async (_evt, { mode, prompt, currentCode, topic, contextData }) => {
   try {
-    let keySource = 'env';
-    let OPENAI_API_KEY = process.env.OPENAI_API_KEY || process.env.OPENAI_API_TOKEN;
+    // STOP using env; always source key from server (persisted under userData) per product requirement
+    let keySource = 'userData';
+    let OPENAI_API_KEY = tryReadUserOpenAIKey();
     if (!OPENAI_API_KEY) {
-      // Fallback to key persisted from server into userData
-      OPENAI_API_KEY = tryReadUserOpenAIKey();
-      keySource = OPENAI_API_KEY ? 'userData' : 'none';
-    }
-    if (!OPENAI_API_KEY) {
-      writeLog('ai:generate → missing_openai_key');
-      return { ok: false, error: 'missing_openai_key', hint: 'No OpenAI key available. Either set OPENAI_API_KEY before launching, or let the server provision a default key during SMS auth.' };
+      writeLog('ai:generate → no local key; requesting from server (no placeholders, no fallbacks)');
+      const ensured = await ensureOpenAIKeyFromServer();
+      if (!ensured.ok || !ensured.key) {
+        writeLog('ai:generate → missing_openai_key_server');
+        return { ok: false, error: 'missing_openai_key_server', hint: 'Server did not provide an OpenAI key for this user. Ensure the phone verification flow provisions a key in the backend.' };
+      }
+      OPENAI_API_KEY = ensured.key;
+      keySource = ensured.source || 'server';
     }
     const safeMode = (mode === 'webhook') ? 'webhook' : 'poller';
     const t = (topic && String(topic).trim()) || 'runs.finished';
@@ -806,19 +898,18 @@ ipcMain.handle('scripts:ai:generate', async (_evt, { mode, prompt, currentCode, 
       schema: {
         type: 'object',
         additionalProperties: false,
-        required: ['code'],
+        required: ['code', 'manifestDelta'],
         properties: {
           code: { type: 'string', description: 'Complete TypeScript source for a single-file Deno script.' },
           manifestDelta: {
             type: 'object',
-            description: 'Optional manifest changes to apply to the script.',
-            additionalProperties: true,
+            description: 'Manifest changes to apply to the script.',
+            additionalProperties: false,
             properties: {
               defaultTopic: { type: 'string', description: 'Default notification topic to use if not overridden.' }
-            }
-          },
-          summary: { type: 'string', description: 'One-paragraph summary of what the script does.' },
-          warnings: { type: 'array', items: { type: 'string' }, description: 'Any caveats or limitations.' }
+            },
+            required: ['defaultTopic']
+          }
         }
       }
     };
@@ -883,7 +974,7 @@ ipcMain.handle('scripts:ai:generate', async (_evt, { mode, prompt, currentCode, 
         { type: 'message', role: 'user', content: [{ type: 'input_text', text: inputText }] }
       ],
       text: {
-        format: { type: 'json_schema', json_schema: jsonSchema }
+        format: { type: 'json_schema', name: jsonSchema.name, schema: jsonSchema.schema }
       },
       // Defaults for reasoning/temperature/etc are used intentionally per requirements
       safety_identifier: safetyId,
@@ -1284,12 +1375,12 @@ ipcMain.handle('auth:completeSms', async (_evt, { phone, deviceName, wantDefault
     // If the server returned a default OpenAI key, persist it for the main process to use
     try {
       const svKey = j.defaultOpenAIKey || j.openaiKey || j.openAIKey || null;
-      if (svKey) {
+      if (isStructurallyValidOpenAIKey(svKey)) {
         const ok = persistUserOpenAIKey(svKey);
         if (ok && !process.env.OPENAI_API_KEY) process.env.OPENAI_API_KEY = svKey; // best-effort for current session
         writeLog(`auth:complete → default OpenAI key ${ok ? 'stored' : 'store_failed'}`);
       } else {
-        writeLog('auth:complete → no default OpenAI key provided');
+        writeLog('auth:complete → server did not provide a valid default OpenAI key');
       }
     } catch (e) { writeLog('auth:complete → persist OpenAI key error ' + String(e)); }
     writeLog('auth:complete → ok');
