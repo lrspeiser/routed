@@ -381,7 +381,14 @@ fastify.post('/v1/channels/:short_id/subscribe', async (req, reply) => {
         return reply.send({ ok: true, userId });
       } catch (e: any) {
         try { await (client as any).query('ROLLBACK'); } catch {}
-        return reply.status(500).send({ error: 'internal_error', detail: String(e?.message   // Public discovery of channels (tenant-scoped); optionally exclude already subscribed for phone
+        return reply.status(500).send({ error: 'internal_error', detail: String(e?.message || e) });
+      } finally {
+        try { (client as any)?.release?.(); } catch {}
+      }
+    }
+  });
+
+  // Public discovery of channels (tenant-scoped); optionally exclude already subscribed for phone
   fastify.get('/v1/public/channels', async (req, reply) => {
     try {
       const url = new URL(req.url ?? '', 'http://localhost');

@@ -1354,7 +1354,7 @@ ipcMain.handle('admin:channels:list', async (_evt, _tenantId) => {
   }
 });
 
-, topicName, creatorPhone }) => {
+ipcMain.handle('admin:channels:create', async (_evt, { name, description, allowPublic, topicName, creatorPhone }) => {
   try {
     const dev = loadDev();
     if (!dev || !dev.apiKey) throw new Error('Developer key not set');
@@ -1367,7 +1367,6 @@ ipcMain.handle('admin:channels:list', async (_evt, _tenantId) => {
       topic_name: (topicName && String(topicName).trim()) || undefined,
       creator_phone: (creatorPhone && String(creatorPhone).trim()) || undefined,
     };
-    const safeLog = { ...body, creator_phone: body.creator_phone ? `***${String(body.creator_phone).slice(-4)}` : undefined };
     writeLog(`channels:create req → ${url} body_keys=${Object.keys(body).join(',')}`);
     const res = await fetchWithApiKeyRetry(url, { method: 'POST', headers: { 'Content-Type':'application/json' }, body: JSON.stringify(body), cache: 'no-store' }, dev);
     const txt = await res.text().catch(() => '');
