@@ -54,7 +54,7 @@ create table if not exists subscriptions (
   unique(user_id, topic_id)
 );
 
--- Channels group a tenant's topic under a friendly name and short id
+-- Channels group a tenant's topic under a friendly name, short id, and optional description
 create table if not exists channels (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references tenants(id) on delete cascade,
@@ -62,6 +62,7 @@ create table if not exists channels (
   name text not null,
   short_id text not null,
   allow_public boolean not null default false,
+  description text,
   created_at timestamptz not null default now(),
   unique(tenant_id, short_id)
 );
