@@ -18,9 +18,64 @@ import './workers/fanout';
 import './workers/deliver';
 import { startTtlSweeper } from './cron/ttl';
 import fetch from 'node-fetch';
+import { randomUUID } from 'crypto';
 
 async function main() {
   const app = Fastify({ logger: { level: 'info' } });
+
+  // Verbose diagnostics: per-request IDs, timings, and headers for clients to inspect
+  app.addHook('onRequest', async (request, reply) => {
+    try {
+      // Ensure a stable request ID
+      const rid = request.id || randomUUID();
+      (request as any)._rid = String(rid);
+      (request as any)._startNs = process.hrtime.bigint();
+      reply.header('X-Request-ID', String(rid));
+    } catch {}
+    // Log inbound request with client hints
+    try {
+      const ip = (request.headers['x-forwarded-for'] as string) || (request as any).ip;
+      app.log.info({ evt: 'req:start', id: (request as any)._rid, method: request.method, url: request.url, ip, ua: request.headers['user-agent'] || '' });
+    } catch {}
+  });
+
+  app.addHook('onResponse', async (request, reply) => {
+    try {
+      const start = (request as any)._startNs as bigint | undefined;
+      const tookMs = start ? Number((process.hrtime.bigint() - start) / BigInt(1e6)) : undefined;
+      const routeUrl = (request.routeOptions && (request.routeOptions as any).url) || request.url;
+      if (tookMs !== undefined) reply.header('X-Response-Time', `${tookMs}ms`);
+      reply.header('X-Route', String(routeUrl || 'unknown'));
+      reply.header('X-Server', 'routed-hub');
+      // Success log with timing and size if available
+      const len = reply.getHeader('content-length');
+      app.log.info({ evt: 'req:done', id: (request as any)._rid, status: reply.statusCode, ms: tookMs, bytes: len ? Number(len as any) : undefined, route: routeUrl });
+    } catch (e) {
+      app.log.warn({ evt: 'req:done:logfail', id: (request as any)._rid, err: String((e as any)?.message || e) });
+    }
+  });
+
+  app.setErrorHandler((err, request, reply) => {
+    try {
+      const start = (request as any)._startNs as bigint | undefined;
+      const tookMs = start ? Number((process.hrtime.bigint() - start) / BigInt(1e6)) : undefined;
+      const routeUrl = (request.routeOptions && (request.routeOptions as any).url) || request.url;
+      reply.header('X-Request-ID', String((request as any)._rid || request.id));
+      if (tookMs !== undefined) reply.header('X-Response-Time', `${tookMs}ms`);
+      reply.header('X-Route', String(routeUrl || 'unknown'));
+      reply.header('X-Server', 'routed-hub');
+      const status = (err as any).statusCode || (err as any).status || 500;
+      // Log full error context
+      app.log.error({ evt: 'req:error', id: (request as any)._rid, status, method: request.method, url: request.url, route: routeUrl, params: request.params, query: request.query, msg: err.message, stack: err.stack });
+      // Return verbose JSON so the client can surface exact failure reasons
+      return reply
+        .status(status)
+        .send({ ok: false, error: { message: String(err.message || 'error'), code: (err as any).code || null, status, stack: (err.stack || '').split('\n') }, request: { id: String((request as any)._rid || request.id), method: request.method, url: request.url, route: routeUrl, params: request.params, query: request.query }, timing_ms: tookMs });
+    } catch (e) {
+      // Fallback if the error handler itself fails
+      try { return reply.status(500).send({ ok: false, error: { message: 'internal_error', note: 'error handler failed' } }); } catch {}
+    }
+  });
 
   await app.register(fastifyCors, { origin: true });
 
