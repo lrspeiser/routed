@@ -66,7 +66,7 @@
 
   <div class="row" style="margin-top:16px">
     <div style="display:flex; gap:8px; border-bottom:1px solid var(--border); padding-bottom:6px">
-      <button id="tabClient" style="flex:1">Client</button>
+<button id="tabClient" style="flex:1">Channels</button>
       <button id="tabDev" style="flex:1">Developer</button>
       <button id="tabScripts" style="flex:1">Scripts</button>
       <button id="tabSettings" title="Settings" style="width:42px">⚙︎</button>
@@ -74,15 +74,62 @@
   </div>
   <div id="toast"><div class="t-title"></div><div class="t-body"></div></div>
 
-  <div id="clientTab" class="row">
-    <h3>Notifications</h3>
-    <div id="status"></div>
-    <div class="row" style="display:flex; gap:8px; align-items:center; margin-top:8px">
-      <input id="joinCode" placeholder="Enter channel code (e.g., abcd12)" />
-      <button id="joinBtn">Join Channel</button>
+<div id="clientTab" class="row">
+    <div style="display:flex; align-items:center; justify-content:space-between">
+      <h3 style="margin:0">Channels</h3>
+      <button id="toggleClientLogBtn" title="Show Log">Log</button>
     </div>
-    <div id="notifList" style="margin-top:8px; display:flex; flex-direction:column; gap:8px"></div
-    <div class="row">
+    <div id="status" style="margin-top:4px"></div>
+
+    <!-- Create Channel -->
+    <div class="row" style="margin-top:12px; background:var(--panel); padding:10px; border-radius:8px; border:1px solid var(--border)">
+      <h4 style="margin:0 0 6px">Create</h4>
+      <div style="display:flex; gap:8px; flex-wrap:wrap">
+        <input id="createName" placeholder="Name (e.g., QA Team)" style="flex:1" />
+        <input id="createDescription" placeholder="Description (optional)" style="flex:2" />
+      </div>
+      <div style="display:flex; gap:12px; align-items:center; margin-top:8px">
+        <label style="display:flex; gap:6px; align-items:center"><input type="radio" name="vis" id="createPublic" checked /> Public</label>
+        <label style="display:flex; gap:6px; align-items:center"><input type="radio" name="vis" id="createPrivate" /> Private</label>
+        <button id="createSaveBtn">Save</button>
+      </div>
+      <div id="createError" style="color:#b91c1c; margin-top:6px"></div>
+    </div>
+
+    <!-- Lists -->
+    <div class="row" style="display:flex; gap:12px; margin-top:12px; flex-wrap: wrap">
+      <div style="flex:1; min-width:260px">
+        <h4 style="margin:0 0 6px">Public</h4>
+        <div id="publicList"></div>
+      </div>
+      <div style="flex:1; min-width:260px">
+        <h4 style="margin:0 0 6px">Private</h4>
+        <div id="privateList"></div>
+      </div>
+    </div>
+
+    <!-- Subscribers/manage -->
+    <div id="subsPanel" class="row" style="display:none; margin-top:12px; background:var(--panel); padding:10px; border-radius:8px; border:1px solid var(--border)">
+      <div style="display:flex; align-items:center; justify-content:space-between">
+        <h4 id="subsTitle" style="margin:0">Subscribers</h4>
+        <button id="subsCloseBtn">Close</button>
+      </div>
+      <ul id="subsList" style="margin:8px 0 0; padding-left:18px"></ul>
+      <div style="display:flex; gap:8px; align-items:center; margin-top:8px">
+        <select id="subsCountry" style="width:160px">
+          <option value="US" selected>United States (+1)</option>
+          <option value="CA">Canada (+1)</option>
+          <option value="GB">United Kingdom (+44)</option>
+          <option value="AU">Australia (+61)</option>
+        </select>
+        <input id="subsPhone" placeholder="6505551212" />
+        <button id="subsAddBtn">Add</button>
+      </div>
+      <div id="subsError" style="color:#b91c1c; margin-top:6px"></div>
+    </div>
+
+    <!-- Collapsible Log -->
+    <div id="clientLogWrap" class="row" style="display:none">
       <h4 style="margin:12px 0 4px">Log</h4>
       <div style="display:flex; gap:8px; align-items:center; margin-bottom:6px">
         <button id="clearMainLogBtn">Clear</button>
@@ -315,7 +362,175 @@
         return false;
       }
     }
+    // Channels UI wiring
+    (function channelsUI(){
+      const toggleBtn = document.getElementById('toggleClientLogBtn');
+      const logWrap = document.getElementById('clientLogWrap');
+      if (toggleBtn) toggleBtn.addEventListener('click', () => { logWrap.style.display = (logWrap.style.display === 'none' ? 'block' : 'none'); });
 
+      const pubList = document.getElementById('publicList');
+      const prvList = document.getElementById('privateList');
+      const createName = document.getElementById('createName');
+      const createDescription = document.getElementById('createDescription');
+      const createPublic = document.getElementById('createPublic');
+      const createPrivate = document.getElementById('createPrivate');
+      const createSaveBtn = document.getElementById('createSaveBtn');
+      const createError = document.getElementById('createError');
+
+      const subsPanel = document.getElementById('subsPanel');
+      const subsTitle = document.getElementById('subsTitle');
+      const subsList = document.getElementById('subsList');
+      const subsCloseBtn = document.getElementById('subsCloseBtn');
+      const subsAddBtn = document.getElementById('subsAddBtn');
+      const subsPhone = document.getElementById('subsPhone');
+      const subsCountry = document.getElementById('subsCountry');
+      const subsError = document.getElementById('subsError');
+
+      let currentUser = null; // { userId, tenantId, phone }
+      let selectedChannel = null; // { short_id, name }
+      function maskPhone(p){ const s=String(p||''); return s? ('***' + s.slice(-4)) : ''; }
+
+      async function ensureIdentity() {
+        let dev = await window.receiver.devGet();
+        if (!dev || !dev.verifiedPhone) {
+          // trigger existing verification overlay by simulating click on Connect in Settings
+          const btn = document.getElementById('connectNowBtn'); if (btn) btn.click();
+          return false;
+        }
+        currentUser = { userId: dev.verifiedUserId || dev.userId || null, tenantId: dev.verifiedTenantId || dev.tenantId || null, phone: dev.verifiedPhone };
+        if (!currentUser.userId && currentUser.phone) {
+          // ensure user exists
+          try {
+            const r = await window.receiver.adminUsersEnsure({ phone: currentUser.phone, topic: 'runs.finished' });
+            if (r && r.userId) { const d = await window.receiver.devGet(); currentUser.userId = r.userId; }
+          } catch {}
+        }
+        return !!(currentUser.userId && currentUser.tenantId && currentUser.phone);
+      }
+
+      function renderList(container, items, membershipSet) {
+        container.innerHTML = '';
+        if (!items || !items.length) { container.innerHTML = '<div style="opacity:.7">None</div>'; return; }
+        items.forEach(ch => {
+          const row = document.createElement('div');
+          row.style.border = '1px solid var(--border)';
+          row.style.borderRadius = '8px';
+          row.style.padding = '8px';
+          row.style.marginBottom = '8px';
+          const vis = ch.allow_public ? 'Public' : 'Private';
+          const subscribed = membershipSet && membershipSet.has(ch.short_id);
+          row.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px">
+              <div style="flex:1">
+                <div style="font-weight:600">${(ch.name||'').replace(/\</g,'&lt;')} <span style="font-size:11px; opacity:.7">(${vis})</span></div>
+                ${ch.description ? `<div style=\"font-size:12px; opacity:.8\">${String(ch.description).replace(/\</g,'&lt;')}</div>` : ''}
+              </div>
+              <div style="display:flex; gap:6px; align-items:center">
+                ${subscribed ? '<span style="font-size:12px; color:#16a34a">Subscribed</span>' : ''}
+                <button class="manageBtn" data-short="${ch.short_id}">Manage</button>
+                ${subscribed ? `<button class="leaveBtn" data-short="${ch.short_id}">Unsubscribe</button>` : `<button class="subBtn" data-short="${ch.short_id}">Subscribe</button>`}
+              </div>
+            </div>`;
+          container.appendChild(row);
+        });
+      }
+
+      async function refreshLists() {
+        if (!await ensureIdentity()) return;
+        const userCh = await window.receiver.usersChannelsList(currentUser.userId).catch(()=>[]);
+        const membership = new Set((userCh||[]).map(c => c.short_id));
+        const pub = await window.receiver.publicChannelsList(currentUser.tenantId, currentUser.phone).catch(()=>[]);
+        const priv = (userCh||[]).filter(c => !c.allow_public);
+        renderList(pubList, pub, membership);
+        renderList(prvList, priv, membership);
+        // wire actions
+        [...pubList.querySelectorAll('button.subBtn')].forEach(btn => btn.addEventListener('click', async () => {
+          const shortId = btn.getAttribute('data-short');
+          devlog(`[ui] subscribe → ${shortId}`);
+          const r = await window.receiver.publicChannelsJoin(shortId, currentUser.phone);
+          if (r && (r.ok || r.userId)) { showToast('Subscribed', `You have been subscribed to: ${shortId}`); await refreshLists(); }
+          else showToast('Error', 'Subscribe failed');
+        }));
+        [...pubList.querySelectorAll('button.leaveBtn')].forEach(btn => btn.addEventListener('click', async () => {
+          const shortId = btn.getAttribute('data-short');
+          devlog(`[ui] leave → ${shortId}`);
+          await window.receiver.publicChannelsLeave(shortId, currentUser.phone);
+          await refreshLists();
+        }));
+        [...prvList.querySelectorAll('button.leaveBtn')].forEach(btn => btn.addEventListener('click', async () => {
+          const shortId = btn.getAttribute('data-short');
+          devlog(`[ui] leave (private) → ${shortId}`);
+          await window.receiver.publicChannelsLeave(shortId, currentUser.phone);
+          await refreshLists();
+        }));
+        const allManage = [...pubList.querySelectorAll('button.manageBtn'), ...prvList.querySelectorAll('button.manageBtn')];
+        allManage.forEach(btn => btn.addEventListener('click', async () => {
+          selectedChannel = null;
+          const shortId = btn.getAttribute('data-short');
+          selectedChannel = (userCh || []).find(c => c.short_id === shortId) || (pub||[]).find(c => c.short_id === shortId) || { short_id: shortId, name: shortId };
+          subsTitle.textContent = `Subscribers — ${selectedChannel.name}`;
+          subsPanel.style.display = 'block';
+          await refreshSubscribers();
+        }));
+      }
+
+      async function refreshSubscribers() {
+        if (!selectedChannel) return;
+        const users = await window.receiver.adminChannelsUsers(selectedChannel.short_id).catch(()=>[]);
+        subsList.innerHTML = '';
+        users.forEach(u => {
+          const li = document.createElement('li');
+          const label = (u.phone || u.email || u.user_id || '').toString();
+          li.innerHTML = `${label} <button class="xBtn" data-user="${u.user_id}">x</button>`;
+          subsList.appendChild(li);
+        });
+        [...subsList.querySelectorAll('button.xBtn')].forEach(btn => btn.addEventListener('click', async () => {
+          const phone = btn.parentElement.textContent.replace(/\D/g,'');
+          if (!phone) return;
+          devlog(`[ui] unsubscribe → ${selectedChannel.short_id} ${maskPhone(phone)}`);
+          await window.receiver.channelsUnsubscribe(selectedChannel.short_id, phone);
+          await refreshSubscribers();
+          await refreshLists();
+        }));
+      }
+
+      if (subsCloseBtn) subsCloseBtn.addEventListener('click', () => { subsPanel.style.display = 'none'; });
+      if (subsAddBtn) subsAddBtn.addEventListener('click', async () => {
+        if (!selectedChannel) return;
+        const phone = (subsPhone.value || '').trim();
+        if (!phone) { subsError.textContent = 'Enter a phone number'; return; }
+        subsError.textContent = '';
+        devlog(`[ui] add subscriber → ${selectedChannel.short_id} ${maskPhone(phone)}`);
+        const r = await window.receiver.devChannelsSubscribe(selectedChannel.short_id, phone);
+        if (r) { await refreshSubscribers(); await refreshLists(); }
+      });
+
+      if (createSaveBtn) createSaveBtn.addEventListener('click', async () => {
+        createError.textContent = '';
+        if (!await ensureIdentity()) { createError.textContent = 'Verify your phone first.'; return; }
+        const name = (createName.value || '').trim();
+        const description = (createDescription.value || '').trim();
+        const allowPublic = !!createPublic.checked;
+        if (!name) { createError.textContent = 'Name is required'; return; }
+        devlog(`[ui] create channel → name=${name} vis=${allowPublic?'public':'private'}`);
+        const res = await window.receiver.adminChannelsCreate({ name, description, allowPublic, topicName: 'runs.finished', creatorPhone: currentUser.phone });
+        if (res && res.short_id) {
+          showToast('Channel created', name);
+          createName.value = ''; createDescription.value='';
+          await refreshLists();
+          selectedChannel = { short_id: res.short_id, name };
+          subsTitle.textContent = `Subscribers — ${name}`;
+          subsPanel.style.display = 'block';
+          await refreshSubscribers();
+        } else {
+          createError.textContent = 'Create failed';
+        }
+      });
+
+      // initial load after small delay to allow devGet
+      setTimeout(() => { refreshLists().catch(()=>{}); }, 500);
+    })();
+    
     async function preflightOrFail() {
       const ok = await checkHealth();
       if (!ok) {

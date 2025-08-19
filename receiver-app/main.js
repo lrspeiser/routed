@@ -1237,8 +1237,104 @@ async function fetchWithApiKeyRetry(url, init, dev) {
   try { await (async () => ipcMain.handlers?.['dev:provision']?.({}, {}))?.(); } catch {}
   let fresh = loadDev();
   if (!fresh || !fresh.apiKey) return res; // give up, return last 401
-  return await doFetch({ ...baseHeaders, 'Authorization': `Bearer ${fresh.apiKey}`, 'X-Api-Key': fresh.apiKey, 'X-API-Key': fresh.apiKey });
+return await doFetch({ ...baseHeaders, 'Authorization': `Bearer ${fresh.apiKey}`, 'X-Api-Key': fresh.apiKey, 'X-API-Key': fresh.apiKey });
 }
+
+// Public discovery list (tenant-scoped)
+ipcMain.handle('public:channels:list', async (_evt, { tenantId, phone }) => {
+  try {
+    const base = baseUrl();
+    const url = new URL('/v1/public/channels', base);
+    if (tenantId) url.searchParams.set('tenant_id', String(tenantId));
+    if (phone) url.searchParams.set('phone', String(phone));
+    const final = url.toString();
+    const { signal, cancel } = withTimeoutSignal(5000);
+    writeLog(`public:channels:list → ${final}`);
+    const res = await fetch(final, { cache: 'no-store', signal });
+    const j = await res.json().catch(() => ({}));
+    cancel();
+    if (!res.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
+    return j.channels || [];
+  } catch (e) {
+    writeLog(`public:channels:list error: ${String(e)}`);
+    return [];
+  }
+});
+
+// Join public channel by short id
+ipcMain.handle('public:channels:join', async (_evt, { shortId, phone }) => {
+  try {
+    if (!shortId) throw new Error('missing_short_id');
+    if (!phone) throw new Error('missing_phone');
+    const url = new URL(`/v1/public/channels/${encodeURIComponent(String(shortId))}/join`, baseUrl()).toString();
+    writeLog(`public:channels:join → short_id=${shortId} phone=***${String(phone).slice(-4)}`);
+    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: String(phone) }), cache: 'no-store' });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
+    return j;
+  } catch (e) {
+    writeLog(`public:channels:join error: ${String(e)}`);
+    return { ok: false, error: String(e) };
+  }
+});
+
+// Leave channel (public route, works for both public/private membership)
+ipcMain.handle('public:channels:leave', async (_evt, { shortId, phone }) => {
+  try {
+    if (!shortId) throw new Error('missing_short_id');
+    if (!phone) throw new Error('missing_phone');
+    const url = new URL(`/v1/public/channels/${encodeURIComponent(String(shortId))}/leave`, baseUrl()).toString();
+    writeLog(`public:channels:leave → short_id=${shortId} phone=***${String(phone).slice(-4)}`);
+    const res = await fetch(url, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: String(phone) }), cache: 'no-store' });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
+    return j;
+  } catch (e) {
+    writeLog(`public:channels:leave error: ${String(e)}`);
+    return { ok: false, error: String(e) };
+  }
+});
+
+// Publisher-scoped unsubscribe (requires developer key)
+ipcMain.handle('channels:unsubscribe', async (_evt, { shortId, phone }) => {
+  try {
+    const dev = loadDev();
+    if (!dev || !dev.apiKey) throw new Error('Developer key not set');
+    if (!shortId) throw new Error('missing_short_id');
+    if (!phone) throw new Error('missing_phone');
+    const url = new URL(`/v1/channels/${encodeURIComponent(String(shortId))}/unsubscribe`, baseUrl()).toString();
+    writeLog(`channels:unsubscribe req → short_id=${shortId} phone=***${String(phone).slice(-4)}`);
+    const res = await fetchWithApiKeyRetry(url, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: String(phone) }), cache: 'no-store' }, dev);
+    const txt = await res.text().catch(() => '');
+    let j = null; try { j = JSON.parse(txt); } catch {}
+    if (!res.ok) {
+      writeLog(`channels:unsubscribe http_error status=${res.status} body=${txt.slice(0,400)}`);
+      throw new Error((j && j.error) ? j.error : `status ${res.status}`);
+    }
+    writeLog('channels:unsubscribe → ok');
+    return j || { ok: true };
+  } catch (e) {
+    if (!QUIET_ERRORS) { try { dialog.showErrorBox('Unsubscribe failed', String(e)); } catch {} }
+    writeLog(`channels:unsubscribe error: ${String(e)}`);
+    return { ok: false, error: String(e) };
+  }
+});
+
+// User-scoped channels (private + joined public)
+ipcMain.handle('users:channels:list', async (_evt, { userId }) => {
+  try {
+    if (!userId) throw new Error('missing_user_id');
+    const url = new URL(`/v1/users/${encodeURIComponent(String(userId))}/channels`, baseUrl()).toString();
+    writeLog(`users:channels:list → ${url}`);
+    const res = await fetch(url, { cache: 'no-store' });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
+    return j.channels || [];
+  } catch (e) {
+    writeLog(`users:channels:list error: ${String(e)}`);
+    return [];
+  }
+});
 
 ipcMain.handle('admin:channels:list', async (_evt, _tenantId) => {
   try {
@@ -1258,16 +1354,29 @@ ipcMain.handle('admin:channels:list', async (_evt, _tenantId) => {
   }
 });
 
-ipcMain.handle('admin:channels:create', async (_evt, { tenantId, name, topic }) => {
+, topicName, creatorPhone }) => {
   try {
     const dev = loadDev();
     if (!dev || !dev.apiKey) throw new Error('Developer key not set');
     const url = new URL('/v1/channels/create', baseUrl()).toString();
-    const body = { name, topic };
+    // Server expects snake_case keys
+    const body = {
+      name: String(name || '').trim(),
+      description: (description != null && String(description).trim()) ? String(description).trim() : undefined,
+      allow_public: !!allowPublic,
+      topic_name: (topicName && String(topicName).trim()) || undefined,
+      creator_phone: (creatorPhone && String(creatorPhone).trim()) || undefined,
+    };
+    const safeLog = { ...body, creator_phone: body.creator_phone ? `***${String(body.creator_phone).slice(-4)}` : undefined };
+    writeLog(`channels:create req → ${url} body_keys=${Object.keys(body).join(',')}`);
     const res = await fetchWithApiKeyRetry(url, { method: 'POST', headers: { 'Content-Type':'application/json' }, body: JSON.stringify(body), cache: 'no-store' }, dev);
-    const j = await res.json();
-    if (!res.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
-    writeLog(`channels:create → ok name=${name}`);
+    const txt = await res.text().catch(() => '');
+    let j = null; try { j = JSON.parse(txt); } catch {}
+    if (!res.ok) {
+      writeLog(`channels:create http_error status=${res.status} body=${txt.slice(0,400)}`);
+      throw new Error((j && j.error) ? j.error : `status ${res.status}`);
+    }
+    writeLog(`channels:create → ok name=${body.name} allow_public=${body.allow_public}`);
     return j;
   } catch (e) {
     if (!QUIET_ERRORS) { try { dialog.showErrorBox('Create channel failed', String(e)); } catch {} }
