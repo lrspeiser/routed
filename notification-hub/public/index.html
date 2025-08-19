@@ -37,41 +37,10 @@
     <h1>Routed</h1>
     <div style="margin-bottom:24px; opacity:.85">Fast, unified notifications.</div>
     <a class="download" href="/downloads/Routed-latest.dmg">Download for macOS</a>
-    <div class="muted" style="margin-top:8px">If this link 404s in dev, set LATEST_DMG_URL in the hub env to a hosted DMG URL.</div>
-
-    <div class="panel" role="region" aria-label="Unsigned app help">
-      <h3>Having trouble opening on macOS?</h3>
-      <p class="muted">Until the app is signed, macOS may block it. You can allow it by removing the quarantine attribute:</p>
-      <ol class="muted" style="padding-left:18px; margin:8px 0; text-align:left">
-        <li>Open the DMG and drag <strong>Routed.app</strong> to <strong>Applications</strong>.</li>
-        <li>Open Terminal and run:</li>
-      </ol>
-      <div class="row">
-        <pre id="macCmd" class="code"><code>xattr -rd com.apple.quarantine /Applications/Routed.app</code></pre>
-        <button id="copyCmdBtn" class="copy" title="Copy to clipboard">📋 Copy</button>
-      </div>
-      <p class="muted">Then launch Routed from Applications. If it still warns you, right-click the app and choose <em>Open</em>.</p>
-    </div>
 
     <div class="links">
       <a href="/api.html">API Docs</a>
     </div>
   </div>
-
-  <script>
-    (function(){
-      var btn = document.getElementById('copyCmdBtn');
-      if (!btn) return;
-      btn.addEventListener('click', function(){
-        try {
-          var cmd = document.getElementById('macCmd').innerText.trim();
-          navigator.clipboard.writeText(cmd).then(function(){
-            btn.textContent = '✔ Copied';
-            setTimeout(function(){ btn.textContent = '📋 Copy'; }, 1400);
-          }).catch(function(){});
-        } catch (e) {}
-      });
-    })();
-  </script>
 </body>
 </html>
