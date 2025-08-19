@@ -50,7 +50,7 @@ export default async function routes(fastify: FastifyInstance) {
       console.log('[WS] Received from client:', buf.toString());
     });
     connection.socket.on('close', (code, reason) => {
-      console.log('[WS] Close', { userId, code, reason: reason.toString() });
+      console.log('[WS] Close', { userId, code, reason: reason?.toString?.() || '' });
       removeSocket(userId, connection.socket);
       stopPing();
     });
@@ -71,7 +71,7 @@ export default async function routes(fastify: FastifyInstance) {
     const stopPing = () => { if (pingTimer) { clearInterval(pingTimer); pingTimer = null; } };
     startPing();
     connection.socket.on('message', (buf) => console.log('[WS] Received from client (alt):', buf.toString()));
-    connection.socket.on('close', (code, reason) => { console.log('[WS] Close', { userId, code, reason: reason.toString(), alt: true }); removeSocket(userId, connection.socket); stopPing(); });
+    connection.socket.on('close', (code, reason) => { console.log('[WS] Close', { userId, code, reason: reason?.toString?.() || '', alt: true }); removeSocket(userId, connection.socket); stopPing(); });
     connection.socket.on('error', (err) => console.warn('[WS] Error', { userId, err: String(err?.message || err), alt: true }));
   });
 }
