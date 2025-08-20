@@ -22,8 +22,9 @@ contextBridge.exposeInMainWorld('receiver', {
   devProvision: () => ipcRenderer.invoke('dev:provision'),
   devSetBaseUrl: (url) => ipcRenderer.invoke('dev:setBaseUrl', url),
   devGetBaseUrl: () => ipcRenderer.invoke('dev:getBaseUrl'),
+  onDevUpdated: (cb) => { try { ipcRenderer.on('dev:updated', (_e, data) => { try { cb && cb(data); } catch {} }); } catch {} },
   adminChannelsList: (tenantId) => ipcRenderer.invoke('admin:channels:list', tenantId),
-adminChannelsCreate: (args) => ipcRenderer.invoke('admin:channels:create', args),
+  adminChannelsCreate: (args) => ipcRenderer.invoke('admin:channels:create', args),
   // Channels discovery and membership
   publicChannelsList: (tenantId, phone) => ipcRenderer.invoke('public:channels:list', { tenantId, phone }),
   publicChannelsJoin: (shortId, phone) => ipcRenderer.invoke('public:channels:join', { shortId, phone }),
@@ -44,6 +45,8 @@ adminChannelsCreate: (args) => ipcRenderer.invoke('admin:channels:create', args)
   // Verification
   verifyStart: (args) => ipcRenderer.invoke('verify:start', args),
   verifyCheck: (args) => ipcRenderer.invoke('verify:check', args),
+  // DevTools
+  toggleDevTools: () => ipcRenderer.invoke('devtools:toggle'),
 });
 
 // Scripts bridge (scaffold)

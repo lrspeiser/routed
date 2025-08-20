@@ -28,8 +28,20 @@ create table if not exists users (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references tenants(id) on delete cascade,
   email text,
+  phone text,
   created_at timestamptz not null default now()
 );
+
+-- Backfill: add phone column if missing (for deployments created before phone support)
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'users' AND column_name = 'phone'
+  ) THEN
+    ALTER TABLE users ADD COLUMN phone text;
+  END IF;
+EXCEPTION WHEN others THEN
+  NULL;
+END $$;
 
 -- Ensure a single user per tenant/email
 do $$ begin
@@ -42,6 +54,18 @@ exception when others then
   -- ignore if already exists or running on limited permissions
   null;
 end $$;
+
+-- Ensure a single user per tenant/phone (required for ON CONFLICT (tenant_id, phone))
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_indexes WHERE schemaname = current_schema() AND indexname = 'users_tenant_phone_unique'
+  ) THEN
+    ALTER TABLE users ADD CONSTRAINT users_tenant_phone_unique UNIQUE (tenant_id, phone);
+  END IF;
+EXCEPTION WHEN others THEN
+  -- ignore if already exists or running on limited permissions
+  NULL;
+END $$;
 
 create table if not exists subscriptions (
   id uuid primary key default gen_random_uuid(),

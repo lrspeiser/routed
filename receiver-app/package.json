@@ -1,6 +1,6 @@
 {
   "name": "routed",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "private": true,
   "author": "Routed",
   "description": "Routed desktop receiver",
@@ -24,6 +24,7 @@
       "main.js",
       "preload.js",
       "renderer.html",
+      "verify.html",
       "package.json",
       "routed_icon.png"
     ],

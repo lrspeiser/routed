@@ -3,7 +3,7 @@
 // It is a simple Electron app that uses the Routed Hub API to receive messages.
 // It is used to receive messages from the Routed Hub.
 
-const { app, BrowserWindow, Notification, dialog, ipcMain, Tray, Menu, nativeImage, globalShortcut, shell } = require('electron');
+const { app, BrowserWindow, Notification, dialog, ipcMain, Tray, Menu, nativeImage, globalShortcut, shell, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -11,10 +11,15 @@ const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch
 let keytar; try { keytar = require('keytar'); } catch { keytar = null; }
 
 let mainWindow;
+let verifyWindow;
 let tray;
 let isQuitting = false;
 // Point app directly at the hub for all actions
 let OVERRIDE_BASE = null;
+// Post-verification initialization gate
+let _postInitDone = false;
+// Clean start flag: when set, app clears all local user state on startup
+const CLEAN_START = process.argv.includes('--clean-start') || process.env.CLEAN_START === '1';
 const DEFAULT_RESOLVE_URL_FALLBACK = 'https://routed.onrender.com';
 // Suppress modal error popups for background operations; rely on log and renderer toasts
 const QUIET_ERRORS = true;
@@ -79,6 +84,7 @@ function tryLoadLocalEnv() {
 // Read/write OpenAI key under userData so the server can provision it for the app
 function userDataAIPath(...segs) {
   try { return path.join(app.getPath('userData'), 'ai', ...segs); } catch { return path.join(process.cwd(), 'ai', ...segs); }
+}
 // IMPORTANT: NEVER use placeholder or fallback keys for OpenAI. Only use a valid, server-provisioned key bound to the authorized user.
 // Key validity is strictly structural (non-empty, long enough, no whitespace). No placeholder acceptance of any kind.
 function isStructurallyValidOpenAIKey(key) {
@@ -118,7 +124,6 @@ function persistUserOpenAIKey(key) {
     fs.writeFileSync(p, k);
     return true;
   } catch { return false; }
-}
 }
 
 // Always obtain OpenAI key from server when missing locally (no env fallbacks)
@@ -198,6 +203,41 @@ function writeLog(line) {
   try { console.log(out.trim()); } catch {}
 }
 
+// Clean local state (Electron storage + userData + keychain tokens)
+async function cleanLocalState() {
+  try {
+    writeLog('clean-start: begin');
+    // 1) Clear Electron session storage/caches
+    try {
+      if (session && session.defaultSession) {
+        await session.defaultSession.clearStorageData({});
+        await session.defaultSession.clearCache();
+        writeLog('clean-start: cleared session storage and cache');
+      }
+    } catch (e) { writeLog('clean-start: session clear error ' + String(e)); }
+
+    // 2) Delete all files under userData
+    try {
+      const ud = app.getPath('userData');
+      writeLog('clean-start: userData=' + ud);
+      try {
+        const entries = fs.readdirSync(ud);
+        for (const name of entries) {
+          try { fs.rmSync(path.join(ud, name), { recursive: true, force: true }); } catch {}
+        }
+        writeLog('clean-start: wiped userData contents');
+      } catch (e) { writeLog('clean-start: userData wipe error ' + String(e)); }
+    } catch (e) { writeLog('clean-start: userData path error ' + String(e)); }
+
+    // 3) Clear keychain-backed session tokens
+    try { await tmClear(); writeLog('clean-start: cleared keychain session tokens'); } catch (e) { writeLog('clean-start: keychain clear error ' + String(e)); }
+
+    writeLog('clean-start: done');
+  } catch (e) {
+    writeLog('clean-start: fatal error ' + String(e));
+  }
+}
+
 function withTimeoutSignal(ms) {
   const ac = new AbortController();
   const t = setTimeout(() => { try { ac.abort(); } catch {} }, ms);
@@ -217,6 +257,46 @@ function loadDev() {
 }
 function saveDev(data) {
   try { fs.writeFileSync(devStorePath(), JSON.stringify(data, null, 2)); } catch {}
+  try { notifyDevUpdated(data); } catch {}
+}
+
+function notifyDevUpdated(data) {
+  try {
+    if (mainWindow && mainWindow.webContents) {
+      mainWindow.webContents.send('dev:updated', data || loadDev());
+    }
+  } catch (e) { writeLog('notifyDevUpdated error: ' + String(e)); }
+}
+
+// Ensure we have a working developer identity (tenantId + apiKey) for the current baseUrl
+async function ensureValidDeveloper() {
+  try {
+    let dev = loadDev();
+    const b = baseUrl();
+    // If no key at all, provision immediately
+    if (!dev || !dev.apiKey) {
+      writeLog('dev:ensure → no key; provisioning');
+      await (async () => ipcMain.handlers?.['dev:provision']?.({}, {}))?.();
+      dev = loadDev();
+    }
+    if (!dev || !dev.apiKey) return dev;
+    // Validate current key with a lightweight call; retry logic will self-provision on 401 inside fetchWithApiKeyRetry
+    try {
+      const url = new URL('/v1/channels/list', b).toString();
+      const res = await fetchWithApiKeyRetry(url, { cache: 'no-store' }, dev);
+      if (res.status === 401) {
+        writeLog('dev:ensure → key invalid after retry; provisioning fresh');
+        await (async () => ipcMain.handlers?.['dev:provision']?.({}, {}))?.();
+        dev = loadDev();
+      }
+    } catch (e) {
+      writeLog('dev:ensure validate error: ' + String(e));
+    }
+    return dev;
+  } catch (e) {
+    writeLog('dev:ensure fatal: ' + String(e));
+    return loadDev();
+  }
 }
 
 async function createWindow() {
@@ -245,6 +325,28 @@ async function createWindow() {
     }
   });
   writeLog('Main window created');
+}
+
+async function createVerifyWindow() {
+  const assetBase = app.isPackaged ? process.resourcesPath : __dirname;
+  let appIconPath = path.join(assetBase, 'build', 'icon.icns');
+  try { if (!fs.existsSync(appIconPath)) appIconPath = path.join(assetBase, 'routed_icon.png'); } catch { appIconPath = path.join(assetBase, 'routed_icon.png'); }
+  verifyWindow = new BrowserWindow({
+    width: 420,
+    height: 460,
+    resizable: false,
+    movable: true,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    title: 'Routed — Verify',
+    icon: appIconPath,
+    show: true,
+    webPreferences: { preload: path.join(__dirname, 'preload.js') },
+  });
+  await verifyWindow.loadFile('verify.html');
+  verifyWindow.on('closed', () => { verifyWindow = null; });
+  writeLog('Verify window created');
 }
 
 function createTray() {
@@ -309,6 +411,7 @@ function createTray() {
       } catch (e) { writeLog('Tray: setLoginItemSettings error ' + String(e)); }
     } },
     { type: 'separator' },
+    { label: 'Toggle DevTools', click: () => { try { if (mainWindow && mainWindow.webContents) { if (mainWindow.webContents.isDevToolsOpened()) mainWindow.webContents.closeDevTools(); else mainWindow.webContents.openDevTools({ mode: 'detach' }); } } catch (e) { writeLog('tray:toggleDevTools error ' + String(e)); } } },
     { label: 'Quit Routed', click: () => { isQuitting = true; app.quit(); } },
   ]);
   tray.setToolTip('Routed');
@@ -370,31 +473,7 @@ async function runSelfDiagnostics() {
   }
 }
 
-if (!process.env.TEST_MODE && !process.env.VITEST) app.whenReady().then(async () => {
-  try { app.setName('Routed'); } catch {}
-  if (process.platform === 'darwin') {
-    const assetBase = app.isPackaged ? process.resourcesPath : __dirname;
-    // Prefer the icns bundle for the dock if available
-    let dockIcon = path.join(assetBase, 'build', 'icon.icns');
-    try { if (!fs.existsSync(dockIcon)) dockIcon = path.join(assetBase, 'routed_icon.png'); } catch { dockIcon = path.join(assetBase, 'routed_icon.png'); }
-    try { app.dock.setIcon(dockIcon); } catch {}
-    // Ensure the app shows in the Dock and Force Quit menu
-    try { app.setActivationPolicy?.('regular'); } catch {}
-    try { app.dock.show(); } catch {}
-  }
-  // Register a global quit shortcut
-  try {
-    globalShortcut.register('Command+Q', () => { isQuitting = true; try { app.quit(); } catch {} });
-  } catch {}
-
-  await createWindow();
-  createTray();
-  writeLog('App ready');
-
-  // Fire diagnostics in background (non-blocking)
-  try { setTimeout(() => { runSelfDiagnostics().catch(() => {}); }, 0); } catch {}
-
-  // Basic app menu with Quit for macOS
+function buildAppMenu() {
   try {
     const isMac = process.platform === 'darwin';
     const template = [
@@ -431,6 +510,12 @@ if (!process.env.TEST_MODE && !process.env.VITEST) app.whenReady().then(async ()
         ],
       },
       {
+        label: 'View',
+        submenu: [
+          { label: 'Toggle Developer Tools', accelerator: isMac ? 'Command+Alt+I' : 'Ctrl+Alt+I', click: () => { try { if (!mainWindow) return; if (mainWindow.webContents.isDevToolsOpened()) mainWindow.webContents.closeDevTools(); else mainWindow.webContents.openDevTools({ mode: 'detach' }); } catch (e) { writeLog('menu:toggleDevTools error ' + String(e)); } } },
+        ],
+      },
+      {
         label: 'Window',
         role: 'windowMenu',
       },
@@ -438,6 +523,94 @@ if (!process.env.TEST_MODE && !process.env.VITEST) app.whenReady().then(async ()
     const menu = Menu.buildFromTemplate(template);
     Menu.setApplicationMenu(menu);
   } catch {}
+}
+
+async function postInitIfNeeded() {
+  if (_postInitDone) return;
+  try {
+    const d = loadDev();
+    const verified = !!(d && d.verifiedUserId && d.verifiedPhone);
+    if (!verified) { writeLog('post-init: awaiting phone verification'); return; }
+  } catch {}
+  try { createTray(); } catch {}
+  try { buildAppMenu(); } catch {}
+  try { setTimeout(() => { runSelfDiagnostics().catch(() => {}); }, 0); } catch {}
+  _postInitDone = true;
+  writeLog('post-init: completed');
+}
+
+if (!process.env.TEST_MODE && !process.env.VITEST) app.whenReady().then(async () => {
+  try { app.setName('Routed'); } catch {}
+  // Optionally clear all local state before creating any windows
+  if (CLEAN_START) {
+    writeLog('App starting with --clean-start');
+    await cleanLocalState();
+  }
+  if (process.platform === 'darwin') {
+    const assetBase = app.isPackaged ? process.resourcesPath : __dirname;
+    // Prefer the icns bundle for the dock if available
+    let dockIcon = path.join(assetBase, 'build', 'icon.icns');
+    try { if (!fs.existsSync(dockIcon)) dockIcon = path.join(assetBase, 'routed_icon.png'); } catch { dockIcon = path.join(assetBase, 'routed_icon.png'); }
+    try { app.dock.setIcon(dockIcon); } catch {}
+    // Ensure the app shows in the Dock and Force Quit menu
+    try { app.setActivationPolicy?.('regular'); } catch {}
+    try { app.dock.show(); } catch {}
+  }
+  // Register a global quit shortcut
+  try {
+    globalShortcut.register('Command+Q', () => { isQuitting = true; try { app.quit(); } catch {} });
+    // DevTools global shortcut
+    const combo = process.platform === 'darwin' ? 'Command+Alt+I' : 'Ctrl+Alt+I';
+    try { globalShortcut.register(combo, () => { try { if (mainWindow && mainWindow.webContents) { if (mainWindow.webContents.isDevToolsOpened()) mainWindow.webContents.closeDevTools(); else mainWindow.webContents.openDevTools({ mode: 'detach' }); } } catch (e) { writeLog('shortcut:toggleDevTools error ' + String(e)); } }); } catch (e) { writeLog('shortcut register error ' + String(e)); }
+  } catch {}
+
+  // Preflight with no window: health -> (optional) key -> verified?
+  try {
+    // Health
+    const b = baseUrl();
+    try {
+      const url = new URL('/v1/health/deep', b).toString();
+      const { signal, cancel } = withTimeoutSignal(3000);
+      const res = await fetch(url, { cache: 'no-store', signal });
+      const txt = await res.text().catch(() => '');
+      cancel();
+      writeLog(`preflight: health_deep status=${res.status} body=${txt.slice(0,120)}`);
+    } catch (e) { writeLog('preflight: health error ' + String(e)); }
+
+    // Schema check to proactively surface DB mismatches
+    try {
+      const url = new URL('/v1/health/schema', b).toString();
+      const { signal, cancel } = withTimeoutSignal(3000);
+      const res = await fetch(url, { cache: 'no-store', signal });
+      const txt = await res.text().catch(() => '');
+      cancel();
+      writeLog(`preflight: health_schema status=${res.status} body=${txt.slice(0,200)}`);
+    } catch (e) { writeLog('preflight: schema error ' + String(e)); }
+
+    // Verified?
+    let verified = false; let dev = null;
+    try { dev = loadDev(); verified = !!(dev && dev.verifiedUserId && dev.verifiedPhone); } catch {}
+
+    if (verified) {
+      // Ensure developer identity before showing window (provision if missing/invalid)
+      try {
+        const ensuredDev = await ensureValidDeveloper();
+        if (ensuredDev && ensuredDev.apiKey) { writeLog('preflight: developer ensured'); notifyDevUpdated(ensuredDev); }
+      } catch (e) { writeLog('preflight: ensure developer error ' + String(e)); }
+      // Attempt to ensure OpenAI key (best-effort)
+      try { const ensured = await ensureOpenAIKeyFromServer(); writeLog('preflight: openai ' + (ensured && ensured.ok ? 'ok' : 'skip')); } catch {}
+      await createWindow();
+      writeLog('App ready (verified)');
+      await postInitIfNeeded();
+    } else {
+      await createVerifyWindow();
+      writeLog('App ready (verify-first)');
+    }
+  } catch (e) {
+    writeLog('preflight fatal: ' + String(e));
+    // As a fallback, show verify window to allow recovery
+    try { await createVerifyWindow(); } catch {}
+  }
 });
 
 if (!process.env.TEST_MODE && !process.env.VITEST) {
@@ -544,6 +717,19 @@ ipcMain.handle('app:version', async () => {
   try { return app.getVersion ? app.getVersion() : '0.0.0'; } catch { return '0.0.0'; }
 });
 
+// DevTools toggle
+ipcMain.handle('devtools:toggle', async () => {
+  try {
+    if (mainWindow && mainWindow.webContents) {
+      if (mainWindow.webContents.isDevToolsOpened()) mainWindow.webContents.closeDevTools();
+      else mainWindow.webContents.openDevTools({ mode: 'detach' });
+      return { ok: true };
+    }
+  } catch (e) {
+    writeLog('devtools:toggle error: ' + String(e));
+  }
+  return { ok: false };
+});
 ipcMain.handle('admin:sockets', async () => {
   try {
     const headers = {};
@@ -1083,30 +1269,50 @@ ipcMain.handle('verify:check', async (_evt, { phone, code }) => {
     d.verifiedPhone = j.phone;
     d.verifiedUserId = j.userId;
     d.verifiedTenantId = j.tenantId;
-    // Ensure developer identity + API key in cloud immediately after verify
+    d.hubUrl = d.hubUrl || baseUrl();
+    // Ensure developer identity + API key in cloud immediately after verify (with retry + detailed logs)
     try {
       const admin = isAdminMode();
       const provUrl = new URL(admin ? '/v1/admin/sandbox/provision' : '/v1/dev/sandbox/provision', baseUrl()).toString();
       if (!d.apiKey || !d.tenantId) {
-        writeLog('verify:check → provisioning developer identity');
+        writeLog(`verify:check → provisioning developer identity url=${provUrl}`);
         const opts = { method: 'POST', cache: 'no-store', headers: admin ? { ...adminAuthHeaders(), 'Content-Type': 'application/json' } : undefined };
-        const pRes = await fetch(provUrl, opts);
-        const p = await pRes.json().catch(() => ({}));
-        if (pRes.ok && p && (p.apiKey || p.api_key)) {
+        async function tryProvision() {
+          const pRes = await fetch(provUrl, opts);
+          const raw = await pRes.text().catch(() => '');
+          let p = null; try { p = JSON.parse(raw); } catch {}
+          return { pRes, p, raw };
+        }
+        let attempt = await tryProvision();
+        if (!attempt.pRes.ok || !(attempt.p && (attempt.p.apiKey || attempt.p.api_key))) {
+          writeLog(`verify:check → provision attempt1 failed status=${attempt.pRes && attempt.pRes.status} body=${String(attempt.raw).slice(0,400)}`);
+          // Retry once
+          attempt = await tryProvision();
+        }
+        if (attempt.pRes.ok && attempt.p && (attempt.p.apiKey || attempt.p.api_key)) {
+          const p = attempt.p;
           d.hubUrl = baseUrl();
           d.tenantId = p.tenantId || p.tenant_id || d.tenantId || null;
           d.userId = p.userId || p.user_id || d.userId || null;
           d.apiKey = p.apiKey || p.api_key;
           writeLog('verify:check → developer key ensured');
         } else {
-          writeLog('verify:check → provision skipped/failed ' + (p && p.error ? p.error : ''));
+          writeLog(`verify:check → provision failed status=${attempt.pRes && attempt.pRes.status} body=${String(attempt.raw).slice(0,400)}`);
         }
       }
     } catch (e) {
       writeLog('verify:check → ensure developer failed: ' + String(e));
     }
     saveDev(d);
+    // Validate or (re)provision developer key now that verification succeeded
+    try { const ensured = await ensureValidDeveloper(); if (ensured && ensured.apiKey) notifyDevUpdated(ensured); } catch (e) { writeLog('verify:check → ensure dev failed ' + String(e)); }
     writeLog(`verify:check → ok user=${j.userId}`);
+    try { await postInitIfNeeded(); } catch {}
+    try {
+      if (!mainWindow) { await createWindow(); }
+      if (verifyWindow) { try { verifyWindow.close(); } catch {} verifyWindow = null; }
+      try { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } } catch {}
+    } catch (e) { writeLog('verify:check post-init window error: ' + String(e)); }
     return { ok: true, userId: j.userId, tenantId: d.verifiedTenantId, apiKey: d.apiKey || null };
   } catch (e) {
     writeLog('verify:check error: ' + String(e));
@@ -1124,10 +1330,20 @@ ipcMain.handle('dev:provision', async () => {
     const admin = isAdminMode();
     const url = new URL(admin ? '/v1/admin/sandbox/provision' : '/v1/dev/sandbox/provision', baseUrl()).toString();
     const opts = { method: 'POST', cache: 'no-store', headers: admin ? { ...adminAuthHeaders(), 'Content-Type': 'application/json' } : undefined };
-    const res = await fetch(url, opts);
-    const j = await res.json();
-    if (!res.ok) throw new Error(`provision failed ${res.status} ${JSON.stringify(j)}`);
-    const dev = { hubUrl: baseUrl(), tenantId: j.tenantId, apiKey: j.apiKey, userId: j.userId };
+    async function tryProvision() {
+      const res = await fetch(url, opts);
+      const raw = await res.text().catch(() => '');
+      let j = null; try { j = JSON.parse(raw); } catch {}
+      return { res, j, raw };
+    }
+    let attempt = await tryProvision();
+    if (!attempt.res.ok || !(attempt.j && (attempt.j.apiKey || attempt.j.api_key))) {
+      writeLog(`dev:provision attempt1 failed status=${attempt.res && attempt.res.status} body=${String(attempt.raw).slice(0,400)}`);
+      attempt = await tryProvision();
+    }
+    if (!attempt.res.ok) throw new Error(`provision failed ${attempt.res.status} ${String(attempt.raw).slice(0,400)}`);
+    const j = attempt.j || {};
+    const dev = { hubUrl: baseUrl(), tenantId: j.tenantId || j.tenant_id, apiKey: j.apiKey || j.api_key, userId: j.userId || j.user_id };
     saveDev(dev);
     writeLog(`provision → success tenantId=${dev.tenantId} (admin=${admin})`);
     return dev;
@@ -1356,31 +1572,43 @@ ipcMain.handle('admin:channels:list', async (_evt, _tenantId) => {
 
 ipcMain.handle('admin:channels:create', async (_evt, { name, description, allowPublic, topicName, creatorPhone }) => {
   try {
-    const dev = loadDev();
+    let dev = loadDev();
+    writeLog(`channels:create:init name=${String(name||'')} allowPublic=${!!allowPublic} hasKey=${!!(dev && dev.apiKey)} hasPhone=${!!(dev && dev.verifiedPhone)}`);
+    // Ensure we have a valid key for this hub (handles post-reset DB where old keys are invalid)
+    try { dev = await ensureValidDeveloper(); } catch (e) { writeLog('channels:create: ensure dev error ' + String(e)); }
+    if (!dev || !dev.apiKey) {
+      writeLog('channels:create: provisioning developer first');
+      try { await (async () => ipcMain.handlers?.['dev:provision']?.({}, {}))?.(); } catch (e) { writeLog('channels:create: provision error ' + String(e)); }
+      dev = loadDev();
+      writeLog(`channels:create: post-provision hasKey=${!!(dev && dev.apiKey)} tenantId=${dev && dev.tenantId ? dev.tenantId : 'null'}`);
+    }
     if (!dev || !dev.apiKey) throw new Error('Developer key not set');
+    if (!creatorPhone && dev && dev.verifiedPhone) creatorPhone = dev.verifiedPhone;
+    if (!creatorPhone) writeLog('channels:create: warning creatorPhone missing (will still create without auto-subscribe)');
     const url = new URL('/v1/channels/create', baseUrl()).toString();
     // Server expects snake_case keys
     const body = {
       name: String(name || '').trim(),
       description: (description != null && String(description).trim()) ? String(description).trim() : undefined,
       allow_public: !!allowPublic,
-      topic_name: (topicName && String(topicName).trim()) || undefined,
+      topic_name: (topicName && String(topicName).trim()) || 'runs.finished',
       creator_phone: (creatorPhone && String(creatorPhone).trim()) || undefined,
     };
-    writeLog(`channels:create req → ${url} body_keys=${Object.keys(body).join(',')}`);
+    writeLog(`channels:create:req url=${url} body=${JSON.stringify({ ...body, creator_phone: body.creator_phone ? '***' + String(body.creator_phone).slice(-4) : null })}`);
     const res = await fetchWithApiKeyRetry(url, { method: 'POST', headers: { 'Content-Type':'application/json' }, body: JSON.stringify(body), cache: 'no-store' }, dev);
     const txt = await res.text().catch(() => '');
     let j = null; try { j = JSON.parse(txt); } catch {}
+    writeLog(`channels:create:res status=${res.status} ok=${res.ok} body=${txt.slice(0,400)}`);
     if (!res.ok) {
-      writeLog(`channels:create http_error status=${res.status} body=${txt.slice(0,400)}`);
-      throw new Error((j && j.error) ? j.error : `status ${res.status}`);
+      const errMsg = (j && j.error) ? j.error : `status ${res.status}`;
+      const detail = (j && (j.detail || j.hint)) ? `: ${j.detail || j.hint}` : '';
+      throw new Error(errMsg + detail);
     }
     writeLog(`channels:create → ok name=${body.name} allow_public=${body.allow_public}`);
-    return j;
+    return j || { ok: true };
   } catch (e) {
-    if (!QUIET_ERRORS) { try { dialog.showErrorBox('Create channel failed', String(e)); } catch {} }
     writeLog(`channels:create error: ${String(e)}`);
-    return null;
+    return { ok: false, error: String(e) };
   }
 });
 

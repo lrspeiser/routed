@@ -73,7 +73,7 @@ export default async function routes(fastify: FastifyInstance) {
       const out = await withTxn(async (c) => {
         const tr = await c.query(
           `insert into topics (tenant_id, name) values ($1,$2)
-           on conflict (tenant_id,name) do update set name=excluded.name
+           on conflict on constraint topics_tenant_id_name_key do update set name=excluded.name
            returning id`,
           [tenantId, topic]
         );

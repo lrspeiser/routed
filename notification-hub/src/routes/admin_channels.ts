@@ -33,7 +33,7 @@ export default async function routes(fastify: FastifyInstance) {
         // ensure topic
         const tr = await c.query(
           `insert into topics (tenant_id, name) values ($1,$2)
-           on conflict (tenant_id,name) do update set name=excluded.name
+           on conflict on constraint topics_tenant_id_name_key do update set name=excluded.name
            returning id`,
           [tenant_id, topic_name]
         );
@@ -64,7 +64,7 @@ export default async function routes(fastify: FastifyInstance) {
           let userId: string | null = null;
           const ur = await c.query(
             `insert into users (tenant_id, phone) values ($1,$2)
-             on conflict (tenant_id, phone) do update set phone=excluded.phone
+             on conflict on constraint users_tenant_phone_unique do update set phone=excluded.phone
              returning id`,
             [tenant_id, String(creator_phone).trim()]
           );
@@ -72,7 +72,7 @@ export default async function routes(fastify: FastifyInstance) {
           if (userId) {
             const sr = await c.query(
               `insert into subscriptions (tenant_id, user_id, topic_id) values ($1,$2,$3)
-               on conflict do nothing
+               on conflict on constraint subscriptions_user_id_topic_id_key do nothing
                returning user_id`,
               [tenant_id, userId, topicId]
             );
@@ -91,6 +91,9 @@ export default async function routes(fastify: FastifyInstance) {
       if (msg.includes('relation') && msg.includes('channels')) {
         return reply.status(500).send({ error: 'channels_table_missing', hint: 'Apply latest SQL migrations to create channels table.' });
       }
+      if (msg.includes('no unique or exclusion constraint matching the ON CONFLICT specification') || msg.includes('ON CONFLICT')) {
+        return reply.status(500).send({ error: 'schema_mismatch', hint: 'Missing unique constraint required for ON CONFLICT. Ensure users has unique (tenant_id, phone) and topics has unique (tenant_id, name). See /v1/health/schema.' });
+      }
       reply.status(500).send({ error: 'internal_error', detail: msg });
     }
   });
@@ -108,7 +111,7 @@ fastify.post('/v1/channels/create', async (req, reply) => {
       const result = await withTxn(async (c) => {
         const tr = await c.query(
           `insert into topics (tenant_id, name) values ($1,$2)
-           on conflict (tenant_id,name) do update set name=excluded.name
+           on conflict on constraint topics_tenant_id_name_key do update set name=excluded.name
            returning id`,
           [pub.tenant_id, topicName]
         );
@@ -137,7 +140,7 @@ fastify.post('/v1/channels/create', async (req, reply) => {
           let userId: string | null = null;
           const ur = await c.query(
             `insert into users (tenant_id, phone) values ($1,$2)
-             on conflict (tenant_id, phone) do update set phone=excluded.phone
+             on conflict on constraint users_tenant_phone_unique do update set phone=excluded.phone
              returning id`,
             [pub.tenant_id, String(creator_phone).trim()]
           );
@@ -145,7 +148,7 @@ fastify.post('/v1/channels/create', async (req, reply) => {
           if (userId) {
             const sr = await c.query(
               `insert into subscriptions (tenant_id, user_id, topic_id) values ($1,$2,$3)
-               on conflict do nothing
+               on conflict on constraint subscriptions_user_id_topic_id_key do nothing
                returning user_id`,
               [pub.tenant_id, userId, topicId]
             );
@@ -276,7 +279,7 @@ fastify.post('/v1/public/channels/:short_id/join', async (req, reply) => {
       let userId: string | null = null;
       const u = await client.query(
         `insert into users (tenant_id, phone) values ($1,$2)
-         on conflict (tenant_id, phone) do update set phone=excluded.phone
+         on conflict on constraint users_tenant_phone_unique do update set phone=excluded.phone
          returning id`,
         [tenant_id, phone]
       );
@@ -355,7 +358,7 @@ fastify.post('/v1/channels/:short_id/subscribe', async (req, reply) => {
       try {
         const r = await client.query(
           `insert into users (tenant_id, phone) values ($1,$2)
-           on conflict (tenant_id, phone) do update set phone=excluded.phone
+           on conflict on constraint users_tenant_phone_unique do update set phone=excluded.phone
            returning id`,
           [tenant_id, phone]
         );

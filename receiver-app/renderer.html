@@ -38,7 +38,7 @@
   <div class="row" style="opacity:.7">Before connecting, we’ll check your server health.</div>
   <div class="row" id="health">Checking server…</div>
 
-  <div id="regOverlay" style="position:fixed; inset:0; background:rgba(255,253,250,0.98); display:none; padding:16px; z-index:9999; overflow:auto">
+  <div id="regOverlay" style="position:fixed; inset:0; background:rgba(255,253,250,0.98); display:none; padding:16px; z-index:9999; overflow:auto" role="dialog" aria-modal="true">
     <h3>Register your phone</h3>
     <div id="regStepPhone">
       <div class="row" style="display:flex; gap:8px; align-items:center">
@@ -350,8 +350,27 @@
         let ok2 = false;
         try { const j2 = JSON.parse(text2); ok2 = !!(j2 && j2.ok); } catch {}
         if (status2 === 200 && ok2) {
-          healthEl.innerHTML = `Server: <span style="color:#22c55e">OK</span>`;
-          return true;
+          // Additionally check schema details so we can show actionable errors
+          const surl = new URL('/v1/health/schema', BASE_URL).toString();
+          devlog(`[health] GET ${surl}`);
+          try {
+            const sres = await fetchTimeout(surl, { cache: 'no-store' }, 2000);
+            const sText = await sres.text().catch(() => '');
+            devlog(`[health] schema status=${sres.status} body=${sText}`);
+            let missing = [];
+            try { const sj = JSON.parse(sText); missing = Array.isArray(sj.missing) ? sj.missing : []; } catch {}
+            if (sres.ok && (!missing || missing.length === 0)) {
+              healthEl.innerHTML = `Server: <span style=\"color:#22c55e\">OK</span>`;
+              return true;
+            } else {
+              healthEl.innerHTML = `Server: <span style=\"color:#f59e0b\">Schema issue</span><div style=\"font-size:12px; opacity:.8; margin-top:4px\">Missing: ${missing.join(', ') || 'unknown'}</div>`;
+              return false;
+            }
+          } catch (e) {
+            devlog(`[health] schema error ${String(e)}`);
+            healthEl.innerHTML = `Server: <span style=\"color:#22c55e\">OK</span>`;
+            return true;
+          }
         }
         healthEl.textContent = `Health check failed. Status ${status2}`;
         return false;
@@ -522,8 +541,10 @@
           subsTitle.textContent = `Subscribers — ${name}`;
           subsPanel.style.display = 'block';
           await refreshSubscribers();
-        } else {
-          createError.textContent = 'Create failed';
+} else {
+          const reason = (res && res.error) ? String(res.error) : '';
+          createError.textContent = 'Create failed' + (reason ? (': ' + reason) : '');
+          devlog(`[ui] create channel failed reason=${reason || 'unknown'}`);
         }
       });
 
@@ -706,15 +727,43 @@
     const devTab = document.getElementById('devTab');
     const scriptsTab = document.getElementById('scriptsTab');
     const settingsTab = document.getElementById('settingsTab');
+    const tabBtnClient = document.getElementById('tabClient');
+    const tabBtnDev = document.getElementById('tabDev');
+    const tabBtnScripts = document.getElementById('tabScripts');
+
     function showTab(which) {
       clientTab.style.display = which === 'client' ? '' : 'none';
       devTab.style.display = which === 'dev' ? '' : 'none';
       scriptsTab.style.display = which === 'scripts' ? '' : 'none';
       settingsTab.style.display = which === 'settings' ? '' : 'none';
     }
-    document.getElementById('tabClient').addEventListener('click', () => showTab('client'));
-    document.getElementById('tabDev').addEventListener('click', () => showTab('dev'));
-document.getElementById('tabScripts').addEventListener('click', async () => {
+
+    function setOverlayVisible(vis) {
+      const overlay = document.getElementById('regOverlay');
+      if (!overlay) return;
+      overlay.style.display = vis ? 'block' : 'none';
+      try { document.body.style.overflow = vis ? 'hidden' : ''; } catch {}
+    }
+
+    async function isVerified() {
+      try { const d = await window.receiver.devGet(); return !!(d && d.verifiedUserId && d.verifiedPhone); } catch { return false; }
+    }
+
+    async function requireVerifiedAndShow(which) {
+      const ok = await isVerified();
+      if (!ok) {
+        showToast('Verification required', 'Please verify your phone in Settings first.');
+        try { document.getElementById('regOverlay').style.display = 'block'; } catch {}
+        showTab('settings');
+        return;
+      }
+      showTab(which);
+    }
+
+    tabBtnClient.addEventListener('click', () => { requireVerifiedAndShow('client'); });
+    tabBtnDev.addEventListener('click', () => { requireVerifiedAndShow('dev'); });
+    document.getElementById('tabScripts').addEventListener('click', async () => {
+      if (!await isVerified()) { showToast('Verification required', 'Please verify your phone in Settings first.'); setOverlayVisible(true); showTab('settings'); return; }
       showTab('scripts');
       // Immediately poke and read the app log so we can confirm the app is running
       try {
@@ -741,6 +790,16 @@ document.getElementById('tabScripts').addEventListener('click', async () => {
       }
     });
     document.getElementById('tabSettings').addEventListener('click', () => showTab('settings'));
+
+    function setTabsEnabled(enabled) {
+      const val = !!enabled;
+      [tabBtnClient, tabBtnDev, tabBtnScripts].forEach(btn => {
+        if (!btn) return;
+        btn.disabled = !val;
+        btn.style.opacity = val ? '' : '0.5';
+        btn.style.pointerEvents = val ? '' : 'auto';
+      });
+    }
 
     // Scripts tab logic (scaffold)
     // AI generate scaffolding
@@ -941,6 +1000,7 @@ document.getElementById('tabScripts').addEventListener('click', async () => {
       devIdEl.textContent = d ? (d.tenantId || 'Unknown') : 'Not created';
       await loadChannels();
     }
+    try { window.receiver.onDevUpdated(() => { try { refreshDevInfo(); } catch {} }); } catch {}
     document.getElementById('provisionBtn').addEventListener('click', async () => {
       await window.receiver.devProvision();
       await refreshDevInfo();
@@ -1094,8 +1154,12 @@ document.getElementById('tabScripts').addEventListener('click', async () => {
         // Hard reset any stale local data on first run when not verified
         try { await window.receiver.devReset(); } catch {}
         try { localStorage.removeItem('ROUTED_PHONE'); } catch {}
-        overlay.style.display = 'block';
+        setOverlayVisible(true);
         showTab('settings');
+        setTabsEnabled(false);
+      } else {
+        setOverlayVisible(false);
+        setTabsEnabled(true);
       }
 
       try {
@@ -1191,10 +1255,10 @@ document.getElementById('tabScripts').addEventListener('click', async () => {
         const res = await window.receiver.verifyCheck({ phone, code });
         if (!res || res.ok === false) { err2.textContent='Invalid code. Try again.'; return; }
         try { localStorage.setItem('ROUTED_PHONE', phone); } catch {}
-        document.getElementById('regOverlay').style.display='none';
+        setOverlayVisible(false);
         showToast('Verified', 'Your phone is verified.');
         // Optionally auto-connect post verification
-        const ok = await preflightOrFail(); if (ok) { await connectWithPhone(phone); await ensureDevChannelForPhone(phone); showTab('dev'); }
+        const ok = await preflightOrFail(); if (ok) { await connectWithPhone(phone); await ensureDevChannelForPhone(phone); setTabsEnabled(true); showTab('dev'); }
       });
 
       // Settings-level logout button
@@ -1204,8 +1268,9 @@ document.getElementById('tabScripts').addEventListener('click', async () => {
           localStorage.removeItem('ROUTED_PHONE');
           document.getElementById('settingsPhoneView').textContent = '';
           document.getElementById('settingsPhone').value = '';
-          document.getElementById('regOverlay').style.display = 'block';
+          setOverlayVisible(true);
           showToast('Logged out','');
+          setTabsEnabled(false);
           showTab('settings');
         } catch {}
       });
@@ -1226,11 +1291,12 @@ document.getElementById('tabScripts').addEventListener('click', async () => {
       const phone = normalizePhone(country, raw);
       // Require verification before allowing connect
       let verified = false; try { const d = await window.receiver.devGet(); verified = !!(d && d.verifiedUserId && d.verifiedPhone); } catch {}
-      if (!verified) { showToast('Verification required', 'Please verify your phone number first.'); document.getElementById('regOverlay').style.display='block'; return; }
+      if (!verified) { showToast('Verification required', 'Please verify your phone number first.'); setOverlayVisible(true); return; }
       const ok = await preflightOrFail(); if (!ok) return;
       try { localStorage.setItem('ROUTED_PHONE', phone); document.getElementById('settingsPhoneView').textContent = phone; document.getElementById('settingsPhone').value = phone; } catch {}
       await connectWithPhone(phone);
       await ensureDevChannelForPhone(phone);
+      setTabsEnabled(true);
       showTab('dev');
     });
 

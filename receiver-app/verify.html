@@ -1,0 +1,84 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Routed — Verify</title>
+  <style>
+    body { font-family: -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial; margin: 0; }
+    .wrap { display:flex; flex-direction:column; gap:12px; padding:16px; }
+    h3 { margin: 0 0 6px; }
+    input, select, button { font-size: 14px; padding: 8px; }
+    input, select { width: 100%; border: 1px solid #ddd; border-radius: 8px; }
+    button { background: #7fbf3f; color: #fff; border: none; border-radius: 8px; cursor: pointer; }
+    .error { color: #b91c1c; min-height: 18px; }
+    .hint { font-size: 12px; opacity: .7; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h3>Verify your phone</h3>
+    <div id="stepPhone">
+      <div style="display:flex; gap:8px; align-items:center;">
+        <select id="country" style="width:160px">
+          <option value="US" selected>United States (+1)</option>
+          <option value="CA">Canada (+1)</option>
+          <option value="GB">United Kingdom (+44)</option>
+          <option value="AU">Australia (+61)</option>
+        </select>
+        <input id="phoneInput" placeholder="6505551212" />
+      </div>
+      <button id="sendCodeBtn">Send Code</button>
+      <div id="err1" class="error"></div>
+    </div>
+
+    <div id="stepCode" style="display:none;">
+      <label>Enter the code we texted you</label>
+      <input id="codeInput" placeholder="123456" />
+      <button id="verifyBtn">Verify</button>
+      <div id="err2" class="error"></div>
+      <div class="hint">Didn’t get it? Wait a moment and try again.</div>
+    </div>
+
+    <div class="hint" id="status"></div>
+  </div>
+
+  <script>
+    function dialCodeFor(country){ switch((country||'US').toUpperCase()){ case 'US': return '1'; case 'CA': return '1'; case 'GB': return '44'; case 'AU': return '61'; default: return '1'; } }
+    function normalizePhone(country, input){ const raw=String(input||'').trim(); if(!raw) return ''; if(raw.startsWith('+')){ const rest=raw.slice(1).replace(/[^0-9]/g,''); return '+'+rest; } const digits=raw.replace(/[^0-9]/g,''); return '+'+dialCodeFor(country)+digits; }
+
+    const countryEl = document.getElementById('country');
+    const phoneEl = document.getElementById('phoneInput');
+    const codeEl = document.getElementById('codeInput');
+    const stepPhone = document.getElementById('stepPhone');
+    const stepCode = document.getElementById('stepCode');
+    const err1 = document.getElementById('err1');
+    const err2 = document.getElementById('err2');
+    const status = document.getElementById('status');
+
+    document.getElementById('sendCodeBtn').addEventListener('click', async () => {
+      err1.textContent=''; status.textContent='';
+      const country=(countryEl.value||'US').toUpperCase();
+      const raw=(phoneEl.value||'').trim(); if(!raw){ err1.textContent='Enter your phone number'; return; }
+      const phone=normalizePhone(country, raw);
+      status.textContent='Sending code...';
+      const res = await window.receiver.verifyStart({ phone, country }).catch(()=>null);
+      if (!res || res.ok === false) { status.textContent=''; err1.textContent='Failed to send code. Try again.'; return; }
+      stepPhone.style.display='none'; stepCode.style.display='block'; status.textContent='We sent a code.';
+    });
+
+    document.getElementById('verifyBtn').addEventListener('click', async () => {
+      err2.textContent=''; status.textContent='';
+      const country=(countryEl.value||'US').toUpperCase();
+      const phone=normalizePhone(country, (phoneEl.value||'').trim());
+      const code=(codeEl.value||'').trim(); if(!code){ err2.textContent='Enter the code'; return; }
+      status.textContent='Verifying...';
+      const res = await window.receiver.verifyCheck({ phone, code }).catch(()=>null);
+      if (!res || res.ok === false) { status.textContent=''; err2.textContent='Invalid code. Try again.'; return; }
+      try { localStorage.setItem('ROUTED_PHONE', phone); } catch {}
+      status.textContent='Verified! Opening app...';
+      // Main process will handle creating the main window and closing this one.
+    });
+  </script>
+</body>
+</html>
+

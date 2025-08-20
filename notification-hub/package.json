@@ -12,7 +12,8 @@
     "seed": "ts-node scripts/seed.ts",
     "register:host": "ts-node scripts/register_with_registry.ts",
     "test:integration": "ts-node scripts/integration.ts",
-    "test:redis": "ts-node scripts/redis_test.ts"
+    "test:redis": "ts-node scripts/redis_test.ts",
+    "test:e2e": "ts-node scripts/e2e_smoke.ts"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",

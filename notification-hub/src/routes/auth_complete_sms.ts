@@ -28,7 +28,7 @@ export default async function routes(fastify: FastifyInstance) {
       // 1) upsert user by tenant+phone
       const u = await client.query(
         `insert into users (tenant_id, phone) values ($1,$2)
-         on conflict (tenant_id, phone) do update set phone=excluded.phone
+         on conflict on constraint users_tenant_phone_unique do update set phone=excluded.phone
          returning *`,
         [tenantId, String(phone)]
       );

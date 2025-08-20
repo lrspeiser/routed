@@ -38,7 +38,7 @@ export default async function routes(fastify: FastifyInstance) {
         if (phone) {
           const r = await client.query(
             `insert into users (tenant_id, phone) values ($1,$2)
-             on conflict (tenant_id, phone) do update set phone=excluded.phone
+             on conflict on constraint users_tenant_phone_unique do update set phone=excluded.phone
              returning id`,
             [tenant_id, phone]
           );
@@ -46,7 +46,7 @@ export default async function routes(fastify: FastifyInstance) {
         } else if (email) {
           const r = await client.query(
             `insert into users (tenant_id, email) values ($1,$2)
-             on conflict (tenant_id, email) do update set email=excluded.email
+             on conflict on constraint users_tenant_email_unique do update set email=excluded.email
              returning id`,
             [tenant_id, email]
           );
@@ -87,7 +87,7 @@ export default async function routes(fastify: FastifyInstance) {
       try {
         const tr = await client.query(
           `insert into topics (tenant_id, name) values ($1,$2)
-           on conflict (tenant_id,name) do update set name=excluded.name
+           on conflict on constraint topics_tenant_id_name_key do update set name=excluded.name
            returning id`,
           [tenant_id, topicName]
         );

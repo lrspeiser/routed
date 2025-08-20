@@ -65,6 +65,44 @@ export default async function routes(fastify: FastifyInstance) {
     out.total_ms = Date.now() - started;
     return reply.send(out);
   });
+
+  // Schema validator: verify required tables, columns, and unique constraints used by routes
+  fastify.get('/v1/health/schema', async (_req, reply) => {
+    const out: any = { ok: true, checks: {}, missing: [] as string[] };
+    try {
+      // Required columns
+      const cols = await pool.query(
+        `select table_name, column_name from information_schema.columns where table_schema = current_schema() and table_name in ('users','topics','channels','subscriptions')`
+      );
+      const hasCol = (t: string, c: string) => cols.rows.some(r => r.table_name === t && r.column_name === c);
+      if (!hasCol('users','phone')) { out.ok = false; out.missing.push('users.phone'); }
+      if (!hasCol('channels','short_id')) { out.ok = false; out.missing.push('channels.short_id'); }
+      if (!hasCol('topics','name')) { out.ok = false; out.missing.push('topics.name'); }
+
+      // Required unique constraints
+      const idx = await pool.query(
+        `select i.relname as index_name
+           from pg_class t
+           join pg_index ix on t.oid = ix.indrelid
+           join pg_class i on i.oid = ix.indexrelid
+           join pg_namespace n on n.oid = t.relnamespace
+          where n.nspname = current_schema() and t.relname in ('users','topics','channels','subscriptions') and ix.indisunique`
+      );
+      const names = idx.rows.map(r => String(r.index_name||''));
+      function need(name: string, label: string) { if (!names.some(n => n === name)) { out.ok = false; out.missing.push(label); } }
+      need('users_tenant_phone_unique', 'unique(users.tenant_id, phone)');
+      need('users_tenant_email_unique', 'unique(users.tenant_id, email)');
+      need('topics_tenant_id_name_key', 'unique(topics.tenant_id, name)');
+      need('channels_tenant_id_short_id_key', 'unique(channels.tenant_id, short_id)');
+      need('subscriptions_user_id_topic_id_key', 'unique(subscriptions.user_id, topic_id)');
+
+      out.checks.indexes = names;
+    } catch (e: any) {
+      out.ok = false;
+      out.error = String(e?.message || e);
+    }
+    return reply.status(out.ok ? 200 : 500).send(out);
+  });
 }
 
 
