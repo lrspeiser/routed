@@ -62,12 +62,24 @@ export default async function routes(fastify: FastifyInstance) {
         // Optional: auto-subscribe creator by phone
         if (creator_phone) {
           let userId: string | null = null;
-          const ur = await c.query(
-            `insert into users (tenant_id, phone) values ($1,$2)
-             on conflict on constraint users_tenant_phone_unique do update set phone=excluded.phone
-             returning id`,
-            [tenant_id, String(creator_phone).trim()]
-          );
+          let ur;
+          try {
+            ur = await c.query(
+              `insert into users (tenant_id, phone) values ($1,$2)
+               on conflict on constraint users_tenant_phone_unique do update set phone=excluded.phone
+               returning id`,
+              [tenant_id, String(creator_phone).trim()]
+            );
+          } catch (e: any) {
+            if (String(e?.code) === '42704' || String(e?.message||'').includes('does not exist')) {
+              ur = await c.query(
+                `insert into users (tenant_id, phone) values ($1,$2)
+                 on conflict (tenant_id, phone) do update set phone=excluded.phone
+                 returning id`,
+                [tenant_id, String(creator_phone).trim()]
+              );
+            } else { throw e; }
+          }
           userId = ur.rows[0]?.id ?? null;
           if (userId) {
             const sr = await c.query(
@@ -138,12 +150,24 @@ fastify.post('/v1/channels/create', async (req, reply) => {
         // Auto-subscribe creator if provided
         if (creator_phone) {
           let userId: string | null = null;
-          const ur = await c.query(
-            `insert into users (tenant_id, phone) values ($1,$2)
-             on conflict on constraint users_tenant_phone_unique do update set phone=excluded.phone
-             returning id`,
-            [pub.tenant_id, String(creator_phone).trim()]
-          );
+          let ur;
+          try {
+            ur = await c.query(
+              `insert into users (tenant_id, phone) values ($1,$2)
+               on conflict on constraint users_tenant_phone_unique do update set phone=excluded.phone
+               returning id`,
+              [pub.tenant_id, String(creator_phone).trim()]
+            );
+          } catch (e: any) {
+            if (String(e?.code) === '42704' || String(e?.message||'').includes('does not exist')) {
+              ur = await c.query(
+                `insert into users (tenant_id, phone) values ($1,$2)
+                 on conflict (tenant_id, phone) do update set phone=excluded.phone
+                 returning id`,
+                [pub.tenant_id, String(creator_phone).trim()]
+              );
+            } else { throw e; }
+          }
           userId = ur.rows[0]?.id ?? null;
           if (userId) {
             const sr = await c.query(
@@ -277,12 +301,24 @@ fastify.post('/v1/public/channels/:short_id/join', async (req, reply) => {
       if (!allow_public) { await client.query('ROLLBACK'); return reply.status(403).send({ error: 'forbidden' }); }
       // ensure user by phone under the channel's tenant
       let userId: string | null = null;
-      const u = await client.query(
-        `insert into users (tenant_id, phone) values ($1,$2)
-         on conflict on constraint users_tenant_phone_unique do update set phone=excluded.phone
-         returning id`,
-        [tenant_id, phone]
-      );
+      let u;
+      try {
+        u = await client.query(
+          `insert into users (tenant_id, phone) values ($1,$2)
+           on conflict on constraint users_tenant_phone_unique do update set phone=excluded.phone
+           returning id`,
+          [tenant_id, phone]
+        );
+      } catch (e: any) {
+        if (String(e?.code) === '42704' || String(e?.message||'').includes('does not exist')) {
+          u = await client.query(
+            `insert into users (tenant_id, phone) values ($1,$2)
+             on conflict (tenant_id, phone) do update set phone=excluded.phone
+             returning id`,
+            [tenant_id, phone]
+          );
+        } else { throw e; }
+      }
       userId = u.rows[0]?.id || null;
       if (!userId) { await client.query('ROLLBACK'); return reply.status(500).send({ error: 'user_ensure_failed' }); }
       const sr = await client.query(
@@ -356,12 +392,24 @@ fastify.post('/v1/channels/:short_id/subscribe', async (req, reply) => {
       let userId: string | null = null;
       await client.query('SAVEPOINT ensure_user');
       try {
-        const r = await client.query(
-          `insert into users (tenant_id, phone) values ($1,$2)
-           on conflict on constraint users_tenant_phone_unique do update set phone=excluded.phone
-           returning id`,
-          [tenant_id, phone]
-        );
+        let r;
+        try {
+          r = await client.query(
+            `insert into users (tenant_id, phone) values ($1,$2)
+             on conflict on constraint users_tenant_phone_unique do update set phone=excluded.phone
+             returning id`,
+            [tenant_id, phone]
+          );
+        } catch (e: any) {
+          if (String(e?.code) === '42704' || String(e?.message||'').includes('does not exist')) {
+            r = await client.query(
+              `insert into users (tenant_id, phone) values ($1,$2)
+               on conflict (tenant_id, phone) do update set phone=excluded.phone
+               returning id`,
+              [tenant_id, phone]
+            );
+          } else { throw e; }
+        }
         userId = r.rows[0]?.id ?? null;
       } catch (e) {
         await client.query('ROLLBACK TO SAVEPOINT ensure_user');

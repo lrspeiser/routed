@@ -36,12 +36,24 @@ export default async function routes(fastify: FastifyInstance) {
       await client.query('SAVEPOINT ensure_user');
       try {
         if (phone) {
-          const r = await client.query(
-            `insert into users (tenant_id, phone) values ($1,$2)
-             on conflict on constraint users_tenant_phone_unique do update set phone=excluded.phone
-             returning id`,
-            [tenant_id, phone]
-          );
+          let r;
+          try {
+            r = await client.query(
+              `insert into users (tenant_id, phone) values ($1,$2)
+               on conflict on constraint users_tenant_phone_unique do update set phone=excluded.phone
+               returning id`,
+              [tenant_id, phone]
+            );
+          } catch (e: any) {
+            if (String(e?.code) === '42704' || String(e?.message||'').includes('does not exist')) {
+              r = await client.query(
+                `insert into users (tenant_id, phone) values ($1,$2)
+                 on conflict (tenant_id, phone) do update set phone=excluded.phone
+                 returning id`,
+                [tenant_id, phone]
+              );
+            } else { throw e; }
+          }
           userId = r.rows[0]?.id ?? null;
         } else if (email) {
           const r = await client.query(
