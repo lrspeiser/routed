@@ -72,7 +72,12 @@
       const phone=normalizePhone(country, (phoneEl.value||'').trim());
       const code=(codeEl.value||'').trim(); if(!code){ err2.textContent='Enter the code'; return; }
       status.textContent='Verifying...';
-      const res = await window.receiver.verifyCheck({ phone, code }).catch(()=>null);
+      devlog(`verify:check sending phone=${phone} code=${code}`);
+      const res = await window.receiver.verifyCheck({ phone, code }).catch((e) => {
+        devlog(`verify:check error: ${e?.message || String(e)}`);
+        return null;
+      });
+      devlog(`verify:check response: ${JSON.stringify(res)}`);
       if (!res || res.ok === false) { status.textContent=''; err2.textContent='Invalid code. Try again.'; return; }
       try { localStorage.setItem('ROUTED_PHONE', phone); } catch {}
       status.textContent='Verified! Opening app...';

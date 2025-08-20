@@ -7,8 +7,8 @@
   "main": "main.js",
   "scripts": {
     "dev": "electron .",
-    "dist": "electron-builder --mac dmg",
-    "dist:sign": "dotenv -e .env -- electron-builder --mac dmg",
+    "dist": "npm -C .. --workspaces run build && electron-builder --mac dmg",
+    "dist:sign": "npm -C .. --workspaces run build && dotenv -e .env -- electron-builder --mac dmg",
     "test": "vitest",
     "test:unit": "vitest run",
     "test:watch": "vitest",
@@ -26,7 +26,9 @@
       "renderer.html",
       "verify.html",
       "package.json",
-      "routed_icon.png"
+      "routed_icon.png",
+      { "from": "../packages/runtime-service/dist", "to": "packages/runtime-service/dist" },
+      { "from": "../packages/adapters/hub-http/dist", "to": "packages/adapters/hub-http/dist" }
     ],
     "extraResources": [
       { "from": "routed_icon.png", "to": "routed_icon.png" },

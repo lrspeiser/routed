@@ -29,6 +29,7 @@ create table if not exists users (
   tenant_id uuid not null references tenants(id) on delete cascade,
   email text,
   phone text,
+  phone_verified_at timestamptz,
   created_at timestamptz not null default now()
 );
 
@@ -38,6 +39,17 @@ DO $$ BEGIN
     SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'users' AND column_name = 'phone'
   ) THEN
     ALTER TABLE users ADD COLUMN phone text;
+  END IF;
+EXCEPTION WHEN others THEN
+  NULL;
+END $$;
+
+-- Backfill: add phone_verified_at column if missing
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'users' AND column_name = 'phone_verified_at'
+  ) THEN
+    ALTER TABLE users ADD COLUMN phone_verified_at timestamptz;
   END IF;
 EXCEPTION WHEN others THEN
   NULL;

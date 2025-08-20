@@ -21,8 +21,13 @@ export async function withTxn<T>(fn: (client: any) => Promise<T>): Promise<T> {
     await client.query('COMMIT');
     return res;
   } catch (e) {
-    await client.query('ROLLBACK');
-    console.error('[DB] TXN rollback due to error:', e);
+    console.error('[DB] TXN error:', e);
+    try {
+      await client.query('ROLLBACK');
+      console.log('[DB] TXN rolled back successfully.');
+    } catch (rollbackErr) {
+      console.error('[DB] TXN rollback failed:', rollbackErr);
+    }
     throw e;
   } finally {
     client.release();

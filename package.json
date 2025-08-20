@@ -1,0 +1,14 @@
+{
+  "name": "routed-monorepo",
+  "private": true,
+  "version": "0.0.0",
+  "workspaces": [
+    "packages/*",
+    "packages/*/*",
+    "apps/*"
+  ],
+  "devDependencies": {
+    "typescript": "^5.5.4"
+  }
+}
+

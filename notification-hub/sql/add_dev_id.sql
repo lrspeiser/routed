@@ -1,0 +1,1 @@
+ALTER TABLE users ADD COLUMN IF NOT EXISTS dev_id TEXT NOT NULL DEFAULT gen_random_uuid();

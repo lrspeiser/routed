@@ -1,1332 +1,434 @@
-<!doctype html>
+<!DOCTYPE html>
 <html>
 <head>
-  <meta charset="utf-8" />
-  <title>Routed Receiver</title>
+  <meta charset="UTF-8" />
+  <title>Routed</title>
+  <link rel="stylesheet" href="https://unpkg.com/spectre.css/dist/spectre.min.css">
+  <link rel="stylesheet" href="https://unpkg.com/spectre.css/dist/spectre-exp.min.css">
+  <link rel="stylesheet" href="https://unpkg.com/spectre.css/dist/spectre-icons.min.css">
   <style>
-    :root {
-      --bg: #fffdfa;           /* soft white */
-      --panel: #f4efe7;        /* light warm panel */
-      --border: #e2d8c8;       /* subtle warm border */
-      --brown: #3d2b1f;        /* primary brown */
-      --green: #7fbf3f;        /* accent green */
-      --green-ink: #2a5d1a;    /* darker green for text */
-    }
-    * { box-sizing: border-box; }
-    body { font-family: -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial; margin: 16px; background: var(--bg); color: var(--brown); }
-    a { color: var(--green-ink); }
-    header { display:flex; align-items:center; gap:8px; }
-    header img { width: 18px; height: 18px; }
-    .ver { font-size: 12px; opacity: .6; margin-left: 6px; }
-    input, button, select { font-size: 14px; padding: 8px; margin: 4px 0; }
-    input, select { width: 100%; border: 1px solid var(--border); border-radius: 8px; background: #fff; color: var(--brown); }
-    button { background: var(--green); color: #fff; border: none; border-radius: 8px; cursor: pointer; width: auto; }
-    button:hover { filter: brightness(0.95); }
-    button#tabClient, button#tabDev, button#tabSettings { background: transparent; color: var(--brown); border: 1px solid var(--border); }
-    #log { white-space: pre-wrap; height: 240px; overflow: auto; background: #fbf7ef; color: var(--green-ink); padding: 8px; border-radius: 8px; border: 1px solid var(--border); }
-    .row { margin-top: 8px; }
-    #toast { position: fixed; top: 20px; right: 20px; background: var(--brown); color:#fff; padding:12px 14px; border-radius:10px; box-shadow:0 10px 30px rgba(0,0,0,0.15); display:none; max-width: 320px; }
-    #toast .t-title { font-weight:600; margin-bottom:4px; }
+    body, html { font-size: 14px; }
+    .tab-item.active { background: #f1f1fc; }
+    .tab-item:hover { background: #f8f8f8; }
+    .btn .icon { vertical-align: middle; }
+    #app-container { display: flex; height: 100vh; }
+    #tabs-container { width: 150px; background-color: #f8f9fa; padding-top: 20px; }
+    #content-container { flex-grow: 1; padding: 20px; overflow-y: auto; }
+    .tab-item { cursor: pointer; padding: 10px; border-bottom: 1px solid #eee; }
+    .tab-item .icon { margin-right: 10px; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    #phone-login-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+    #phone-login-dialog { background: white; padding: 40px; border-radius: 8px; width: 400px; }
+    .empty { border: 1px solid #e5e5e5; border-radius: 4px; padding: 20px; text-align: center; margin-top: 20px; }
+    .log-entry { font-family: monospace; white-space: pre-wrap; word-break: break-all; }
+    .form-group:not(:last-child) { margin-bottom: 1rem; }
+    .toast { display: none; position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #333; color: white; padding: 10px 20px; border-radius: 5px; z-index: 2000; }
+    .status-dot { height: 10px; width: 10px; background-color: #bbb; border-radius: 50%; display: inline-block; margin-right: 5px; }
+    .status-dot.online { background-color: #32b643; }
+    .status-dot.offline { background-color: #ff4136; }
+    #server-status { margin-bottom: 20px; }
   </style>
 </head>
 <body>
-  <header>
-    <img src="routed_icon.png" alt="Routed" />
-    <h2 style="margin:0; display:flex; align-items:center; gap:6px; flex:1">Routed <span id="appVer" class="ver"></span></h2>
-    <button id="quitBtn" style="font-size:12px; padding:4px 8px">Quit</button>
-  </header>
-  <div class="row" style="opacity:.7">Before connecting, we’ll check your server health.</div>
-  <div class="row" id="health">Checking server…</div>
-
-  <div id="regOverlay" style="position:fixed; inset:0; background:rgba(255,253,250,0.98); display:none; padding:16px; z-index:9999; overflow:auto" role="dialog" aria-modal="true">
-    <h3>Register your phone</h3>
-    <div id="regStepPhone">
-      <div class="row" style="display:flex; gap:8px; align-items:center">
-        <select id="country" style="width:160px">
-          <option value="US" selected>United States (+1)</option>
-          <option value="CA">Canada (+1)</option>
-          <option value="GB">United Kingdom (+44)</option>
-          <option value="AU">Australia (+61)</option>
-        </select>
-        <input id="phoneInput" placeholder="6505551212" style="flex:1" />
-      </div>
-      <button id="sendCodeBtn">Send Code</button>
-      <div id="regError" style="color:#b91c1c; margin-top:6px"></div>
-    </div>
-    <div id="regStepCode" style="display:none">
-      <div class="row">
-        <label>Enter the code we texted you</label>
-        <input id="codeInput" placeholder="123456" />
-      </div>
-      <button id="verifyCodeBtn">Verify</button>
-      <div id="regError2" style="color:#b91c1c; margin-top:6px"></div>
-      <div class="row" style="font-size:12px; opacity:.7">Didn’t get it? Wait a moment and try again.</div>
-    </div>
-  </div>
-
-  <div class="row" style="margin-top:16px">
-    <div style="display:flex; gap:8px; border-bottom:1px solid var(--border); padding-bottom:6px">
-<button id="tabClient" style="flex:1">Channels</button>
-      <button id="tabDev" style="flex:1">Developer</button>
-      <button id="tabScripts" style="flex:1">Scripts</button>
-      <button id="tabSettings" title="Settings" style="width:42px">⚙︎</button>
-    </div>
-  </div>
-  <div id="toast"><div class="t-title"></div><div class="t-body"></div></div>
-
-<div id="clientTab" class="row">
-    <div style="display:flex; align-items:center; justify-content:space-between">
-      <h3 style="margin:0">Channels</h3>
-      <button id="toggleClientLogBtn" title="Show Log">Log</button>
-    </div>
-    <div id="status" style="margin-top:4px"></div>
-
-    <!-- Create Channel -->
-    <div class="row" style="margin-top:12px; background:var(--panel); padding:10px; border-radius:8px; border:1px solid var(--border)">
-      <h4 style="margin:0 0 6px">Create</h4>
-      <div style="display:flex; gap:8px; flex-wrap:wrap">
-        <input id="createName" placeholder="Name (e.g., QA Team)" style="flex:1" />
-        <input id="createDescription" placeholder="Description (optional)" style="flex:2" />
-      </div>
-      <div style="display:flex; gap:12px; align-items:center; margin-top:8px">
-        <label style="display:flex; gap:6px; align-items:center"><input type="radio" name="vis" id="createPublic" checked /> Public</label>
-        <label style="display:flex; gap:6px; align-items:center"><input type="radio" name="vis" id="createPrivate" /> Private</label>
-        <button id="createSaveBtn">Save</button>
-      </div>
-      <div id="createError" style="color:#b91c1c; margin-top:6px"></div>
-    </div>
-
-    <!-- Lists -->
-    <div class="row" style="display:flex; gap:12px; margin-top:12px; flex-wrap: wrap">
-      <div style="flex:1; min-width:260px">
-        <h4 style="margin:0 0 6px">Public</h4>
-        <div id="publicList"></div>
-      </div>
-      <div style="flex:1; min-width:260px">
-        <h4 style="margin:0 0 6px">Private</h4>
-        <div id="privateList"></div>
+  <div id="app-container">
+    <div id="tabs-container">
+      <div class="tab tab-block">
+        <div class="tab-item active" onclick="showTab('channels')"><i class="icon icon-message"></i> Channels</div>
+        <div class="tab-item" onclick="showTab('scripts')"><i class="icon icon-scroll"></i> Scripts</div>
+        <div class="tab-item" onclick="showTab('account')"><i class="icon icon-people"></i> Account</div>
       </div>
     </div>
-
-    <!-- Subscribers/manage -->
-    <div id="subsPanel" class="row" style="display:none; margin-top:12px; background:var(--panel); padding:10px; border-radius:8px; border:1px solid var(--border)">
-      <div style="display:flex; align-items:center; justify-content:space-between">
-        <h4 id="subsTitle" style="margin:0">Subscribers</h4>
-        <button id="subsCloseBtn">Close</button>
+    <div id="content-container">
+      <!-- Channels Tab -->
+      <div id="channels-tab" class="tab-content active">
+        <h4>Channels</h4>
+        <div id="channels-list" class="my-2"></div>
+        <button class="btn btn-primary" onclick="showCreateChannelModal()"><i class="icon icon-plus"></i> Create Channel</button>
+        <button class="btn" onclick="showJoinChannelModal()"><i class="icon icon-link"></i> Join Public Channel</button>
+        <button class="btn" onclick="showTab('log')"><i class="icon icon-menu"></i> Show App Log</button>
       </div>
-      <ul id="subsList" style="margin:8px 0 0; padding-left:18px"></ul>
-      <div style="display:flex; gap:8px; align-items:center; margin-top:8px">
-        <select id="subsCountry" style="width:160px">
-          <option value="US" selected>United States (+1)</option>
-          <option value="CA">Canada (+1)</option>
-          <option value="GB">United Kingdom (+44)</option>
-          <option value="AU">Australia (+61)</option>
-        </select>
-        <input id="subsPhone" placeholder="6505551212" />
-        <button id="subsAddBtn">Add</button>
+      <!-- Scripts Tab -->
+      <div id="scripts-tab" class="tab-content">
+        <h4>Scripts</h4>
+        <div id="scripts-list"></div>
+        <button class="btn btn-primary" onclick="showCreateScriptModal()"><i class="icon icon-plus"></i> Create Script</button>
       </div>
-      <div id="subsError" style="color:#b91c1c; margin-top:6px"></div>
-    </div>
-
-    <!-- Collapsible Log -->
-    <div id="clientLogWrap" class="row" style="display:none">
-      <h4 style="margin:12px 0 4px">Log</h4>
-      <div style="display:flex; gap:8px; align-items:center; margin-bottom:6px">
-        <button id="clearMainLogBtn">Clear</button>
-        <button id="copyMainLogBtn">Copy</button>
+      <!-- Account Tab -->
+      <div id="account-tab" class="tab-content">
+        <h4>Account</h4>
+        <p>Confirmed phone: <strong id="confirmed-phone"></strong></p>
+        <p>Dev ID: <strong id="dev-id"></strong></p>
+        <button class="btn btn-error" id="logout-button"><i class="icon icon-shutdown"></i> Logout</button>
       </div>
-      <pre id="log" style="height:160px; overflow:auto; background:#0b0b0b; color:#9be37f; padding:8px; border-radius:8px"></pre>
-    </div>
-  </div>
-
-  <div id="devTab" class="row" style="display:none">
-    <h3>Developer</h3>
-    <div id="devInfo" style="background:var(--panel); padding:8px; border-radius:8px; border:1px solid var(--border); display:flex; gap:8px; align-items:center; justify-content:space-between">
-      <div>
-        <div style="font-size:12px; opacity:.7">Developer ID</div>
-        <div id="devId" style="font-family:monospace">Not created</div>
-      </div>
-    </div>
-
-    <div class="row">
-      <label>New Channel</label>
-      <div style="display:flex; gap:8px">
-        <input id="newChannelName" placeholder="e.g., QA Team" />
-        <button id="createChannelBtn">Create</button>
-      </div>
-    </div>
-
-    <div class="row">
-      <label>Channel</label>
-      <select id="channelSelect"></select>
-    </div>
-
-    <div class="row" id="usersSection" style="display:none">
-      <h4 style="margin:8px 0 4px">Team Members</h4>
-      <ul id="usersList" style="margin:0; padding-left:18px"></ul>
-      <div style="display:flex; gap:8px; margin-top:6px; align-items:center">
-        <select id="addCountry" style="width:160px">
-          <option value="US" selected>United States (+1)</option>
-          <option value="CA">Canada (+1)</option>
-          <option value="GB">United Kingdom (+44)</option>
-          <option value="AU">Australia (+61)</option>
-        </select>
-        <input id="addPhones" placeholder="6505551212" />
-        <button id="addUsersBtn">Add</button>
-      </div>
-    </div>
-
-    <div class="row">
-      <label>Message</label>
-      <input id="messageText" placeholder="Type your message" />
-      <label style="margin-top:8px">Link (optional)</label>
-      <input id="linkUrl" placeholder="https://www.google.com" value="https://www.google.com" />
-      <button id="sendBtn">Send to Channel</button>
-      <div style="margin-top:8px; font-size:13px">
-        <a href="#" id="toggleCurl">Show curl</a>
-        <div id="curlPanel" style="display:none; margin-top:6px">
-      <pre id="curlCmd" style="white-space:pre-wrap; background:#fbf7ef; color:var(--green-ink); padding:8px; border-radius:8px; border:1px solid var(--border)"></pre>
-          <button id="copyCurlBtn">Copy curl</button>
-        </div>
-      </div>
-    </div>
-    <div class="row">
-      <h4 style="margin:8px 0 4px">Logs</h4>
-      <div style="display:flex; gap:8px; align-items:center; margin-bottom:6px">
-        <button id="clearLogsBtn">Clear</button>
-        <button id="copyLogsBtn">Copy</button>
-        <button id="showAppLogBtn" title="Show app log (main process)">Show App Log</button>
-      </div>
-      <pre id="devlog" style="height:200px; overflow:auto; background:#fbf7ef; color:var(--green-ink); padding:8px; border-radius:8px; border:1px solid var(--border)"></pre>
-    </div>
-  </div>
-
-
-  <div id="scriptsTab" class="row" style="display:none">
-    <h3>Scripts</h3>
-    <div class="row" style="display:flex; gap:8px; align-items:center">
-      <input id="newScriptName" placeholder="Name (e.g., RSS Poller)" />
-      <select id="newScriptMode" style="width:160px">
-        <option value="poller" selected>Auto-run</option>
-        <option value="webhook">Webhook</option>
-      </select>
-      <button id="createScriptBtn">Create</button>
-    </div>
-    <div class="row">
-      <h4 style="margin:8px 0 4px">Your scripts</h4>
-      <ul id="scriptsList" style="margin:0; padding-left:18px"></ul>
-    </div>
-    <div id="scriptEdit" style="display:none; margin-top:12px">
-      <h4 id="scriptTitle" style="margin:8px 0 4px"></h4>
-      <div id="scriptMeta" style="font-size:12px; opacity:.7; margin-bottom:6px"></div>
-      <div id="scriptActions" style="display:flex; gap:8px; align-items:center; margin:6px 0">
-        <label style="display:flex; gap:6px; align-items:center">
-          <input type="checkbox" id="scriptEnabled" /> Enabled
-        </label>
-        <button id="scriptRunNowBtn">Run Now</button>
-        <span id="webhookUrlView" style="font-size:12px; opacity:.8"></span>
-        <button id="copyWebhookUrlBtn" title="Copy Webhook URL">Copy URL</button>
-        <button id="copyWebhookCurlBtn" title="Copy cURL">Copy cURL</button>
-        <button id="sendWebhookTestBtn" title="POST test JSON">Send Test</button>
-      </div>
-      <textarea id="scriptCode" style="width:100%; height:220px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace"></textarea>
-      <div style="display:flex; gap:8px; margin-top:8px; align-items:center; flex-wrap: wrap">
-        <button id="showLogsBtn">Show Logs</button>
-        <button id="clearScriptLogsBtn">Clear Logs</button>
-        <button id="saveScriptBtn">Save</button>
-        <button id="testScriptBtn">Test</button>
-        <button id="runNowScriptBtn">Run Now</button>
-      </div>
-      <div id="scriptOutput" style="margin-top:8px; background:#fbf7ef; color:var(--green-ink); padding:8px; border-radius:8px; border:1px solid var(--border); white-space:pre-wrap"></div>
-      <div style="display:flex; gap:8px; margin-top:6px">
-        <button id="saveAndTestBtn">Save + Test</button>
-        <button id="copyOutputBtn">Copy Output</button>
+      <!-- Log Tab -->
+      <div id="log-tab" class="tab-content">
+        <h4>App Log</h4>
+        <div id="log-output" style="height: 300px; overflow-y: scroll; border: 1px solid #ccc; padding: 10px; background: #f5f5f5;"></div>
+        <button class="btn mt-2" onclick="copyLog()"><i class="icon icon-copy"></i> Copy Log</button>
+        <button class="btn btn-error mt-2" onclick="clearLog()"><i class="icon icon-delete"></i> Clear Log</button>
+        <button class="btn mt-2" onclick="showTab('channels')">Back to Channels</button>
       </div>
     </div>
   </div>
 
-  <div id="settingsTab" class="row" style="display:none">
-    <h3>Settings</h3>
-    <div class="row" style="background:var(--panel); padding:10px; border-radius:8px; border:1px solid var(--border)">
-      <div style="display:flex; gap:8px; align-items:center; justify-content:space-between">
-        <div style="flex:1">
-          <div style="font-size:12px; opacity:.7">Server</div>
-          <div id="serverView" style="word-break:break-all"></div>
-        </div>
-        <div>
-          <button id="editServerBtn">Edit</button>
+  <!-- Phone Login Overlay -->
+  <div id="phone-login-overlay">
+    <div id="phone-login-dialog">
+      <h3 class="text-center">Welcome to Routed</h3>
+      <p class="text-center text-gray">Enter your phone to begin.</p>
+      <div class="form-group">
+        <div class="input-group">
+          <select id="country-code" class="form-select" style="flex: 0 0 100px;">
+            <option value="+1">+1 (USA)</option>
+          </select>
+          <input class="form-input" type="tel" id="phone-input" placeholder="5551234567">
         </div>
       </div>
-      <div id="serverEdit" style="display:none; margin-top:8px; display:flex; gap:8px; align-items:center">
-        <input id="serverUrl" placeholder="https://your.server" style="flex:1" />
-        <button id="saveServerBtn">Save</button>
-        <button id="cancelServerBtn">Cancel</button>
+      <button class="btn btn-primary btn-block" id="submit-phone">Continue</button>
+      <div id="verify-code-group" style="display: none;" class="mt-2">
+        <div class="form-group">
+          <input class="form-input" type="text" id="verify-code-input" placeholder="123456">
+        </div>
+        <button class="btn btn-primary btn-block" id="submit-code">Verify</button>
       </div>
     </div>
-
-    <div class="row" style="background:var(--panel); padding:10px; border-radius:8px; border:1px solid var(--border)">
-      <div style="display:flex; gap:8px; align-items:center; justify-content:space-between">
-        <div style="flex:1">
-          <div style="font-size:12px; opacity:.7">Phone</div>
-          <div id="settingsPhoneView"></div>
-        </div>
-        <div>
-          <button id="editPhoneBtn">Edit</button>
-          <button id="connectNowBtn">Connect</button>
-          <button id="logoutBtn">Logout</button>
-      </div>
-      <div id="phoneEdit" style="display:none; margin-top:8px; display:flex; gap:8px; align-items:center">
-        <select id="settingsCountry" style="width:160px">
-          <option value="US" selected>United States (+1)</option>
-          <option value="CA">Canada (+1)</option>
-          <option value="GB">United Kingdom (+44)</option>
-          <option value="AU">Australia (+61)</option>
-        </select>
-        <input id="settingsPhone" placeholder="6505551212" style="flex:1" />
-        <button id="savePhoneBtn">Save</button>
-        <button id="cancelPhoneBtn">Cancel</button>
-      </div>
-    </div>
-
-    <div class="row" style="background:var(--panel); padding:10px; border-radius:8px; border:1px solid var(--border)">
-      <div style="display:flex; gap:8px; align-items:center; justify-content:space-between">
-        <div style="flex:1">
-          <div style="font-size:12px; opacity:.7">Developer Key</div>
-          <div id="devKeyView" style="font-family:monospace; word-break:break-all">Not created</div>
-        </div>
-        <div style="display:flex; gap:8px">
-          <button id="copyDevKeyBtn">Copy</button>
-          <button id="editDevKeyBtn">Edit</button>
-          <button id="provisionBtn">Generate</button>
-        </div>
-      </div>
-      <div id="devKeyEdit" style="display:none; margin-top:8px; display:flex; gap:8px; align-items:center">
-        <input id="devKeyInput" placeholder="Paste API key" style="flex:1; font-family:monospace" />
-        <button id="saveDevKeyBtn">Save</button>
-        <button id="cancelDevKeyBtn">Cancel</button>
-      </div>
-    </div>
-
-    <div class="row" style="font-size:12px; opacity:.7">Default: https://routed.onrender.com</div>
   </div>
+
+  <!-- Create Channel Modal -->
+  <div class="modal" id="create-channel-modal">
+    <a href="#close" class="modal-overlay" aria-label="Close"></a>
+    <div class="modal-container">
+      <div class="modal-header">
+        <a href="#close" class="btn btn-clear float-right" aria-label="Close" onclick="closeModal('create-channel-modal')"></a>
+        <div class="modal-title h5">Create New Channel</div>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Channel Name</label>
+          <input class="form-input" type="text" id="new-channel-name" placeholder="e.g. My Awesome Alerts">
+          <label class="form-label mt-2">Description (optional)</label>
+          <textarea class="form-input" id="new-channel-desc" placeholder="What is this channel for?"></textarea>
+          <label class="form-checkbox mt-2">
+            <input type="checkbox" id="new-channel-public">
+            <i class="form-icon"></i> Allow public joining
+          </label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" onclick="createChannel()">Create</button>
+        <button class="btn btn-link" onclick="closeModal('create-channel-modal')">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Join Channel Modal -->
+  <div class="modal" id="join-channel-modal">
+    <a href="#close" class="modal-overlay" aria-label="Close"></a>
+    <div class="modal-container">
+      <div class="modal-header">
+        <a href="#close" class="btn btn-clear float-right" aria-label="Close" onclick="closeModal('join-channel-modal')"></a>
+        <div class="modal-title h5">Join Public Channel</div>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Channel Short ID</label>
+          <input class="form-input" type="text" id="join-channel-id" placeholder="Enter the 6-character ID">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" onclick="joinChannel()">Join</button>
+        <button class="btn btn-link" onclick="closeModal('join-channel-modal')">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
 
   <script>
-    const logEl = document.getElementById('log');
-    function log(msg) { logEl.textContent += '\n' + new Date().toISOString() + ' ' + msg; logEl.scrollTop = logEl.scrollHeight; }
+    // --- State ----
+    let confirmedPhone = null;
+    let devState = {};
 
-    // Configurable server base URL (persisted via main process)
-    let BASE_URL = 'https://routed.onrender.com';
-    const healthEl = document.getElementById('health');
-
-    function fetchTimeout(resource, options = {}, timeoutMs = 3000) {
-      const controller = new AbortController();
-      const id = setTimeout(() => controller.abort(), timeoutMs);
-      return fetch(resource, { ...options, signal: controller.signal })
-        .finally(() => clearTimeout(id));
-    }
-
-    async function checkHealth() {
+    // --- Logging ----
+    const devlog = (msg) => {
       try {
-        // Fast-path deep health with 2s timeout
-        let url = new URL('/v1/health/deep', BASE_URL).toString();
-        devlog(`[health] GET ${url}`);
-        let res = await fetchTimeout(url, { cache: 'no-store' }, 2000);
-        const status1 = res.status;
-        const text1 = await res.text().catch(() => '');
-        devlog(`[health] deep status=${status1} body=${text1}`);
-        let ok1 = false;
-        try { const j = JSON.parse(text1); ok1 = !!(j && j.ok); } catch {}
-        if (status1 === 200 && ok1) {
-          healthEl.innerHTML = `Server: <span style="color:#22c55e">OK</span>`;
-          return true;
-        }
-        // Fallback: simple /healthz with 2s timeout
-        url = new URL('/healthz', BASE_URL).toString();
-        devlog(`[health] GET ${url}`);
-        res = await fetchTimeout(url, { cache: 'no-store' }, 2000);
-        const status2 = res.status;
-        const text2 = await res.text().catch(() => '');
-        devlog(`[health] healthz status=${status2} body=${text2}`);
-        let ok2 = false;
-        try { const j2 = JSON.parse(text2); ok2 = !!(j2 && j2.ok); } catch {}
-        if (status2 === 200 && ok2) {
-          // Additionally check schema details so we can show actionable errors
-          const surl = new URL('/v1/health/schema', BASE_URL).toString();
-          devlog(`[health] GET ${surl}`);
-          try {
-            const sres = await fetchTimeout(surl, { cache: 'no-store' }, 2000);
-            const sText = await sres.text().catch(() => '');
-            devlog(`[health] schema status=${sres.status} body=${sText}`);
-            let missing = [];
-            try { const sj = JSON.parse(sText); missing = Array.isArray(sj.missing) ? sj.missing : []; } catch {}
-            if (sres.ok && (!missing || missing.length === 0)) {
-              healthEl.innerHTML = `Server: <span style=\"color:#22c55e\">OK</span>`;
-              return true;
-            } else {
-              healthEl.innerHTML = `Server: <span style=\"color:#f59e0b\">Schema issue</span><div style=\"font-size:12px; opacity:.8; margin-top:4px\">Missing: ${missing.join(', ') || 'unknown'}</div>`;
-              return false;
-            }
-          } catch (e) {
-            devlog(`[health] schema error ${String(e)}`);
-            healthEl.innerHTML = `Server: <span style=\"color:#22c55e\">OK</span>`;
-            return true;
-          }
-        }
-        healthEl.textContent = `Health check failed. Status ${status2}`;
-        return false;
-      } catch (e) {
-        const msg = (e && (e.name === 'AbortError' ? 'timeout' : e.message)) || String(e);
-        healthEl.textContent = `Health check error: ${msg}`;
-        devlog(`[health] error: ${msg}`);
-        return false;
-      }
-    }
-    // Channels UI wiring
-    (function channelsUI(){
-      const toggleBtn = document.getElementById('toggleClientLogBtn');
-      const logWrap = document.getElementById('clientLogWrap');
-      if (toggleBtn) toggleBtn.addEventListener('click', () => { logWrap.style.display = (logWrap.style.display === 'none' ? 'block' : 'none'); });
-
-      const pubList = document.getElementById('publicList');
-      const prvList = document.getElementById('privateList');
-      const createName = document.getElementById('createName');
-      const createDescription = document.getElementById('createDescription');
-      const createPublic = document.getElementById('createPublic');
-      const createPrivate = document.getElementById('createPrivate');
-      const createSaveBtn = document.getElementById('createSaveBtn');
-      const createError = document.getElementById('createError');
-
-      const subsPanel = document.getElementById('subsPanel');
-      const subsTitle = document.getElementById('subsTitle');
-      const subsList = document.getElementById('subsList');
-      const subsCloseBtn = document.getElementById('subsCloseBtn');
-      const subsAddBtn = document.getElementById('subsAddBtn');
-      const subsPhone = document.getElementById('subsPhone');
-      const subsCountry = document.getElementById('subsCountry');
-      const subsError = document.getElementById('subsError');
-
-      let currentUser = null; // { userId, tenantId, phone }
-      let selectedChannel = null; // { short_id, name }
-      function maskPhone(p){ const s=String(p||''); return s? ('***' + s.slice(-4)) : ''; }
-
-      async function ensureIdentity() {
-        let dev = await window.receiver.devGet();
-        if (!dev || !dev.verifiedPhone) {
-          // trigger existing verification overlay by simulating click on Connect in Settings
-          const btn = document.getElementById('connectNowBtn'); if (btn) btn.click();
-          return false;
-        }
-        currentUser = { userId: dev.verifiedUserId || dev.userId || null, tenantId: dev.verifiedTenantId || dev.tenantId || null, phone: dev.verifiedPhone };
-        if (!currentUser.userId && currentUser.phone) {
-          // ensure user exists
-          try {
-            const r = await window.receiver.adminUsersEnsure({ phone: currentUser.phone, topic: 'runs.finished' });
-            if (r && r.userId) { const d = await window.receiver.devGet(); currentUser.userId = r.userId; }
-          } catch {}
-        }
-        return !!(currentUser.userId && currentUser.tenantId && currentUser.phone);
-      }
-
-      function renderList(container, items, membershipSet) {
-        container.innerHTML = '';
-        if (!items || !items.length) { container.innerHTML = '<div style="opacity:.7">None</div>'; return; }
-        items.forEach(ch => {
-          const row = document.createElement('div');
-          row.style.border = '1px solid var(--border)';
-          row.style.borderRadius = '8px';
-          row.style.padding = '8px';
-          row.style.marginBottom = '8px';
-          const vis = ch.allow_public ? 'Public' : 'Private';
-          const subscribed = membershipSet && membershipSet.has(ch.short_id);
-          row.innerHTML = `
-            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px">
-              <div style="flex:1">
-                <div style="font-weight:600">${(ch.name||'').replace(/\</g,'&lt;')} <span style="font-size:11px; opacity:.7">(${vis})</span></div>
-                ${ch.description ? `<div style=\"font-size:12px; opacity:.8\">${String(ch.description).replace(/\</g,'&lt;')}</div>` : ''}
-              </div>
-              <div style="display:flex; gap:6px; align-items:center">
-                ${subscribed ? '<span style="font-size:12px; color:#16a34a">Subscribed</span>' : ''}
-                <button class="manageBtn" data-short="${ch.short_id}">Manage</button>
-                ${subscribed ? `<button class="leaveBtn" data-short="${ch.short_id}">Unsubscribe</button>` : `<button class="subBtn" data-short="${ch.short_id}">Subscribe</button>`}
-              </div>
-            </div>`;
-          container.appendChild(row);
-        });
-      }
-
-      async function refreshLists() {
-        if (!await ensureIdentity()) return;
-        const userCh = await window.receiver.usersChannelsList(currentUser.userId).catch(()=>[]);
-        const membership = new Set((userCh||[]).map(c => c.short_id));
-        const pub = await window.receiver.publicChannelsList(currentUser.tenantId, currentUser.phone).catch(()=>[]);
-        const priv = (userCh||[]).filter(c => !c.allow_public);
-        renderList(pubList, pub, membership);
-        renderList(prvList, priv, membership);
-        // wire actions
-        [...pubList.querySelectorAll('button.subBtn')].forEach(btn => btn.addEventListener('click', async () => {
-          const shortId = btn.getAttribute('data-short');
-          devlog(`[ui] subscribe → ${shortId}`);
-          const r = await window.receiver.publicChannelsJoin(shortId, currentUser.phone);
-          if (r && (r.ok || r.userId)) { showToast('Subscribed', `You have been subscribed to: ${shortId}`); await refreshLists(); }
-          else showToast('Error', 'Subscribe failed');
-        }));
-        [...pubList.querySelectorAll('button.leaveBtn')].forEach(btn => btn.addEventListener('click', async () => {
-          const shortId = btn.getAttribute('data-short');
-          devlog(`[ui] leave → ${shortId}`);
-          await window.receiver.publicChannelsLeave(shortId, currentUser.phone);
-          await refreshLists();
-        }));
-        [...prvList.querySelectorAll('button.leaveBtn')].forEach(btn => btn.addEventListener('click', async () => {
-          const shortId = btn.getAttribute('data-short');
-          devlog(`[ui] leave (private) → ${shortId}`);
-          await window.receiver.publicChannelsLeave(shortId, currentUser.phone);
-          await refreshLists();
-        }));
-        const allManage = [...pubList.querySelectorAll('button.manageBtn'), ...prvList.querySelectorAll('button.manageBtn')];
-        allManage.forEach(btn => btn.addEventListener('click', async () => {
-          selectedChannel = null;
-          const shortId = btn.getAttribute('data-short');
-          selectedChannel = (userCh || []).find(c => c.short_id === shortId) || (pub||[]).find(c => c.short_id === shortId) || { short_id: shortId, name: shortId };
-          subsTitle.textContent = `Subscribers — ${selectedChannel.name}`;
-          subsPanel.style.display = 'block';
-          await refreshSubscribers();
-        }));
-      }
-
-      async function refreshSubscribers() {
-        if (!selectedChannel) return;
-        const users = await window.receiver.adminChannelsUsers(selectedChannel.short_id).catch(()=>[]);
-        subsList.innerHTML = '';
-        users.forEach(u => {
-          const li = document.createElement('li');
-          const label = (u.phone || u.email || u.user_id || '').toString();
-          li.innerHTML = `${label} <button class="xBtn" data-user="${u.user_id}">x</button>`;
-          subsList.appendChild(li);
-        });
-        [...subsList.querySelectorAll('button.xBtn')].forEach(btn => btn.addEventListener('click', async () => {
-          const phone = btn.parentElement.textContent.replace(/\D/g,'');
-          if (!phone) return;
-          devlog(`[ui] unsubscribe → ${selectedChannel.short_id} ${maskPhone(phone)}`);
-          await window.receiver.channelsUnsubscribe(selectedChannel.short_id, phone);
-          await refreshSubscribers();
-          await refreshLists();
-        }));
-      }
-
-      if (subsCloseBtn) subsCloseBtn.addEventListener('click', () => { subsPanel.style.display = 'none'; });
-      if (subsAddBtn) subsAddBtn.addEventListener('click', async () => {
-        if (!selectedChannel) return;
-        const phone = (subsPhone.value || '').trim();
-        if (!phone) { subsError.textContent = 'Enter a phone number'; return; }
-        subsError.textContent = '';
-        devlog(`[ui] add subscriber → ${selectedChannel.short_id} ${maskPhone(phone)}`);
-        const r = await window.receiver.devChannelsSubscribe(selectedChannel.short_id, phone);
-        if (r) { await refreshSubscribers(); await refreshLists(); }
-      });
-
-      if (createSaveBtn) createSaveBtn.addEventListener('click', async () => {
-        createError.textContent = '';
-        if (!await ensureIdentity()) { createError.textContent = 'Verify your phone first.'; return; }
-        const name = (createName.value || '').trim();
-        const description = (createDescription.value || '').trim();
-        const allowPublic = !!createPublic.checked;
-        if (!name) { createError.textContent = 'Name is required'; return; }
-        devlog(`[ui] create channel → name=${name} vis=${allowPublic?'public':'private'}`);
-        const res = await window.receiver.adminChannelsCreate({ name, description, allowPublic, topicName: 'runs.finished', creatorPhone: currentUser.phone });
-        if (res && res.short_id) {
-          showToast('Channel created', name);
-          createName.value = ''; createDescription.value='';
-          await refreshLists();
-          selectedChannel = { short_id: res.short_id, name };
-          subsTitle.textContent = `Subscribers — ${name}`;
-          subsPanel.style.display = 'block';
-          await refreshSubscribers();
-} else {
-          const reason = (res && res.error) ? String(res.error) : '';
-          createError.textContent = 'Create failed' + (reason ? (': ' + reason) : '');
-          devlog(`[ui] create channel failed reason=${reason || 'unknown'}`);
-        }
-      });
-
-      // initial load after small delay to allow devGet
-      setTimeout(() => { refreshLists().catch(()=>{}); }, 500);
-    })();
-    
-    async function preflightOrFail() {
-      const ok = await checkHealth();
-      if (!ok) {
-        showToast('Cannot connect', 'Server is unreachable. Check Settings → Server and try again.');
-        return false;
-      }
-      return true;
-    }
-    let ws;
-    const recentMsgs = [];
-    function isDuplicateMessage(data) {
-      try {
-        const key = `${data.title||''}|${data.body||''}`;
-        const now = Date.now();
-        // purge old
-        while (recentMsgs.length && now - recentMsgs[0].t > 5000) recentMsgs.shift();
-        if (recentMsgs.some(x => x.k === key)) return true;
-        recentMsgs.push({ k: key, t: now });
-        return false;
-      } catch { return false; }
-    }
-    const notifList = document.getElementById('notifList');
-    const devlogEl = document.getElementById('devlog');
-    function devlog(msg) {
-      const line = `${new Date().toISOString()} ${msg}`;
-      // Mirror to visible Log section
-      try { log(msg); } catch {}
-      // Developer log panel
-      if (devlogEl) {
-        devlogEl.textContent += (devlogEl.textContent ? '\n' : '') + line;
-        devlogEl.scrollTop = devlogEl.scrollHeight;
-      }
-      try { window.receiver.debugLog(line); } catch {}
-    }
-    // Wire Show App Log button
-    (function(){
-      try {
-        const btn = document.getElementById('showAppLogBtn');
-        if (btn) {
-          btn.addEventListener('click', async () => {
-            try {
-              await window.receiver.appLogsPoke().catch(()=>({}));
-              const meta = await window.receiver.appLogsPath().catch(()=>null);
-              if (meta && meta.ok) {
-                devlog(`[app.log] path=${meta.path} exists=${meta.exists} size=${meta.size}`);
-              }
-              const res = await window.receiver.appLogsRead({ maxChars: 40000 });
-              if (res && res.ok) {
-                if (!res.content) devlog('(app.log empty)');
-                else devlog(res.content);
-              } else {
-                devlog(`[app.log] error: ${res && res.error ? res.error : 'unknown'}`);
-              }
-            } catch (e) {
-              devlog('[app.log] exception: ' + String(e));
-            }
-          });
-        }
+        console.log(`[renderer] ${msg}`);
+        window.receiver.debug.log(msg);
       } catch {}
-    })();
-    function addNotificationCard(data) {
-      const card = document.createElement('div');
-      card.style.border = '1px solid #ddd';
-      card.style.borderRadius = '8px';
-      card.style.padding = '8px';
-      const safeTitle = (data.title||'').replace(/\u003c/g,'\u0026lt;');
-      const safeBody = (data.body||'').replace(/\u003c/g,'\u0026lt;');
-      let linkHtml = '';
-      const url = data && data.payload && data.payload.url ? String(data.payload.url) : '';
-      if (url) {
-        const safeUrl = url.replace(/"/g,'&quot;');
-        linkHtml = `\u003cdiv style=\\"margin-top:6px\\"\u003e\u003ca href=\\"#\\" data-url=\\"${safeUrl}\\" class=\\"open-link\\"\u003eOpen link\u003c/a\u003e\u003c/div\u003e`;
-      }
-      card.innerHTML = `\u003cdiv style=\\"font-weight:600\\"\u003e${safeTitle}\u003c/div\u003e\u003cdiv\u003e${safeBody}\u003c/div\u003e${linkHtml}`;
-      const a = card.querySelector('a.open-link');
-      if (a) {
-        a.addEventListener('click', async (e) => { e.preventDefault(); const u = a.getAttribute('data-url'); if (u) { try { await window.receiver.openExternal(u); } catch {} } });
-      }
-      notifList.prepend(card);
-      try { devlog('Client: received notification'); } catch {}
-    }
-    function showToast(title, body) {
-      const el = document.getElementById('toast');
-      el.querySelector('.t-title').textContent = title || 'Notification';
-      el.querySelector('.t-body').textContent = body || '';
-      el.style.display = 'block';
-      clearTimeout(showToast._t);
-      showToast._t = setTimeout(() => { el.style.display = 'none'; }, 3500);
-    }
-    function makeWsUrl(base, userId, path) {
-      const url = new URL(base);
-      const wsProto = url.protocol === 'https:' ? 'wss' : 'ws';
-      return `${wsProto}://${url.host}${path}?user_id=${encodeURIComponent(userId)}`;
     }
 
-    async function connectWithPhone(phone) {
+    // --- Preload/IPC Health ----
+    // Warn if the preload script didn't run or IPC is missing
+    if (typeof window.receiver === 'undefined') {
+      document.addEventListener('DOMContentLoaded', () => {
+        try {
+          const container = document.getElementById('app-container');
+          container.innerHTML = `<div class="empty" style="text-align:left; padding:40px; margin:20px;">
+            <h4>Critical Error: Preload script failed to load</h4>
+            <p>The app cannot function without its secure IPC bridge.</p>
+            <p>This usually happens if <code>preload.js</code> has a syntax error or fails to execute. Please check the main process logs for an error message.</p>
+            <p>To view logs:
+              <ol>
+                <li>Quit the app (Cmd/Ctrl+Q).</li>
+                <li>Open a terminal and run: <code>tail -f ${"app.isPackaged ? path.join(app.getPath('userData'), 'routed.log') : path.join(__dirname, 'routed.log')"}</code></li>
+                <li>Restart the app.</li>
+              </ol>
+            </p>
+          </div>`;
+        } catch {}
+      });
+    }
+
+    // --- UI ----
+    function showTab(tabName) {
+      devlog(`showTab: showing tab ${tabName}`);
+      document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
       try {
-        // New auth flow: complete SMS login and get tokens
-        const login = await window.receiver.authCompleteSms({ phone, deviceName: 'Routed Desktop', wantDefaultOpenAIKey: true });
-        if (!login) { devlog('auth:complete failed (no response)'); return; }
-        let userId = (login.user && login.user.id) ? login.user.id : (login.userId || null);
-        const base = BASE_URL;
-        if (userId) {
-          devlog(`Resolved: base_url=${base} user_id=${userId}`);
-        } else {
-          devlog('auth:complete ok (no user id in response; will ensure)');
-        }
-        let d = await window.receiver.devGet();
-        if (!d || !d.apiKey) { devlog('dev:provision (pre-connect)'); await window.receiver.devProvision(); d = await window.receiver.devGet(); }
-        if (!d || !d.apiKey) { devlog('dev:provision failed'); return; }
-        const ensured = await window.receiver.adminUsersEnsure({ phone, topic: 'runs.finished' });
-        if (!ensured || !ensured.userId) { devlog('users:ensure failed'); return; }
-        userId = ensured.userId;
-        devlog(`Resolved: base_url=${base} user_id=${userId}`);
-        const urlV1 = makeWsUrl(base, userId, '/v1/socket');
-        const urlAlt = makeWsUrl(base, userId, '/socket');
-
-        async function tryConnect(urls) {
-          if (!urls.length) { log('All WS endpoints failed'); return; }
-          const next = urls[0];
-          devlog(`WS connecting: ${next}`);
-          return new Promise((resolve) => {
-            let opened = false;
-            const candidate = new WebSocket(next);
-            candidate.onopen = () => {
-              opened = true;
-              ws = candidate;
-              devlog('Client: WS open');
-              document.getElementById('status').textContent = 'Connected';
-              resolve(null);
-            };
-            candidate.onmessage = (ev) => {
-              devlog(`Client: WS message ${ev.data}`);
-              try {
-                const data = JSON.parse(ev.data);
-                if (data && data.type === 'hello') {
-                  // handshake ok
-                } else if (data && data.title) {
-                  if (!isDuplicateMessage(data)) {
-                    window.receiver.showNotification(data);
-                    addNotificationCard(data);
-                  } else {
-                    devlog('Client: duplicate message suppressed');
-                  }
-                }
-              } catch (e) { try { devlog('WS message parse error ' + String(e)); } catch {} }
-            };
-            candidate.onclose = (e) => {
-              if (!opened) {
-                devlog(`WS close before open (${next}) code=${e.code}`);
-                tryConnect(urls.slice(1)).then(resolve);
-              } else {
-                devlog(`Client: WS closed code=${e.code} reason=${e.reason}`);
-                document.getElementById('status').textContent = 'Disconnected';
-              }
-            };
-            candidate.onerror = (e) => {
-              try { devlog(`Client: WS error on ${next}: ` + (e.message || JSON.stringify(e))); } catch { devlog('Client: WS error'); }
-            };
-          });
-        }
-
-        await tryConnect([urlAlt, urlV1]);
-        devlog('autoconnect ok for phone ' + phone);
+        document.getElementById(`${tabName}-tab`).classList.add('active');
+        const tabItem = document.querySelector(`.tab-item[onclick="showTab('${tabName}')"]`);
+        if (tabItem) tabItem.classList.add('active');
       } catch (e) {
-        devlog('Connect failed: ' + (e && e.message ? e.message : e));
+        devlog(`showTab error: ${e}`);
       }
     }
 
-
-    // Tabs
-    const clientTab = document.getElementById('clientTab');
-    const devTab = document.getElementById('devTab');
-    const scriptsTab = document.getElementById('scriptsTab');
-    const settingsTab = document.getElementById('settingsTab');
-    const tabBtnClient = document.getElementById('tabClient');
-    const tabBtnDev = document.getElementById('tabDev');
-    const tabBtnScripts = document.getElementById('tabScripts');
-
-    function showTab(which) {
-      clientTab.style.display = which === 'client' ? '' : 'none';
-      devTab.style.display = which === 'dev' ? '' : 'none';
-      scriptsTab.style.display = which === 'scripts' ? '' : 'none';
-      settingsTab.style.display = which === 'settings' ? '' : 'none';
+    function showModal(id) {
+      devlog(`showModal: showing modal ${id}`);
+      const modal = document.getElementById(id);
+      if (modal) modal.classList.add('active');
     }
 
-    function setOverlayVisible(vis) {
-      const overlay = document.getElementById('regOverlay');
-      if (!overlay) return;
-      overlay.style.display = vis ? 'block' : 'none';
-      try { document.body.style.overflow = vis ? 'hidden' : ''; } catch {}
+    function closeModal(id) {
+      devlog(`closeModal: closing modal ${id}`);
+      const modal = document.getElementById(id);
+      if (modal) modal.classList.remove('active');
     }
 
-    async function isVerified() {
-      try { const d = await window.receiver.devGet(); return !!(d && d.verifiedUserId && d.verifiedPhone); } catch { return false; }
+    function showCreateChannelModal() { showModal('create-channel-modal'); }
+    function showJoinChannelModal() { showModal('join-channel-modal'); }
+    function showCreateScriptModal() { showModal('create-script-modal'); }
+
+    // --- Toast Notifications ---
+    function showToast(message, type = 'success') {
+      const toast = document.getElementById('toast');
+      toast.textContent = message;
+      toast.className = `toast ${type === 'error' ? 'toast-error' : 'toast-success'}`;
+      toast.style.display = 'block';
+      setTimeout(() => { toast.style.display = 'none'; }, 3000);
+    }
+    
+    async function safeInvoke(channel, payload) {
+      try {
+        const res = await receiver.invoke(channel, payload);
+        return (res === undefined || res === null) ? { error: `No response from ${channel}` } : res;
+      } catch (e) {
+        return { error: e?.message || String(e) };
+      }
     }
 
-    async function requireVerifiedAndShow(which) {
-      const ok = await isVerified();
-      if (!ok) {
-        showToast('Verification required', 'Please verify your phone in Settings first.');
-        try { document.getElementById('regOverlay').style.display = 'block'; } catch {}
-        showTab('settings');
+    // --- Channels ----
+    async function fetchChannels() {
+      devlog('fetchChannels: fetching channels...');
+      const result = await safeInvoke('channels:list');
+
+      devlog(`fetchChannels: channels:list result: ${JSON.stringify(result)}`);
+
+      const list = document.getElementById('channels-list');
+      list.innerHTML = '';
+
+      if (result.error) {
+        list.innerHTML = `<div class="empty"><p>Error</p><p class="text-gray">${result.error}</p></div>`;
         return;
       }
-      showTab(which);
-    }
 
-    tabBtnClient.addEventListener('click', () => { requireVerifiedAndShow('client'); });
-    tabBtnDev.addEventListener('click', () => { requireVerifiedAndShow('dev'); });
-    document.getElementById('tabScripts').addEventListener('click', async () => {
-      if (!await isVerified()) { showToast('Verification required', 'Please verify your phone in Settings first.'); setOverlayVisible(true); showTab('settings'); return; }
-      showTab('scripts');
-      // Immediately poke and read the app log so we can confirm the app is running
-      try {
-        await window.receiver.appLogsPoke().catch(() => ({}));
-        const meta = await window.receiver.appLogsPath().catch(() => null);
-        if (meta && meta.ok) {
-          devlog(`[app.log] path=${meta.path} exists=${meta.exists} size=${meta.size}`);
-        }
-        const res = await window.receiver.appLogsRead({ maxChars: 40000 }).catch(() => ({ ok: false, error: 'read_failed' }));
-        if (res && res.ok) {
-          const outEl = document.getElementById('scriptOutput');
-          const header = '--- app.log (tail) ---\n';
-          const text = res.content || '(app.log empty)';
-          if (outEl) {
-            outEl.textContent = header + text;
-          }
-          if (!res.content) devlog('(app.log empty)');
-          else devlog(res.content);
-        } else {
-          devlog(`[app.log] error: ${res && res.error ? res.error : 'unknown'}`);
-        }
-      } catch (e) {
-        devlog('[app.log] exception: ' + String(e));
+      // Accept both { channels: [...] } and bare [...]
+      const channels = Array.isArray(result) ? result : (result.channels || []);
+
+      if (!channels.length) {
+        list.innerHTML = `<div class="empty"><p>No channels yet</p><p class="text-gray">Create one or join a public channel.</p></div>`;
+        return;
       }
-    });
-    document.getElementById('tabSettings').addEventListener('click', () => showTab('settings'));
 
-    function setTabsEnabled(enabled) {
-      const val = !!enabled;
-      [tabBtnClient, tabBtnDev, tabBtnScripts].forEach(btn => {
-        if (!btn) return;
-        btn.disabled = !val;
-        btn.style.opacity = val ? '' : '0.5';
-        btn.style.pointerEvents = val ? '' : 'auto';
-      });
-    }
-
-    // Scripts tab logic (scaffold)
-    // AI generate scaffolding
-    const aiPanel = document.createElement('div');
-    aiPanel.style.marginTop = '8px';
-    aiPanel.innerHTML = `
-      <div style="margin-top:8px; border-top:1px solid var(--border); padding-top:8px">
-        <h4 style="margin:8px 0 4px">Rewrite with AI</h4>
-        <div style="display:flex; gap:8px; align-items:flex-start">
-          <div style="flex:1; display:flex; flex-direction:column; gap:6px">
-            <textarea id="aiPrompt" placeholder="Describe what the script should do (e.g., poll https://api.example.com and notify when X)" style="width:100%; height:80px"></textarea>
-            <textarea id="aiContext" placeholder="Optional freeform context (anything useful: endpoints, sample JSON, auth notes, schemas, requirements, constraints)" style="width:100%; height:80px"></textarea>
+      channels.forEach(ch => {
+        const div = document.createElement('div');
+        div.className = 'tile my-2';
+        div.innerHTML = `
+          <div class="tile-content">
+            <p class="tile-title h6">${ch.name}</p>
+            <p class="tile-subtitle text-gray">${ch.description || `ID: ${ch.short_id}`}</p>
           </div>
-          <button id="aiGenerateBtn">Generate</button>
-        </div>
-      </div>
-    `;
-    document.getElementById('scriptEdit').appendChild(aiPanel);
-    document.getElementById('aiGenerateBtn').addEventListener('click', async () => {
-      try {
-        const id = window.__currentScriptId; if (!id) return;
-        const s = await window.scripts.get(id); if (!s) return;
-        const prompt = (document.getElementById('aiPrompt').value||'').trim();
-        const contextData = (document.getElementById('aiContext').value||'').trim();
-        if (!prompt) { alert('Enter a prompt'); return; }
-        devlog('AI: generate starting');
-        const resp = await window.scripts.aiGenerate({ mode: s.mode, prompt, currentCode: s.__code, topic: (s.manifest && s.manifest.defaultTopic) || 'runs.finished', contextData });
-        const outEl = document.getElementById('scriptOutput');
-        if (resp && resp.ok && resp.code) {
-          document.getElementById('scriptCode').value = resp.code;
-          await window.scripts.update(id, { code: resp.code, manifest: (resp.manifestDelta||{}) });
-          devlog('AI: generate ok, code applied');
-          if (outEl) outEl.textContent = '[ok]\nAI generation succeeded and code was applied.';
-        } else {
-          // Robust verbosity: show structured error and tail of app log
-          devlog('AI: generate error ' + JSON.stringify(resp || {}));
-          const header = '[error]\nAI generation failed. Details follow.\n';
-          const detail = (resp && (resp.detail || resp.error)) ? String(resp.detail || resp.error) : 'unknown_error';
-          if (outEl) outEl.textContent = header + detail;
-        }
-        // Always mirror app.log tail after attempt
-        try {
-          const meta = await window.receiver.appLogsPath().catch(() => null);
-          if (meta && meta.ok) devlog(`[app.log] path=${meta.path} exists=${meta.exists} size=${meta.size}`);
-          const tail = await window.receiver.appLogsRead({ maxChars: 40000 }).catch(() => ({ ok:false }));
-          if (tail && tail.ok && outEl) {
-            outEl.textContent += '\n\n--- app.log (tail) ---\n' + (tail.content || '(empty)');
-          }
-        } catch {}
-      } catch (e) {
-        devlog('AI: generate exception ' + String(e));
-        try {
-          const outEl = document.getElementById('scriptOutput');
-          if (outEl) outEl.textContent = '[exception]\n' + String(e);
-        } catch {}
-      }
-    });
-
-    // Scripts tab logic (scaffold)
-    const scriptsListEl = document.getElementById('scriptsList');
-    async function refreshScriptsList() {
-      try {
-        const items = await window.scripts.list();
-        scriptsListEl.innerHTML = '';
-        (items || []).forEach(s => {
-          const li = document.createElement('li');
-          const a = document.createElement('a'); a.href = '#'; a.textContent = `${s.name} (${s.mode})`;
-          a.addEventListener('click', async () => openScriptEditor(s.id));
-          li.appendChild(a); scriptsListEl.appendChild(li);
-        });
-      } catch (e) { devlog('scripts:list failed ' + String(e)); }
-    }
-    async function openScriptEditor(id) {
-      try {
-        const s = await window.scripts.get(id);
-        if (!s) { devlog('script not found'); return; }
-        window.__currentScriptId = s.id;
-        document.getElementById('scriptTitle').textContent = s.name || s.id;
-        document.getElementById('scriptMeta').textContent = `Mode: ${s.mode}`;
-        document.getElementById('scriptCode').value = (s.__code || '');
-        const enabledEl = document.getElementById('scriptEnabled'); enabledEl.checked = !!s.enabled;
-        const urlEl = document.getElementById('webhookUrlView');
-        if (s.mode === 'webhook') {
-          const u = await window.scripts.webhookUrl(s.id);
-          urlEl.textContent = u ? `Webhook: ${u}` : '';
-        } else { urlEl.textContent = ''; }
-        document.getElementById('scriptEdit').style.display = '';
-      } catch (e) { devlog('open editor failed ' + String(e)); }
-    }
-    document.getElementById('createScriptBtn').addEventListener('click', async () => {
-      const name = (document.getElementById('newScriptName').value||'').trim();
-      const mode = (document.getElementById('newScriptMode').value||'poller');
-      if (!name) { alert('Enter a script name'); return; }
-      const r = await window.scripts.create({ name, mode });
-      document.getElementById('newScriptName').value = '';
-      await refreshScriptsList();
-      try { await openScriptEditor(r.id); } catch {}
-    });
-    // Save + Test handlers
-    document.getElementById('saveScriptBtn').addEventListener('click', async () => {
-      try {
-        const id = window.__currentScriptId; if (!id) return;
-        const code = document.getElementById('scriptCode').value;
-        await window.scripts.update(id, { code });
-        showToast('Saved','');
-      } catch (e) { devlog('save failed ' + String(e)); }
-    });
-    document.getElementById('testScriptBtn').addEventListener('click', async () => {
-      try {
-        const id = window.__currentScriptId; if (!id) return;
-        const outEl = document.getElementById('scriptOutput'); outEl.textContent = 'Running test...';
-        const res = await window.scripts.test(id);
-        outEl.textContent = (res && res.ok ? '[ok]\n' : '[error]\n') + (res?.stdout || '') + (res?.stderr || '');
-      } catch (e) { devlog('test failed ' + String(e)); }
-    });
-    document.getElementById('saveAndTestBtn').addEventListener('click', async () => {
-      try { const id = window.__currentScriptId; if (!id) return; await window.scripts.update(id, { code: document.getElementById('scriptCode').value }); const res = await window.scripts.test(id); const outEl = document.getElementById('scriptOutput'); outEl.textContent = (res && res.ok ? '[ok]\n' : '[error]\n') + (res?.stdout || '') + (res?.stderr || ''); } catch (e) { devlog('save+test failed ' + String(e)); }
-    });
-    document.getElementById('copyOutputBtn').addEventListener('click', async () => { try { await navigator.clipboard.writeText(document.getElementById('scriptOutput').textContent || ''); showToast('Copied output',''); } catch {} });
-
-    // Enable toggle and run now
-    document.getElementById('scriptEnabled').addEventListener('change', async (e) => {
-      try {
-        const id = window.__currentScriptId; if (!id) return;
-        const enabled = e.target.checked;
-        const res = await window.scripts.enableToggle(id, enabled);
-        const urlEl = document.getElementById('webhookUrlView');
-        if (enabled) {
-          const u = await window.scripts.webhookUrl(id);
-          if (u) urlEl.textContent = `Webhook: ${u}`;
-        } else { urlEl.textContent = ''; }
-        showToast(enabled ? 'Enabled' : 'Disabled','');
-        await refreshScriptsList();
-      } catch (err) { devlog('enable toggle failed ' + String(err)); }
-    });
-    document.getElementById('scriptRunNowBtn').addEventListener('click', async () => {
-      try { const id = window.__currentScriptId; if (!id) return; const res = await window.scripts.runNow(id); const outEl = document.getElementById('scriptOutput'); outEl.textContent = (res && res.ok ? '[ok]\n' : '[error]\n') + (res?.stdout || '') + (res?.stderr || ''); } catch (e) { devlog('run now failed ' + String(e)); }
-    });
-
-    // Logs handlers
-    document.getElementById('showLogsBtn').addEventListener('click', async () => {
-      try {
-        const id = window.__currentScriptId; if (!id) return;
-        const r = await window.scripts.logsRead(id);
-        const outEl = document.getElementById('scriptOutput');
-        if (r && r.ok) { outEl.textContent = r.logs || ''; }
-      } catch (e) { devlog('logs read failed ' + String(e)); }
-    });
-    document.getElementById('clearScriptLogsBtn').addEventListener('click', async () => {
-      try { const id = window.__currentScriptId; if (!id) return; await window.scripts.logsClear(id); showToast('Cleared logs',''); } catch (e) { devlog('logs clear failed ' + String(e)); }
-    });
-
-    // Webhook test helpers
-    document.getElementById('copyWebhookUrlBtn').addEventListener('click', async () => {
-      try { const id = window.__currentScriptId; if (!id) return; const u = await window.scripts.webhookUrl(id); if (u) await navigator.clipboard.writeText(u); showToast('Copied URL',''); } catch {}
-    });
-    document.getElementById('copyWebhookCurlBtn').addEventListener('click', async () => {
-      try { const id = window.__currentScriptId; if (!id) return; const u = await window.scripts.webhookUrl(id); if (!u) return; const cmd = `curl -s -X POST -H 'content-type: application/json' -d '{"ok":true,"time":"${new Date().toISOString()}"}' ${u}`; await navigator.clipboard.writeText(cmd); showToast('Copied cURL',''); } catch {}
-    });
-    document.getElementById('sendWebhookTestBtn').addEventListener('click', async () => {
-      try { const id = window.__currentScriptId; if (!id) return; const u = await window.scripts.webhookUrl(id); if (!u) return; const res = await fetch(u, { method: 'POST', headers: { 'content-type':'application/json' }, body: JSON.stringify({ ok: true, time: new Date().toISOString() }) }); const txt = await res.text().catch(()=> ''); const outEl = document.getElementById('scriptOutput'); outEl.textContent = `[${res.status}]\n` + txt; } catch (e) { devlog('webhook test failed ' + String(e)); }
-    });
-
-    // Join by channel code
-    document.getElementById('joinBtn').addEventListener('click', async () => {
-      try {
-        const code = (document.getElementById('joinCode').value || '').trim();
-        if (!code) { alert('Enter a channel code'); return; }
-        let d = await window.receiver.devGet();
-        if (!d || !d.verifiedPhone) { showToast('Not verified', 'Verify your phone in Settings first.'); return; }
-        const phone = d.verifiedPhone;
-        const res = await window.receiver.devChannelsSubscribe(code, phone);
-        if (res && (res.ok || res.userId)) showToast('Joined channel', `Code ${code}`);
-        else showToast('Join failed', (res && res.error) || '');
-      } catch (e) { devlog('join failed ' + String(e)); }
-    });
-
-    // Initial load
-    refreshScriptsList();
-
-    // Dev console handlers
-    const devIdEl = document.getElementById('devId');
-    const channelSelect = document.getElementById('channelSelect');
-    async function loadChannels() {
-      const d = await window.receiver.devGet();
-      if (!d || !d.tenantId) return;
-      const ch = await window.receiver.adminChannelsList(d.tenantId);
-      channelSelect.innerHTML = '';
-      ch.forEach((c) => {
-        const opt = document.createElement('option');
-        opt.value = JSON.stringify({ topic: c.topic, short_id: c.short_id });
-        opt.textContent = `${c.name} (${c.short_id})`;
-        channelSelect.appendChild(opt);
+          <div class="tile-action">
+            <button class="btn btn-sm" onclick="navigator.clipboard.writeText('${ch.short_id}'); showToast('Copied ID!')"><i class="icon icon-copy"></i> Copy ID</button>
+          </div>`;
+        list.appendChild(div);
       });
     }
-    async function refreshDevInfo() {
-      const d = await window.receiver.devGet();
-      devIdEl.textContent = d ? (d.tenantId || 'Unknown') : 'Not created';
-      await loadChannels();
-    }
-    try { window.receiver.onDevUpdated(() => { try { refreshDevInfo(); } catch {} }); } catch {}
-    document.getElementById('provisionBtn').addEventListener('click', async () => {
-      await window.receiver.devProvision();
-      await refreshDevInfo();
-    });
-    document.getElementById('createChannelBtn').addEventListener('click', async () => {
-      const d = await window.receiver.devGet();
-      if (!d || !d.tenantId) { alert('Generate Developer ID first'); return; }
-      const name = (document.getElementById('newChannelName').value || '').trim();
-      if (!name) { alert('Enter a channel name'); return; }
-      await window.receiver.adminChannelsCreate({ tenantId: d.tenantId, name, topic: 'runs.finished' });
-      document.getElementById('newChannelName').value = '';
-      await loadChannels();
-    });
-    document.getElementById('addUsersBtn').addEventListener('click', async () => {
-      const d = await window.receiver.devGet();
-      if (!d || !d.tenantId) { alert('Generate Developer ID first'); return; }
-      const selected = channelSelect.value ? JSON.parse(channelSelect.value) : null;
-      if (!selected) { alert('Choose a channel'); return; }
-      const raw = (document.getElementById('addPhones').value || '').trim();
-      if (!raw) { alert('Enter phone numbers'); return; }
-      const phones = raw.split(/[\n,\s]+/).map((p) => p.trim()).filter(Boolean);
-      const country = (document.getElementById('addCountry')?.value || 'US').toUpperCase();
-      for (let p of phones) {
-        const phone = normalizePhone(country, p);
-        await window.receiver.adminUsersEnsure({ tenantId: d.tenantId, phone, topic: selected.topic });
-      }
-      document.getElementById('addPhones').value = '';
-      alert('Added');
-    });
-    let sending = false;
-    document.getElementById('sendBtn').addEventListener('click', async () => {
-      if (sending) { return; }
-      const selected = channelSelect.value ? JSON.parse(channelSelect.value) : null;
-      if (!selected) { alert('Choose a channel'); return; }
-      const text = (document.getElementById('messageText').value || '').trim();
-      if (!text) { alert('Enter a message'); return; }
-      sending = true;
-      const btn = document.getElementById('sendBtn');
-      const prev = btn.disabled; btn.disabled = true;
-      try { devlog(`Client: sending message topic=${selected.topic} body=${text}`); } catch {}
-      const link = (document.getElementById('linkUrl').value || '').trim();
-      let payload = null;
-      if (link) {
-        const u = link.startsWith('http') ? link : 'https://' + link;
-        try { new URL(u); payload = { url: u }; } catch { payload = null; }
-      }
-      const res = await window.receiver.devSendMessage({ topic: selected.topic, title: 'Routed', body: text, payload });
-      try { devlog(`Client: send result ${res ? 'ok' : 'error'}`); } catch {}
-      document.getElementById('messageText').value = '';
-      btn.disabled = prev; sending = false;
-    });
 
-    async function ensureDevChannelForPhone(phone) {
-      try {
-        let d = await window.receiver.devGet();
-        if (!d) {
-          await window.receiver.devProvision();
-          d = await window.receiver.devGet();
-        }
-        if (!d || !d.tenantId) return;
-        let ch = await window.receiver.adminChannelsList(d.tenantId);
-        if (!Array.isArray(ch) || ch.length === 0) {
-          await window.receiver.adminChannelsCreate({ tenantId: d.tenantId, name: 'Default', topic: 'runs.finished' });
-          ch = await window.receiver.adminChannelsList(d.tenantId);
-        }
-        if (Array.isArray(ch) && ch.length > 0) {
-          const first = ch[0];
-          channelSelect.innerHTML = '';
-          const opt = document.createElement('option');
-          opt.value = JSON.stringify({ topic: first.topic });
-          opt.textContent = `${first.name} (${first.short_id})`;
-          channelSelect.appendChild(opt);
-          // Do NOT re-ensure here to avoid duplicate subscriptions; connectWithPhone already ensured
-        }
-      } catch {}
-    }
+    async function createChannel() {
+      devlog('createChannel: creating channel...');
+      const name = document.getElementById('new-channel-name').value;
+      const description = document.getElementById('new-channel-desc').value;
+      const allow_public = document.getElementById('new-channel-public').checked;
+      if (!name) { showToast('Channel name is required', 'error'); return; }
 
-    // Phone helpers (global)
-    function dialCodeFor(country) {
-      switch ((country||'US').toUpperCase()) {
-        case 'US': return '1';
-        case 'CA': return '1';
-        case 'GB': return '44';
-        case 'AU': return '61';
-        default: return '1';
-      }
-    }
-    function normalizePhone(country, input) {
-      const raw = String(input || '').trim();
-      if (!raw) return '';
-      if (raw.startsWith('+')) {
-        const rest = raw.slice(1).replace(/[^0-9]/g, '');
-        return '+' + rest;
-      }
-      const digits = raw.replace(/[^0-9]/g, '');
-      const dial = dialCodeFor(country);
-      return '+' + dial + digits;
-    }
+      devlog(`createChannel: creating channel: ${name}`);
 
-    function updateCurl() {
-      (async () => {
-        try {
-          const d = await window.receiver.devGet();
-          const apiKey = d && d.apiKey ? d.apiKey : '$API_KEY';
-          let topic = 'runs.finished';
-          try {
-            const selected = channelSelect.value ? JSON.parse(channelSelect.value) : null;
-            if (selected && selected.topic) topic = selected.topic;
-          } catch {}
-          const endpoint = new URL('/v1/messages', BASE_URL).toString();
-          const link = (document.getElementById('linkUrl')?.value || 'https://www.google.com').trim();
-          const u = (link && (link.startsWith('http') ? link : 'https://' + link)) || '';
-          const cmd = [
-            'curl -X POST',
-            "-H 'Authorization: Bearer " + apiKey + "'",
-            "-H 'Content-Type: application/json'",
-            "-d '{" +
-              "\"topic\": \"" + topic + "\", " +
-              "\"title\": \"Routed\", " +
-              "\"body\": \"Hello from CLI\", " +
-              "\"payload\": {\"url\": \"" + u.replace(/\"/g,'\\\"') + "\"}}'",
-            endpoint
-          ].join(' ');
-          document.getElementById('curlCmd').textContent = cmd;
-        } catch {}
-      })();
-    }
+      // FIX: use camelCase keys expected by main
+      const result = await safeInvoke('channels:create', {
+        name,
+        description,
+        allowPublic: allow_public,
+        creatorPhone: confirmedPhone
+      });
 
-    (async () => {
-      // Load server URL
-      try {
-        BASE_URL = await window.receiver.devGetBaseUrl() || BASE_URL;
-        const su = document.getElementById('serverUrl');
-        const sv = document.getElementById('serverView');
-        if (su) su.value = BASE_URL;
-        if (sv) sv.textContent = BASE_URL;
-      } catch {}
-      // Set version label
-      try {
-        const v = await window.receiver.appVersion();
-        const el = document.getElementById('appVer');
-        if (el && v) el.textContent = `v${v}`;
-      } catch {}
+      devlog(`createChannel: channels:create result: ${JSON.stringify(result)}`);
 
-      const healthy = await checkHealth();
-      // Registration gate
-      let verified = false;
-      try { const d = await window.receiver.devGet(); verified = !!(d && d.verifiedUserId && d.verifiedPhone); } catch {}
-      const overlay = document.getElementById('regOverlay');
-      if (!verified) {
-        // Hard reset any stale local data on first run when not verified
-        try { await window.receiver.devReset(); } catch {}
-        try { localStorage.removeItem('ROUTED_PHONE'); } catch {}
-        setOverlayVisible(true);
-        showTab('settings');
-        setTabsEnabled(false);
+      if (result.ok) {
+        closeModal('create-channel-modal');
+        fetchChannels();
+        showToast('Channel created successfully!');
       } else {
-        setOverlayVisible(false);
-        setTabsEnabled(true);
+        showToast(`Error: ${result?.error || 'No response from server'}`, 'error');
+      }
+    }
+
+    async function joinChannel() {
+      devlog('joinChannel: joining channel...');
+      const short_id = document.getElementById('join-channel-id').value;
+      if (!short_id) { showToast('Channel ID is required', 'error'); return; }
+
+      // FIX: call an existing handler; join public channels by short ID
+      const result = await safeInvoke('public:channels:join', {
+        shortId: short_id,
+        phone: confirmedPhone
+      });
+
+      devlog(`joinChannel: public:channels:join result: ${JSON.stringify(result)}`);
+
+      if (result && result.ok) {
+        closeModal('join-channel-modal');
+        fetchChannels();
+        showToast('Joined channel!');
+      } else {
+        showToast(`Error: ${result?.error || 'No response from server'}`, 'error');
+      }
+    }
+
+    // --- App Log ---
+    async function fetchLog() {
+      try {
+        devlog('fetchLog: reading app logs');
+        const result = await receiver.invoke('app:logs:read', { maxChars: 50000 });
+        const output = document.getElementById('log-output');
+        if (result.ok) {
+          output.textContent = result.content || '(empty log)';
+          output.scrollTop = output.scrollHeight;
+        } else {
+          output.textContent = `Error reading log: ${result.error}`;
+        }
+      } catch (e) {
+        devlog(`fetchLog error: ${e}`);
+        document.getElementById('log-output').textContent = `Error: ${e.message}`;
+      }
+    }
+    
+    function copyLog() {
+      const log = document.getElementById('log-output').textContent;
+      navigator.clipboard.writeText(log).then(() => showToast('Log copied!'), () => showToast('Copy failed', 'error'));
+    }
+
+    function clearLog() {
+      document.getElementById('log-output').textContent = '';
+    }
+
+    // --- Authentication ----
+    async function initAuth() {
+      devlog('initAuth: starting');
+      const dev = await receiver.invoke('dev:get');
+      devState = dev || {};
+      confirmedPhone = devState.verifiedPhone;
+      devlog(`initAuth: phone=${confirmedPhone ? 'yes' : 'no'}`);
+
+      if (confirmedPhone) {
+        document.getElementById('phone-login-overlay').style.display = 'none';
+        document.getElementById('confirmed-phone').textContent = confirmedPhone;
+        document.getElementById('dev-id').textContent = devState.devId || 'N/A';
+
+        // Disable create channel button if no devId
+        const createChannelBtn = document.querySelector("button[onclick=\"showCreateChannelModal()\"]");
+        if (devState.devId) {
+          createChannelBtn.disabled = false;
+        } else {
+          createChannelBtn.disabled = true;
+        }
+
+        document.getElementById('tabs-container').style.opacity = 1;
+        document.getElementById('content-container').style.opacity = 1;
+        fetchChannels();
+      } else {
+        document.getElementById('phone-login-overlay').style.display = 'flex';
+        document.getElementById('tabs-container').style.opacity = 0.3;
+        document.getElementById('content-container').style.opacity = 0.3;
       }
 
-      try {
-        const saved = localStorage.getItem('ROUTED_PHONE');
-        if (verified && saved) {
-          try { document.getElementById('settingsPhone').value = saved; } catch {}
-          try { document.getElementById('settingsPhoneView').textContent = saved; } catch {}
-          if (healthy) {
-            await connectWithPhone(saved);
-            await ensureDevChannelForPhone(saved);
-            showTab('dev');
-            try { document.getElementById('messageText')?.focus(); } catch {}
-          } else {
-            showToast('Cannot connect', 'Server is unreachable. Check Settings → Server and try again.');
-            showTab('settings');
-          }
+      document.getElementById('submit-phone').addEventListener('click', async () => {
+        const phone = document.getElementById('phone-input').value.trim();
+        if (!phone) { showToast('Phone number is required.', 'error'); return; }
+        
+        devlog('auth: sending phone for verification');
+        const result = await receiver.invoke('verify:start', { phone });
+        if (result.ok) {
+          showToast('Verification code sent.');
+          document.getElementById('verify-code-group').style.display = 'block';
+        } else {
+          showToast(`Error: ${result.error}`, 'error');
         }
-        // Debug: log sockets snapshot to help diagnose delivery
-        try {
-          const snap = await window.receiver.adminSockets();
-          await window.receiver.debugLog('sockets snapshot: ' + JSON.stringify(snap));
-        } catch {}
-      } catch {}
-      await refreshDevInfo();
-      // Populate dev key view
-      try {
-        const d = await window.receiver.devGet();
-        const k = d && d.apiKey ? d.apiKey : '';
-        const vEl = document.getElementById('devKeyView'); if (vEl) vEl.textContent = k || 'Not created';
-      } catch {}
-    })();
-    // Settings: view/edit toggles
-    document.getElementById('editServerBtn').addEventListener('click', () => { document.getElementById('serverEdit').style.display='flex'; });
-    document.getElementById('cancelServerBtn').addEventListener('click', () => { document.getElementById('serverEdit').style.display='none'; });
-    document.getElementById('editPhoneBtn').addEventListener('click', () => { document.getElementById('phoneEdit').style.display='flex'; });
-    document.getElementById('cancelPhoneBtn').addEventListener('click', () => { document.getElementById('phoneEdit').style.display='none'; });
-    document.getElementById('editDevKeyBtn').addEventListener('click', async () => { document.getElementById('devKeyEdit').style.display='flex'; try { document.getElementById('devKeyInput').value = (await window.receiver.devGet())?.apiKey || ''; } catch {} });
-    document.getElementById('cancelDevKeyBtn').addEventListener('click', () => { document.getElementById('devKeyEdit').style.display='none'; });
-
-    document.getElementById('saveServerBtn').addEventListener('click', async () => {
-      try {
-        const su = document.getElementById('serverUrl');
-        const url = (su.value || '').trim();
-        if (!url) { alert('Enter server URL'); return; }
-        BASE_URL = await window.receiver.devSetBaseUrl(url) || url;
-        const sv = document.getElementById('serverView'); if (sv) sv.textContent = BASE_URL;
-        devlog('Saved server: ' + BASE_URL);
-        document.getElementById('serverEdit').style.display='none';
-        await checkHealth();
-      } catch {}
-    });
-    document.getElementById('clearLogsBtn').addEventListener('click', () => { if (devlogEl) devlogEl.textContent=''; });
-    document.getElementById('clearMainLogBtn').addEventListener('click', () => { if (logEl) logEl.textContent=''; });
-    document.getElementById('copyMainLogBtn').addEventListener('click', async () => {
-      try { await navigator.clipboard.writeText(logEl.textContent || ''); showToast('Copied logs',''); } catch {}
-    });
-    document.getElementById('copyLogsBtn').addEventListener('click', async () => {
-      try { await navigator.clipboard.writeText(devlogEl.textContent || ''); showToast('Copied logs',''); } catch {}
-    });
-    document.getElementById('copyCurlBtn').addEventListener('click', async () => {
-      try { await navigator.clipboard.writeText(document.getElementById('curlCmd').textContent || ''); showToast('Copied curl',''); } catch {}
-    });
-    document.getElementById('toggleCurl').addEventListener('click', (e) => { e.preventDefault(); const p = document.getElementById('curlPanel'); p.style.display = p.style.display === 'none' ? '' : 'none'; if (p.style.display !== 'none') updateCurl(); });
-    document.getElementById('quitBtn').addEventListener('click', () => { try { window.receiver.appQuit(); } catch {} });
-
-    // Registration overlay handlers
-    (function(){
-      const countryEl = document.getElementById('country');
-      const phoneEl = document.getElementById('phoneInput');
-      const codeEl = document.getElementById('codeInput');
-      const stepPhone = document.getElementById('regStepPhone');
-      const stepCode = document.getElementById('regStepCode');
-      const err1 = document.getElementById('regError');
-      const err2 = document.getElementById('regError2');
-
-      document.getElementById('sendCodeBtn').addEventListener('click', async () => {
-        err1.textContent='';
-        const country = (countryEl.value||'US').toUpperCase();
-        const phoneRaw = (phoneEl.value||'').trim();
-        if (!phoneRaw) { err1.textContent = 'Enter your phone number'; return; }
-        const phone = normalizePhone(country, phoneRaw);
-        const ok = await window.receiver.verifyStart({ phone, country });
-        if (!ok || ok.ok === false) { err1.textContent = 'Failed to send code. Try again.'; return; }
-        stepPhone.style.display='none'; stepCode.style.display='block';
       });
+      
+      document.getElementById('submit-code').addEventListener('click', async () => {
+        const phone = document.getElementById('phone-input').value.trim();
+        const code = document.getElementById('verify-code-input').value.trim();
+        if (!code) { showToast('Verification code is required.', 'error'); return; }
 
-      document.getElementById('verifyCodeBtn').addEventListener('click', async () => {
-        err2.textContent='';
-        const country = (countryEl.value||'US').toUpperCase();
-        const phone = normalizePhone(country, (phoneEl.value||'').trim());
-        const code = (codeEl.value||'').trim();
-        if (!code) { err2.textContent='Enter the code'; return; }
-        const res = await window.receiver.verifyCheck({ phone, code });
-        if (!res || res.ok === false) { err2.textContent='Invalid code. Try again.'; return; }
-        try { localStorage.setItem('ROUTED_PHONE', phone); } catch {}
-        setOverlayVisible(false);
-        showToast('Verified', 'Your phone is verified.');
-        // Optionally auto-connect post verification
-        const ok = await preflightOrFail(); if (ok) { await connectWithPhone(phone); await ensureDevChannelForPhone(phone); setTabsEnabled(true); showTab('dev'); }
-      });
-
-      // Settings-level logout button
-      document.getElementById('logoutBtn').addEventListener('click', async () => {
-        try {
-          await window.receiver.devReset();
-          localStorage.removeItem('ROUTED_PHONE');
-          document.getElementById('settingsPhoneView').textContent = '';
-          document.getElementById('settingsPhone').value = '';
-          setOverlayVisible(true);
-          showToast('Logged out','');
-          setTabsEnabled(false);
-          showTab('settings');
-        } catch {}
-      });
-    })();
-
-    // Settings handlers for phone/connect
-    document.getElementById('savePhoneBtn').addEventListener('click', () => {
-      const raw = (document.getElementById('settingsPhone').value || '').trim();
-      if (!raw) { alert('Enter your phone'); return; }
-      const country = (document.getElementById('settingsCountry')?.value || 'US').toUpperCase();
-      const phone = normalizePhone(country, raw);
-      try { localStorage.setItem('ROUTED_PHONE', phone); document.getElementById('settingsPhoneView').textContent = phone; document.getElementById('settingsPhone').value = phone; document.getElementById('phoneEdit').style.display='none'; showToast('Saved phone',''); } catch {}
-    });
-    document.getElementById('connectNowBtn').addEventListener('click', async () => {
-      const raw = (document.getElementById('settingsPhone').value || '').trim();
-      if (!raw) { alert('Enter your phone'); return; }
-      const country = (document.getElementById('settingsCountry')?.value || 'US').toUpperCase();
-      const phone = normalizePhone(country, raw);
-      // Require verification before allowing connect
-      let verified = false; try { const d = await window.receiver.devGet(); verified = !!(d && d.verifiedUserId && d.verifiedPhone); } catch {}
-      if (!verified) { showToast('Verification required', 'Please verify your phone number first.'); setOverlayVisible(true); return; }
-      const ok = await preflightOrFail(); if (!ok) return;
-      try { localStorage.setItem('ROUTED_PHONE', phone); document.getElementById('settingsPhoneView').textContent = phone; document.getElementById('settingsPhone').value = phone; } catch {}
-      await connectWithPhone(phone);
-      await ensureDevChannelForPhone(phone);
-      setTabsEnabled(true);
-      showTab('dev');
-    });
-
-    document.getElementById('copyDevKeyBtn').addEventListener('click', async () => { try { await navigator.clipboard.writeText(document.getElementById('devKeyView').textContent || ''); showToast('Copied key',''); } catch {} });
-    document.getElementById('saveDevKeyBtn').addEventListener('click', async () => {
-      try {
-        const key = (document.getElementById('devKeyInput').value || '').trim();
-        await window.receiver.devSetApiKey(key);
-        document.getElementById('devKeyView').textContent = key || 'Not created';
-        document.getElementById('devKeyEdit').style.display='none';
-        showToast('Saved key','');
-      } catch {}
-    });
-
-    // Load users on channel change
-    channelSelect.addEventListener('change', async () => {
-      try {
-        const selected = channelSelect.value ? JSON.parse(channelSelect.value) : null;
-        const sec = document.getElementById('usersSection');
-        const list = document.getElementById('usersList');
-        if (!selected || !selected.short_id) { sec.style.display = 'none'; list.innerHTML = ''; return; }
-        const users = await window.receiver.adminChannelsUsers(selected.short_id);
-        list.innerHTML = '';
-        for (const u of (users || [])) {
-          const li = document.createElement('li');
-          li.textContent = u.phone || u.user_id || JSON.stringify(u);
-          list.appendChild(li);
+        devlog('auth: sending code for verification');
+        const result = await receiver.invoke('verify:check', { phone, code });
+        if (result.ok) {
+          showToast('Verification successful!');
+          devlog('auth: verification successful, re-initializing');
+          initAuth();
+        } else {
+          showToast(`Error: ${result.error}`, 'error');
         }
-        sec.style.display = '';
-      } catch {}
+      });
+
+      document.getElementById('logout-button').addEventListener('click', async () => {
+        devlog('logout: starting');
+        try {
+          const ok = await receiver.invoke('auth:logout');
+          devlog(`logout: invoke result ok=${ok}`);
+          confirmedPhone = null;
+          devState = {};
+          document.getElementById('confirmed-phone').textContent = '';
+          initAuth();
+          showToast('Logged out.');
+        } catch (e) {
+          devlog(`logout: invoke error: ${e}`);
+          showToast(`Logout failed: ${e.message}`, 'error');
+        }
+      });
+    }
+
+    // --- Init ---
+    document.addEventListener('DOMContentLoaded', () => {
+      devlog('DOMContentLoaded: starting init');
+      initAuth();
+      showTab('channels'); // default tab
+      
+      // Attach event listeners for log buttons
+      document.querySelector('button[onclick="copyLog()"]').addEventListener('click', copyLog);
+      document.querySelector('button[onclick="clearLog()"]').addEventListener('click', clearLog);
     });
   </script>
 </body>

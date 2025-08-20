@@ -85,22 +85,22 @@ export default async function routes(fastify: FastifyInstance) {
         return reply.status(400).send({ error: 'invalid_code' });
       }
 
-      // Create or ensure user record and return user_id
+      // Create or ensure user record in the same tenant used by auth_complete_sms and mark as verified
       const out = await withTxn(async (c) => {
-        // Use a shared tenant for verified users if applicable; here we ensure a user exists in the default/first tenant.
-        // For now, if you have multi-tenant, adjust to map phone to correct tenant.
-        // We'll find or create a user across all tenants by phone; as a simple default, create a standalone user with null tenant.
-        // Assuming users table requires tenant_id, we pick or create a special tenant named 'Public'.
-        let t = await c.query(`select id from tenants where name=$1 limit 1`, ['Public']);
+        // Use the same fixed tenant as auth_complete_sms: 'system'
+        let t = await c.query(`select id from tenants where name=$1 limit 1`, ['system']);
         if (t.rows.length === 0) {
-          t = await c.query(`insert into tenants (name, plan) values ($1,'free') returning id`, ['Public']);
+          t = await c.query(`insert into tenants (name, plan) values ($1,'free') returning id`, ['system']);
         }
         const tenantId = t.rows[0].id as string;
-        let u = await c.query(`select id from users where tenant_id=$1 and phone=$2 limit 1`, [tenantId, phone]);
+        // Upsert user and set verified timestamp
+        let u = await c.query(`select id, phone_verified_at from users where tenant_id=$1 and phone=$2 limit 1`, [tenantId, phone]);
         if (u.rows.length === 0) {
-          u = await c.query(`insert into users (tenant_id, phone) values ($1,$2) returning id`, [tenantId, phone]);
+          u = await c.query(`insert into users (tenant_id, phone, phone_verified_at) values ($1,$2, now()) returning id, phone_verified_at`, [tenantId, phone]);
+        } else if (!u.rows[0].phone_verified_at) {
+          await c.query(`update users set phone_verified_at=now() where tenant_id=$1 and phone=$2`, [tenantId, phone]);
         }
-        const userId = u.rows[0].id as string;
+        const userId = (u.rows[0].id) as string;
         return { tenantId, userId };
       });
 

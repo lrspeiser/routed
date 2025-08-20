@@ -4,6 +4,7 @@
 // It is used to receive messages from the Routed Hub.
 
 const { app, BrowserWindow, Notification, dialog, ipcMain, Tray, Menu, nativeImage, globalShortcut, shell, session } = require('electron');
+const { createRuntimeService, registerIpc } = require('./packages/runtime-service/dist');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -14,7 +15,7 @@ let mainWindow;
 let verifyWindow;
 let tray;
 let isQuitting = false;
-// Point app directly at the hub for all actions
+// Point app to runtime service; hub access is only via service
 let OVERRIDE_BASE = null;
 // Post-verification initialization gate
 let _postInitDone = false;
@@ -31,7 +32,7 @@ function readEnvFile(file) {
       const m = l.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
       if (!m) return;
       let v = m[2];
-      if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1,-1);
+      if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith(`'`) && v.endsWith(`'`))) v = v.slice(1,-1);
       out[m[1]] = v;
     });
     return out;
@@ -88,13 +89,7 @@ function userDataAIPath(...segs) {
 // IMPORTANT: NEVER use placeholder or fallback keys for OpenAI. Only use a valid, server-provisioned key bound to the authorized user.
 // Key validity is strictly structural (non-empty, long enough, no whitespace). No placeholder acceptance of any kind.
 function isStructurallyValidOpenAIKey(key) {
-  try {
-    const k = String(key || '').trim();
-    if (!k) return false;
-    if (k.length < 20) return false;
-    if (/\s/.test(k)) return false;
-    return true;
-  } catch { return false; }
+  return typeof key === 'string' && key.startsWith('sk-') && key.length > 40;
 }
 function tryReadUserOpenAIKey() {
   try {
@@ -126,46 +121,14 @@ function persistUserOpenAIKey(key) {
   } catch { return false; }
 }
 
-// Always obtain OpenAI key from server when missing locally (no env fallbacks)
-async function ensureOpenAIKeyFromServer() {
-  // If already persisted locally, use it (avoid network each call)
-  try {
-    const existing = tryReadUserOpenAIKey();
-    if (existing) return { ok: true, key: existing, source: 'userData' };
-  } catch {}
-  try {
-    const dev = loadDev();
-    if (!dev || !dev.hubUrl) {
-      writeLog('openai:ensure_key → missing developer context');
-      return { ok: false, error: 'missing_developer_context' };
-    }
-    // IMPORTANT: We only ever acquire keys from the server for an already-authorized user/phone. No placeholders, no client-side defaults.
-    const admin = isAdminMode();
-    const provUrl = new URL(admin ? '/v1/admin/sandbox/provision' : '/v1/dev/sandbox/provision', baseUrl()).toString();
-    const opts = { method: 'POST', cache: 'no-store', headers: admin ? { ...adminAuthHeaders(), 'Content-Type': 'application/json' } : undefined };
-    writeLog(`openai:ensure_key → requesting from server (phone=${(dev && dev.verifiedPhone) ? dev.verifiedPhone : 'unknown'}) url=${provUrl}`);
-    const res = await fetch(provUrl, opts);
-    const j = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      writeLog(`openai:ensure_key http_error status=${res.status} body=${JSON.stringify(j).slice(0,400)}`);
-      return { ok: false, error: 'server_request_failed', detail: j && j.error ? j.error : `status ${res.status}` };
-    }
-    const svKey = j.defaultOpenAIKey || j.openaiKey || j.openAIKey || null;
-    if (!isStructurallyValidOpenAIKey(svKey)) {
-      writeLog('openai:ensure_key → server returned invalid or missing key');
-      return { ok: false, error: 'server_invalid_key' };
-    }
-    const stored = persistUserOpenAIKey(svKey);
-    writeLog(`openai:ensure_key → ${stored ? 'stored' : 'store_failed'}`);
-    return { ok: true, key: svKey, source: 'server' };
-  } catch (e) {
-    writeLog('openai:ensure_key error: ' + String(e));
-    return { ok: false, error: String(e) };
-  }
-}
-
   // IMPORTANT: Do not rely on env OPENAI_* for generation. Only server-provisioned keys stored under userData are used.
 try { tryLoadLocalEnv(); } catch {}
+// Start runtime service and register IPC
+let _service;
+app.whenReady().then(() => {
+  const base = OVERRIDE_BASE || process.env.HUB_URL || process.env.BASE_URL || DEFAULT_RESOLVE_URL_FALLBACK;
+  try { _service = createRuntimeService(base); registerIpc(_service); } catch (e) { writeLog('runtime-service init error: ' + String(e)); }
+});
 
 function baseUrl() {
   const fromEnv = OVERRIDE_BASE || process.env.HUB_URL || process.env.BASE_URL;
@@ -324,7 +287,7 @@ async function createWindow() {
       // allow default close on quit
     }
   });
-  writeLog('Main window created');
+  mainWindow.webContents.openDevTools();
 }
 
 async function createVerifyWindow() {
@@ -519,6 +482,16 @@ function buildAppMenu() {
         label: 'Window',
         role: 'windowMenu',
       },
+      {
+        label: 'Developer',
+        submenu: [
+          { 
+            label: 'Open Dev Tools',
+            accelerator: 'CmdOrCtrl+Shift+I',
+            click() { mainWindow.webContents.openDevTools(); }
+          }
+        ]
+      }
     ];
     const menu = Menu.buildFromTemplate(template);
     Menu.setApplicationMenu(menu);
@@ -589,9 +562,13 @@ if (!process.env.TEST_MODE && !process.env.VITEST) app.whenReady().then(async ()
 
     // Verified?
     let verified = false; let dev = null;
-    try { dev = loadDev(); verified = !!(dev && dev.verifiedUserId && dev.verifiedPhone); } catch {}
+    try { 
+      dev = loadDev(); 
+      verified = !!(dev && dev.verifiedUserId && dev.verifiedPhone); 
+      writeLog(`preflight: phone verified=${!!(dev && dev.verifiedPhone)}, developer id exists=${!!(dev && dev.apiKey)}, devId exists=${!!(dev && dev.devId)}`);
+    } catch {}
 
-    if (verified) {
+    if (verified && dev && dev.devId) {
       // Ensure developer identity before showing window (provision if missing/invalid)
       try {
         const ensuredDev = await ensureValidDeveloper();
@@ -1256,6 +1233,7 @@ ipcMain.handle('verify:start', async (_evt, { phone, country }) => {
 });
 
 ipcMain.handle('verify:check', async (_evt, { phone, code }) => {
+  writeLog(`verify:check received request for phone: ${phone}, code: ${code}`);
   try {
     const res = await fetch(new URL('/v1/verify/check', baseUrl()).toString(), {
       method: 'POST',
@@ -1264,7 +1242,10 @@ ipcMain.handle('verify:check', async (_evt, { phone, code }) => {
       cache: 'no-store',
     });
     const j = await res.json().catch(() => ({}));
-    if (!res.ok || !j.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
+    if (!res.ok || !j.ok) {
+      writeLog(`verify:check error: ${j.error}`);
+      throw new Error(j && j.error ? j.error : `status ${res.status}`);
+    }
     const d = loadDev() || {};
     d.verifiedPhone = j.phone;
     d.verifiedUserId = j.userId;
@@ -1304,6 +1285,8 @@ ipcMain.handle('verify:check', async (_evt, { phone, code }) => {
       writeLog('verify:check → ensure developer failed: ' + String(e));
     }
     saveDev(d);
+    // reload the dev object to ensure we have the latest data
+    d = loadDev();
     // Validate or (re)provision developer key now that verification succeeded
     try { const ensured = await ensureValidDeveloper(); if (ensured && ensured.apiKey) notifyDevUpdated(ensured); } catch (e) { writeLog('verify:check → ensure dev failed ' + String(e)); }
     writeLog(`verify:check → ok user=${j.userId}`);
@@ -1552,7 +1535,7 @@ ipcMain.handle('users:channels:list', async (_evt, { userId }) => {
   }
 });
 
-ipcMain.handle('admin:channels:list', async (_evt, _tenantId) => {
+ipcMain.handle('channels:list', async (_evt, _tenantId) => {
   try {
     const dev = loadDev();
     if (!dev || !dev.apiKey) throw new Error('Developer key not set');
@@ -1560,17 +1543,17 @@ ipcMain.handle('admin:channels:list', async (_evt, _tenantId) => {
     const res = await fetchWithApiKeyRetry(url, { cache: 'no-store' }, dev);
     const j = await res.json();
     if (!res.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
-    const channels = j.channels || j;
+    const channels = j.channels || j || [];
     writeLog(`channels:list → ${Array.isArray(channels)? channels.length: 0}`);
-    return channels || [];
+    return { channels };
   } catch (e) {
     if (!QUIET_ERRORS) { try { dialog.showErrorBox('List channels failed', String(e)); } catch {} }
     writeLog(`channels:list error: ${String(e)}`);
-    return [];
+    return { channels: [] };
   }
 });
 
-ipcMain.handle('admin:channels:create', async (_evt, { name, description, allowPublic, topicName, creatorPhone }) => {
+ipcMain.handle('channels:create', async (_evt, { name, description, allowPublic, topicName, creatorPhone }) => {
   try {
     let dev = loadDev();
     writeLog(`channels:create:init name=${String(name||'')} allowPublic=${!!allowPublic} hasKey=${!!(dev && dev.apiKey)} hasPhone=${!!(dev && dev.verifiedPhone)}`);
@@ -1708,6 +1691,11 @@ ipcMain.handle('auth:completeSms', async (_evt, { phone, deviceName, wantDefault
     }
     const j = attempt.j || {};
     try { await tmSetSession({ deviceId: j.deviceId, refreshToken: j.refreshToken, accessToken: j.accessToken }); } catch {}
+    const d = loadDev() || {};
+    if (j.user && j.user.devId) {
+      d.devId = j.user.devId;
+      saveDev(d);
+    }
     // If the server returned a default OpenAI key, persist it for the main process to use
     try {
       const svKey = j.defaultOpenAIKey || j.openaiKey || j.openAIKey || null;
