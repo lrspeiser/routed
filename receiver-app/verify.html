@@ -36,7 +36,7 @@
       <input id="codeInput" placeholder="123456" />
       <button id="verifyBtn">Verify</button>
       <div id="err2" class="error"></div>
-      <div class="hint">Didn’t get it? Wait a moment and try again.</div>
+      <div class="hint">Didn't get it? <a href="#" id="resendLink" style="color:#7fbf3f;">Request new code</a></div>
     </div>
 
     <div class="hint" id="status"></div>
@@ -88,10 +88,38 @@
         return null;
       });
       devlog(`verify:check response: ${JSON.stringify(res)}`);
-      if (!res || res.ok === false) { status.textContent=''; err2.textContent='Invalid code. Try again.'; return; }
+      if (!res || res.ok === false) { 
+        status.textContent=''; 
+        // Provide more helpful error message for common scenarios
+        if (res && res.error && res.error.includes('invalid_code')) {
+          err2.textContent='This code has expired or was already used. Please request a new code.';
+        } else {
+          err2.textContent='Invalid code. Try again.';
+        }
+        return;
+      }
       try { localStorage.setItem('ROUTED_PHONE', phone); } catch {}
       status.textContent='Verified! Opening app...';
       // Main process will handle creating the main window and closing this one.
+    });
+
+    // Handle resend code link
+    document.getElementById('resendLink').addEventListener('click', async (e) => {
+      e.preventDefault();
+      err2.textContent=''; status.textContent='';
+      codeEl.value = ''; // Clear the old code
+      const country=(countryEl.value||'US').toUpperCase();
+      const phone=normalizePhone(country, (phoneEl.value||'').trim());
+      status.textContent='Requesting new code...';
+      devlog(`Requesting new verification code for ${phone}`);
+      const res = await window.receiver.verifyStart({ phone, country }).catch(()=>null);
+      if (!res || res.ok === false) { 
+        status.textContent=''; 
+        err2.textContent='Failed to send new code. Please try again.'; 
+        return; 
+      }
+      status.textContent='New code sent! Check your messages.';
+      setTimeout(() => { status.textContent=''; }, 3000);
     });
   </script>
 </body>
