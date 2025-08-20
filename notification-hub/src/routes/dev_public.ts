@@ -4,26 +4,39 @@ import { pool, withTxn } from '../db';
 export default async function routes(fastify: FastifyInstance) {
   // Public dev sandbox provision (unsafe; for demo/dev only)
   fastify.post('/v1/dev/sandbox/provision', async (_req, reply) => {
-    const client = await pool.connect();
     try {
-      await client.query('BEGIN');
-      const t = await client.query(`insert into tenants (name, plan) values ($1,'free') returning id`, ['Dev Tenant']);
-      const tenantId = t.rows[0].id as string;
-      const apiKey = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
-      const p = await client.query(`insert into publishers (tenant_id, name, api_key) values ($1,$2,$3) returning id`, [tenantId, 'Dev Publisher', apiKey]);
-      const publisherId = p.rows[0].id as string;
-      const top = await client.query(`insert into topics (tenant_id, name) values ($1,$2) returning id`, [tenantId, 'runs.finished']);
-      const topicId = top.rows[0].id as string;
-      const u = await client.query(`insert into users (tenant_id) values ($1) returning id`, [tenantId]);
-      const userId = u.rows[0].id as string;
-      await client.query(`insert into subscriptions (tenant_id, user_id, topic_id) values ($1,$2,$3)`, [tenantId, userId, topicId]);
-      await client.query('COMMIT');
-      return reply.send({ tenantId, publisherId, apiKey, userId, topicId });
-    } catch (e) {
-      await client.query('ROLLBACK');
+      const result = await withTxn(async (client) => {
+        const t = await client.query(`insert into tenants (name, plan) values ($1,'free') returning id`, ['Dev Tenant']);
+        const tenantId = t.rows[0].id as string;
+        const apiKey = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+        const p = await client.query(`insert into publishers (tenant_id, name, api_key) values ($1,$2,$3) returning id`, [tenantId, 'Dev Publisher', apiKey]);
+        const publisherId = p.rows[0].id as string;
+        
+        // Use ON CONFLICT to handle existing topics
+        const top = await client.query(
+          `insert into topics (tenant_id, name) values ($1,$2) 
+           on conflict on constraint topics_tenant_id_name_key do update set name=excluded.name
+           returning id`, 
+          [tenantId, 'runs.finished']
+        );
+        const topicId = top.rows[0].id as string;
+        
+        const u = await client.query(`insert into users (tenant_id) values ($1) returning id`, [tenantId]);
+        const userId = u.rows[0].id as string;
+        
+        // Use ON CONFLICT for subscriptions too
+        await client.query(
+          `insert into subscriptions (tenant_id, user_id, topic_id) values ($1,$2,$3)
+           on conflict on constraint subscriptions_user_id_topic_id_key do nothing`, 
+          [tenantId, userId, topicId]
+        );
+        
+        return { tenantId, publisherId, apiKey, userId, topicId };
+      });
+      return reply.send(result);
+    } catch (e: any) {
+      fastify.log.error('Dev sandbox provision error: ' + String(e?.message || e));
       return reply.status(500).send({ error: 'internal_error' });
-    } finally {
-      client.release();
     }
   });
 
