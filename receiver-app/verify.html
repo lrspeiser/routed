@@ -43,6 +43,16 @@
   </div>
 
   <script>
+    // Debug logging function
+    const devlog = (msg) => {
+      try {
+        console.log(`[verify] ${msg}`);
+        if (window.receiver && window.receiver.debug && window.receiver.debug.log) {
+          window.receiver.debug.log(msg);
+        }
+      } catch {}
+    }
+
     function dialCodeFor(country){ switch((country||'US').toUpperCase()){ case 'US': return '1'; case 'CA': return '1'; case 'GB': return '44'; case 'AU': return '61'; default: return '1'; } }
     function normalizePhone(country, input){ const raw=String(input||'').trim(); if(!raw) return ''; if(raw.startsWith('+')){ const rest=raw.slice(1).replace(/[^0-9]/g,''); return '+'+rest; } const digits=raw.replace(/[^0-9]/g,''); return '+'+dialCodeFor(country)+digits; }
 
