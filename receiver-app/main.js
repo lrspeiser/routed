@@ -4,7 +4,7 @@
 // It is used to receive messages from the Routed Hub.
 
 const { app, BrowserWindow, Notification, dialog, ipcMain, Tray, Menu, nativeImage, globalShortcut, shell, session } = require('electron');
-const { createRuntimeService, registerIpc } = require('./packages/runtime-service/dist');
+const { createRuntimeService, registerIpc } = require('../packages/runtime-service/dist');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
