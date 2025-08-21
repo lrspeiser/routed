@@ -1258,10 +1258,19 @@ ipcMain.handle('verify:check', async (_evt, { phone, code }) => {
       body: JSON.stringify({ phone, code }),
       cache: 'no-store',
     });
-    const j = await res.json().catch(() => ({}));
+    const text = await res.text();
+    let j = {};
+    try {
+      j = JSON.parse(text);
+    } catch (parseErr) {
+      writeLog(`verify:check parse error - raw response: ${text}`);
+      throw new Error(`Parse error: ${text}`);
+    }
+    
     if (!res.ok || !j.ok) {
-      writeLog(`verify:check error: ${j.error}`);
-      throw new Error(j && j.error ? j.error : `status ${res.status}`);
+      writeLog(`verify:check backend error - status: ${res.status}, error: ${j.error}, message: ${j.message}, raw: ${text}`);
+      // Return the full error details to frontend for better debugging
+      return { ok: false, error: j.error || `status ${res.status}`, message: j.message, status: j.status, details: j.details };
     }
     const d = loadDev() || {};
     d.verifiedPhone = j.phone;
@@ -1315,8 +1324,12 @@ ipcMain.handle('verify:check', async (_evt, { phone, code }) => {
     } catch (e) { writeLog('verify:check post-init window error: ' + String(e)); }
     return { ok: true, userId: j.userId, tenantId: d.verifiedTenantId, apiKey: d.apiKey || null };
   } catch (e) {
-    writeLog('verify:check error: ' + String(e));
-    return { ok: false, error: String(e) };
+    writeLog('verify:check caught exception: ' + String(e));
+    // Check if it's already a formatted error object
+    if (typeof e === 'object' && e.ok === false) {
+      return e;
+    }
+    return { ok: false, error: String(e), rawError: e.message || String(e) };
   }
 });
 ipcMain.handle('dev:get', async () => {

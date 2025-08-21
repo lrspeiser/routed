@@ -88,13 +88,38 @@
         return null;
       });
       devlog(`verify:check response: ${JSON.stringify(res)}`);
+      
+      // Enhanced error handling with backend status information
       if (!res || res.ok === false) { 
         status.textContent=''; 
-        // Provide more helpful error message for common scenarios
-        if (res && res.error && res.error.includes('invalid_code')) {
-          err2.textContent='This code has expired or was already used. Please request a new code.';
+        
+        // Log backend error details to console
+        if (res) {
+          console.error('[Backend Error]', {
+            error: res.error,
+            message: res.message,
+            status: res.status,
+            details: res.details
+          });
+        }
+        
+        // Provide more helpful error messages based on backend response
+        if (res && res.error) {
+          if (res.error.includes('TypeError')) {
+            err2.textContent='Server error. Please try again or contact support.';
+            devlog('Backend has TypeError - likely const assignment issue');
+          } else if (res.error.includes('invalid_code') || (res.status && res.status === 'pending')) {
+            err2.textContent='Invalid or expired code. Please request a new one.';
+          } else if (res.error.includes('twilio_error')) {
+            err2.textContent='Verification service error. Please try again.';
+            if (res.details) devlog(`Twilio error details: ${JSON.stringify(res.details)}`);
+          } else if (res.error.includes('missing_phone_or_code')) {
+            err2.textContent='Phone or code missing. Please try again.';
+          } else {
+            err2.textContent=`Verification failed: ${res.message || res.error || 'Unknown error'}`;
+          }
         } else {
-          err2.textContent='Invalid code. Try again.';
+          err2.textContent='Verification failed. Please try again.';
         }
         return;
       }
