@@ -1731,7 +1731,56 @@ ipcMain.handle('admin:users:ensure', async (_evt, { tenantId, phone, topic }) =>
   }
 });
 
-// Channel subscribe by code
+// Get channel users/subscribers
+ipcMain.handle('channels:users', async (_evt, { shortId }) => {
+  try {
+    const dev = loadDev();
+    if (!dev || !dev.apiKey) throw new Error('Developer key not set');
+    if (!shortId) throw new Error('missing_short_id');
+    const url = new URL(`/v1/channels/${encodeURIComponent(String(shortId))}/users`, baseUrl()).toString();
+    writeLog(`channels:users req → short_id=${shortId}`);
+    const res = await fetchWithApiKeyRetry(url, { cache: 'no-store' }, dev);
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
+    writeLog(`channels:users → ok count=${Array.isArray(j.users) ? j.users.length : 0}`);
+    return j || { users: [] };
+  } catch (e) {
+    writeLog(`channels:users error: ${String(e)}`);
+    return { error: String(e), users: [] };
+  }
+});
+
+// Subscribe a phone number to a channel
+ipcMain.handle('channels:subscribe', async (_evt, { shortId, phone }) => {
+  try {
+    const dev = loadDev();
+    if (!dev || !dev.apiKey) throw new Error('Developer key not set');
+    if (!shortId) throw new Error('missing_short_id');
+    if (!phone) throw new Error('missing_phone');
+    const url = new URL(`/v1/channels/${encodeURIComponent(String(shortId))}/subscribe`, baseUrl()).toString();
+    writeLog(`channels:subscribe req → short_id=${shortId} phone=***${String(phone).slice(-4)}`);
+    const res = await fetchWithApiKeyRetry(url, { 
+      method: 'POST', 
+      headers: { 'Content-Type': 'application/json' }, 
+      body: JSON.stringify({ phone: String(phone) }), 
+      cache: 'no-store' 
+    }, dev);
+    const txt = await res.text().catch(() => '');
+    let j = null; 
+    try { j = JSON.parse(txt); } catch {}
+    if (!res.ok) {
+      writeLog(`channels:subscribe http_error status=${res.status} body=${txt.slice(0,400)}`);
+      throw new Error((j && j.error) ? j.error : `status ${res.status}`);
+    }
+    writeLog(`channels:subscribe → ok userId=${j && j.userId ? j.userId : 'unknown'}`);
+    return j || { ok: true };
+  } catch (e) {
+    writeLog(`channels:subscribe error: ${String(e)}`);
+    return { ok: false, error: String(e) };
+  }
+});
+
+// Channel subscribe by code (legacy/alias)
 ipcMain.handle('dev:channels:subscribe', async (_evt, { shortId, phone }) => {
   try {
     const dev = loadDev();

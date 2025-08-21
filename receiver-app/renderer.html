@@ -122,6 +122,42 @@
     </div>
   </div>
 
+  <!-- Channel Details Modal -->
+  <div class="modal modal-lg" id="channel-details-modal">
+    <a href="#close" class="modal-overlay" aria-label="Close"></a>
+    <div class="modal-container">
+      <div class="modal-header">
+        <a href="#close" class="btn btn-clear float-right" aria-label="Close" onclick="closeModal('channel-details-modal')"></a>
+        <div class="modal-title h5" id="channel-details-title">Channel Details</div>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Channel ID</label>
+          <div class="input-group">
+            <input class="form-input" type="text" id="channel-details-id" readonly>
+            <button class="btn input-group-btn" onclick="copyChannelId()"><i class="icon icon-copy"></i></button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Subscribers</label>
+          <div id="channel-subscribers-list" style="max-height: 300px; overflow-y: auto;">
+            <div class="loading">Loading...</div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Add Subscriber</label>
+          <div class="input-group">
+            <input class="form-input" type="tel" id="add-subscriber-phone" placeholder="Phone number">
+            <button class="btn btn-primary input-group-btn" onclick="addSubscriber()">Add</button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-link" onclick="closeModal('channel-details-modal')">Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Join Channel Modal -->
   <div class="modal" id="join-channel-modal">
     <a href="#close" class="modal-overlay" aria-label="Close"></a>
@@ -229,6 +265,111 @@
     }
 
     // --- Channels ----
+    let currentChannelShortId = null;
+    
+    async function showChannelDetails(shortId, name) {
+      devlog(`showChannelDetails: showing details for ${shortId}`);
+      currentChannelShortId = shortId;
+      
+      document.getElementById('channel-details-title').textContent = name;
+      document.getElementById('channel-details-id').value = shortId;
+      
+      showModal('channel-details-modal');
+      await fetchChannelSubscribers(shortId);
+    }
+    
+    async function fetchChannelSubscribers(shortId) {
+      devlog(`fetchChannelSubscribers: fetching for ${shortId}`);
+      const result = await safeInvoke('channels:users', { shortId });
+      
+      devlog(`fetchChannelSubscribers: result: ${JSON.stringify(result)}`);
+      
+      const list = document.getElementById('channel-subscribers-list');
+      
+      if (result.error) {
+        list.innerHTML = `<div class="empty"><p>Error loading subscribers</p><p class="text-gray">${result.error}</p></div>`;
+        return;
+      }
+      
+      const users = result.users || [];
+      
+      if (!users.length) {
+        list.innerHTML = `<div class="empty"><p>No subscribers yet</p></div>`;
+        return;
+      }
+      
+      list.innerHTML = '';
+      users.forEach(user => {
+        const div = document.createElement('div');
+        div.className = 'tile tile-centered my-1';
+        const phone = user.phone || user.email || 'Unknown';
+        const isCreator = phone === confirmedPhone;
+        
+        div.innerHTML = `
+          <div class="tile-content">
+            <div class="tile-title">${phone} ${isCreator ? '<span class="label label-primary ml-2">You</span>' : ''}</div>
+            ${user.online ? '<span class="status-dot online"></span> Online' : '<span class="status-dot offline"></span> Offline'}
+          </div>
+          <div class="tile-action">
+            <button class="btn btn-sm btn-error" onclick="removeSubscriber('${shortId}', '${phone}')"><i class="icon icon-cross"></i></button>
+          </div>`;
+        list.appendChild(div);
+      });
+    }
+    
+    async function addSubscriber() {
+      const phone = document.getElementById('add-subscriber-phone').value.trim();
+      if (!phone) {
+        showToast('Phone number is required', 'error');
+        return;
+      }
+      
+      devlog(`addSubscriber: adding ${phone} to ${currentChannelShortId}`);
+      
+      const result = await safeInvoke('channels:subscribe', {
+        shortId: currentChannelShortId,
+        phone: phone
+      });
+      
+      devlog(`addSubscriber: result: ${JSON.stringify(result)}`);
+      
+      if (result.ok) {
+        document.getElementById('add-subscriber-phone').value = '';
+        showToast('Subscriber added!');
+        await fetchChannelSubscribers(currentChannelShortId);
+      } else {
+        showToast(`Error: ${result.error || 'Failed to add subscriber'}`, 'error');
+      }
+    }
+    
+    async function removeSubscriber(shortId, phone) {
+      if (!confirm(`Remove ${phone} from this channel?`)) return;
+      
+      devlog(`removeSubscriber: removing ${phone} from ${shortId}`);
+      
+      const result = await safeInvoke('channels:unsubscribe', {
+        shortId: shortId,
+        phone: phone
+      });
+      
+      devlog(`removeSubscriber: result: ${JSON.stringify(result)}`);
+      
+      if (result.ok) {
+        showToast('Subscriber removed');
+        await fetchChannelSubscribers(shortId);
+      } else {
+        showToast(`Error: ${result.error || 'Failed to remove subscriber'}`, 'error');
+      }
+    }
+    
+    function copyChannelId() {
+      const id = document.getElementById('channel-details-id').value;
+      navigator.clipboard.writeText(id).then(
+        () => showToast('Channel ID copied!'),
+        () => showToast('Failed to copy', 'error')
+      );
+    }
+    
     async function fetchChannels() {
       devlog('fetchChannels: fetching channels...');
       const result = await safeInvoke('channels:list');
@@ -254,13 +395,14 @@
       channels.forEach(ch => {
         const div = document.createElement('div');
         div.className = 'tile my-2';
+        div.style.cursor = 'pointer';
         div.innerHTML = `
-          <div class="tile-content">
+          <div class="tile-content" onclick="showChannelDetails('${ch.short_id}', '${ch.name.replace(/'/g, "\\'")}')">
             <p class="tile-title h6">${ch.name}</p>
             <p class="tile-subtitle text-gray">${ch.description || `ID: ${ch.short_id}`}</p>
           </div>
           <div class="tile-action">
-            <button class="btn btn-sm" onclick="navigator.clipboard.writeText('${ch.short_id}'); showToast('Copied ID!')"><i class="icon icon-copy"></i> Copy ID</button>
+            <button class="btn btn-sm" onclick="event.stopPropagation(); navigator.clipboard.writeText('${ch.short_id}'); showToast('Copied ID!')"><i class="icon icon-copy"></i> Copy ID</button>
           </div>`;
         list.appendChild(div);
       });
@@ -276,11 +418,12 @@
       devlog(`createChannel: creating channel: ${name}`);
 
       // FIX: use camelCase keys expected by main
+      // Include creator phone to auto-subscribe creator
       const result = await safeInvoke('channels:create', {
         name,
         description,
         allowPublic: allow_public,
-        creatorPhone: confirmedPhone
+        creatorPhone: confirmedPhone  // This ensures creator is added as subscriber
       });
 
       devlog(`createChannel: channels:create result: ${JSON.stringify(result)}`);
