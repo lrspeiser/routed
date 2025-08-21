@@ -2,14 +2,14 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 const ALLOW_INVOKE = new Set([
   'verify:start','verify:check','auth:logout',
-  'channels:list','channels:create',
+  'channels:list','channels:create','channels:users','channels:subscribe','channels:unsubscribe',
   'public:channels:join','public:channels:list','public:channels:leave',
   'debug:log',
   'subscriptions:list', 'subscriptions:add', 'subscriptions:remove', 'resolve-channel', 
   'admin:sockets', 'app:show', 'app:quit', 'app:version', 'app:logs:read', 
   'app:logs:path', 'app:logs:poke', 'app:openExternal', 'dev:get', 'dev:provision', 
   'dev:setBaseUrl', 'dev:getBaseUrl', 'admin:channels:list', 'admin:channels:create', 
-  'channels:unsubscribe', 'users:channels:list', 'admin:channels:users', 'admin:users:ensure', 
+  'users:channels:list', 'admin:channels:users', 'admin:users:ensure', 
   'dev:sendMessage', 'dev:setApiKey', 'dev:channels:subscribe', 'auth:completeSms', 
   'auth:logout', 'auth:logoutAll', 'dev:reset', 'verify:start', 'verify:check', 'devtools:toggle'
 ]);
