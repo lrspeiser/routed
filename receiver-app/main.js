@@ -1804,6 +1804,58 @@ ipcMain.handle('dev:channels:subscribe', async (_evt, { shortId, phone }) => {
   }
 });
 
+// Send message to channel subscribers
+ipcMain.handle('channels:send', async (_evt, { shortId, title, body }) => {
+  try {
+    const dev = loadDev();
+    if (!dev || !dev.apiKey) throw new Error('Developer key not set');
+    if (!shortId) throw new Error('missing_short_id');
+    if (!body) throw new Error('missing_message_body');
+    
+    // First get channel details to find the topic
+    const channelUrl = new URL('/v1/channels/list', baseUrl()).toString();
+    const channelRes = await fetchWithApiKeyRetry(channelUrl, { cache: 'no-store' }, dev);
+    const channelData = await channelRes.json();
+    const channels = channelData.channels || [];
+    const channel = channels.find(ch => ch.short_id === shortId);
+    
+    if (!channel) throw new Error('Channel not found');
+    
+    const topic = channel.topic || 'runs.finished';
+    
+    writeLog(`channels:send req → short_id=${shortId} topic=${topic} title=${title}`);
+    
+    // Send message to the topic
+    const msgUrl = new URL('/v1/messages', baseUrl()).toString();
+    const res = await fetchWithApiKeyRetry(msgUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        topic: topic,
+        title: title || 'Channel Message',
+        body: body,
+        payload: { channelId: shortId }
+      }),
+      cache: 'no-store',
+    }, dev);
+    
+    const txt = await res.text().catch(() => '');
+    let j = null; 
+    try { j = JSON.parse(txt); } catch {}
+    
+    if (!res.ok) {
+      writeLog(`channels:send http_error status=${res.status} body=${txt.slice(0,400)}`);
+      throw new Error((j && j.error) ? j.error : `status ${res.status}`);
+    }
+    
+    writeLog(`channels:send → ok deliveries=${j && j.deliveries ? j.deliveries : 'unknown'}`);
+    return { ok: true, ...(j || {}) };
+  } catch (e) {
+    writeLog(`channels:send error: ${String(e)}`);
+    return { ok: false, error: String(e) };
+  }
+});
+
 // Auth IPC handlers
 /**
  * IMPORTANT: SMS auth completion handler must be resilient to route shape differences across deployments.

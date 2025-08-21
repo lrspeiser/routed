@@ -13,10 +13,10 @@
     .btn .icon { vertical-align: middle; }
     #app-container { display: flex; height: 100vh; }
     #tabs-container { width: 150px; background-color: #f8f9fa; padding-top: 20px; }
-    #content-container { flex-grow: 1; padding: 20px; overflow-y: auto; }
+    #content-container { flex-grow: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; align-items: flex-start; }
     .tab-item { cursor: pointer; padding: 10px; border-bottom: 1px solid #eee; }
     .tab-item .icon { margin-right: 10px; }
-    .tab-content { display: none; }
+    .tab-content { display: none; width: 100%; }
     .tab-content.active { display: block; }
     #phone-login-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 1000; }
     #phone-login-dialog { background: white; padding: 40px; border-radius: 8px; width: 400px; }
@@ -149,6 +149,13 @@
           <div class="input-group">
             <input class="form-input" type="tel" id="add-subscriber-phone" placeholder="Phone number">
             <button class="btn btn-primary input-group-btn" onclick="addSubscriber()">Add</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Send Message to All Subscribers</label>
+          <div class="input-group">
+            <input class="form-input" type="text" id="send-message-text" placeholder="Enter message to send">
+            <button class="btn btn-success input-group-btn" onclick="sendChannelMessage()"><i class="icon icon-message"></i> Send</button>
           </div>
         </div>
       </div>
@@ -359,6 +366,33 @@
         await fetchChannelSubscribers(shortId);
       } else {
         showToast(`Error: ${result.error || 'Failed to remove subscriber'}`, 'error');
+      }
+    }
+    
+    async function sendChannelMessage() {
+      const message = document.getElementById('send-message-text').value.trim();
+      if (!message) {
+        showToast('Message is required', 'error');
+        return;
+      }
+      
+      const channelName = document.getElementById('channel-details-title').textContent;
+      
+      devlog(`sendChannelMessage: sending message to channel ${currentChannelShortId}`);
+      
+      const result = await safeInvoke('channels:send', {
+        shortId: currentChannelShortId,
+        title: `Message from ${channelName}`,
+        body: message
+      });
+      
+      devlog(`sendChannelMessage: result: ${JSON.stringify(result)}`);
+      
+      if (result.ok) {
+        document.getElementById('send-message-text').value = '';
+        showToast('Message sent to all subscribers!');
+      } else {
+        showToast(`Error: ${result.error || 'Failed to send message'}`, 'error');
       }
     }
     
