@@ -111,12 +111,18 @@ fastify.post('/v1/channels/create', async (req, reply) => {
         const pub = await authPublisher(client, apiKey);
         if (!pub) throw new Error('unauthorized');
 
-        const tr = await client.query(
-          `insert into topics (tenant_id, name) values ($1,$2)
-           on conflict (tenant_id, name) do update set name=excluded.name
-           returning id`,
+        // First try to find existing topic
+        let tr = await client.query(
+          `select id from topics where tenant_id=$1 and name=$2`,
           [pub.tenant_id, topicName]
         );
+        if (tr.rows.length === 0) {
+          // Create new topic
+          tr = await client.query(
+            `insert into topics (tenant_id, name) values ($1,$2) returning id`,
+            [pub.tenant_id, topicName]
+          );
+        }
         const topicId = tr.rows[0].id;
         let sid = (short_id as string) || makeShortId();
         let chName = name;
@@ -139,22 +145,34 @@ fastify.post('/v1/channels/create', async (req, reply) => {
 
         if (creator_phone) {
           let userId: string | null = null;
-          let ur;
-          // Use column-based ON CONFLICT instead of constraint name
-          ur = await client.query(
-            `insert into users (tenant_id, phone) values ($1,$2)
-             on conflict (tenant_id, phone) do update set phone=excluded.phone
-             returning id`,
+          // First try to find existing user
+          const existingUser = await client.query(
+            `select id from users where tenant_id=$1 and phone=$2`,
             [pub.tenant_id, String(creator_phone).trim()]
           );
-          userId = ur.rows[0]?.id ?? null;
-          if (userId) {
-            const sr = await client.query(
-              `insert into subscriptions (tenant_id, user_id, topic_id) values ($1,$2,$3)
-               on conflict (user_id, topic_id) do nothing
-               returning user_id`,
-              [pub.tenant_id, userId, topicId]
+          if (existingUser.rows.length > 0) {
+            userId = existingUser.rows[0].id;
+          } else {
+            // Create new user
+            const newUser = await client.query(
+              `insert into users (tenant_id, phone) values ($1,$2) returning id`,
+              [pub.tenant_id, String(creator_phone).trim()]
             );
+            userId = newUser.rows[0]?.id ?? null;
+          }
+          if (userId) {
+            // Check if subscription exists
+            const existingSub = await client.query(
+              `select 1 from subscriptions where user_id=$1 and topic_id=$2`,
+              [userId, topicId]
+            );
+            let sr = { rowCount: 0 };
+            if (existingSub.rows.length === 0) {
+              sr = await client.query(
+                `insert into subscriptions (tenant_id, user_id, topic_id) values ($1,$2,$3) returning user_id`,
+                [pub.tenant_id, userId, topicId]
+              );
+            }
             if ((sr.rowCount ?? 0) > 0) {
               try { await pushToSockets(userId, { type: 'notification', title: 'Routed', body: `You have been subscribed to: ${chName}` }); } catch {}
             }
