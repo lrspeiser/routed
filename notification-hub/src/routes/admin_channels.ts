@@ -111,13 +111,15 @@ fastify.post('/v1/channels/create', async (req, reply) => {
         const pub = await authPublisher(client, apiKey);
         if (!pub) throw new Error('unauthorized');
 
-        // First try to find existing topic
+        // WORKAROUND: SELECT-then-INSERT pattern instead of ON CONFLICT
+        // See docs/ON_CONFLICT_WORKAROUND.md for why we can't use ON CONFLICT
+        // Render's PostgreSQL doesn't have the required unique constraints
         let tr = await client.query(
           `select id from topics where tenant_id=$1 and name=$2`,
           [pub.tenant_id, topicName]
         );
         if (tr.rows.length === 0) {
-          // Create new topic
+          // Create new topic only if it doesn't exist
           tr = await client.query(
             `insert into topics (tenant_id, name) values ($1,$2) returning id`,
             [pub.tenant_id, topicName]
@@ -145,7 +147,9 @@ fastify.post('/v1/channels/create', async (req, reply) => {
 
         if (creator_phone) {
           let userId: string | null = null;
-          // First try to find existing user
+          // WORKAROUND: SELECT-then-INSERT pattern instead of ON CONFLICT
+          // See docs/ON_CONFLICT_WORKAROUND.md for full explanation
+          // Required because Render's DB lacks unique constraint on (tenant_id, phone)
           const existingUser = await client.query(
             `select id from users where tenant_id=$1 and phone=$2`,
             [pub.tenant_id, String(creator_phone).trim()]
@@ -153,7 +157,7 @@ fastify.post('/v1/channels/create', async (req, reply) => {
           if (existingUser.rows.length > 0) {
             userId = existingUser.rows[0].id;
           } else {
-            // Create new user
+            // Create new user only if doesn't exist
             const newUser = await client.query(
               `insert into users (tenant_id, phone) values ($1,$2) returning id`,
               [pub.tenant_id, String(creator_phone).trim()]
@@ -161,7 +165,9 @@ fastify.post('/v1/channels/create', async (req, reply) => {
             userId = newUser.rows[0]?.id ?? null;
           }
           if (userId) {
-            // Check if subscription exists
+            // WORKAROUND: SELECT-then-INSERT for subscriptions too
+            // See docs/ON_CONFLICT_WORKAROUND.md
+            // ON CONFLICT (user_id, topic_id) fails on Render
             const existingSub = await client.query(
               `select 1 from subscriptions where user_id=$1 and topic_id=$2`,
               [userId, topicId]
