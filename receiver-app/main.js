@@ -447,6 +447,22 @@ async function runSelfDiagnostics() {
       if (process.env.OPENAI_BASE_URL) writeLog(`diag: openai_base_url=${process.env.OPENAI_BASE_URL}`);
     } catch {}
 
+    // Version compatibility check
+    try {
+      const appVer = app.getVersion ? app.getVersion() : 'unknown';
+      writeLog(`diag: app_version=${appVer}`);
+      const url = new URL('/v1/version', b).toString();
+      const { signal, cancel } = withTimeoutSignal(5000);
+      const res = await fetch(url, { cache: 'no-store', signal });
+      const ver = await res.json().catch(() => ({}));
+      cancel();
+      if (res.ok && ver) {
+        writeLog(`diag: server_version=${ver.backend_version || 'unknown'} build_date=${ver.build_date || 'unknown'} features=${JSON.stringify(ver.features || {})}`);
+      } else {
+        writeLog(`diag: server_version_check failed status=${res.status}`);
+      }
+    } catch (e) { writeLog('diag: version_check error ' + String(e)); }
+
     writeLog('diag: done');
   } catch (e) {
     writeLog('diag: fatal error ' + String(e));
@@ -566,6 +582,34 @@ if (!process.env.TEST_MODE && !process.env.VITEST) app.whenReady().then(async ()
       cancel();
       writeLog(`preflight: health_deep status=${res.status} body=${txt.slice(0,120)}`);
     } catch (e) { writeLog('preflight: health error ' + String(e)); }
+
+    // Version check on startup
+    try {
+      const appVersion = app.getVersion ? app.getVersion() : 'unknown';
+      writeLog(`========================================`);
+      writeLog(`Routed App Starting`);
+      writeLog(`App Version: ${appVersion}`);
+      writeLog(`Base URL: ${b}`);
+      
+      const versionUrl = new URL('/v1/version', b).toString();
+      const { signal: vSig, cancel: vCancel } = withTimeoutSignal(3000);
+      const vRes = await fetch(versionUrl, { cache: 'no-store', signal: vSig });
+      const vData = await vRes.json().catch(() => ({}));
+      vCancel();
+      
+      if (vRes.ok && vData) {
+        writeLog(`Server Version: ${vData.backend_version || 'unknown'}`);
+        writeLog(`Server Build Date: ${vData.build_date || 'unknown'}`);
+        writeLog(`Server Features: ${JSON.stringify(vData.features || {})}`);
+        writeLog(`Server Environment: ${vData.environment || 'unknown'}`);
+        
+        // Store server version for later access
+        global._serverVersion = vData;
+      } else {
+        writeLog(`Server version check failed: status=${vRes.status}`);
+      }
+      writeLog(`========================================`);
+    } catch (e) { writeLog('preflight: version check error ' + String(e)); }
 
     // Schema check to proactively surface DB mismatches
     try {
@@ -709,6 +753,22 @@ ipcMain.handle('app:logs:read', async (_evt, opts) => {
 ipcMain.on('app:quit', () => { isQuitting = true; try { app.quit(); } catch {} });
 ipcMain.handle('app:version', async () => {
   try { return app.getVersion ? app.getVersion() : '0.0.0'; } catch { return '0.0.0'; }
+});
+
+// Server version check
+ipcMain.handle('server:version', async () => {
+  try {
+    const url = new URL('/v1/version', baseUrl()).toString();
+    const { signal, cancel } = withTimeoutSignal(5000);
+    const res = await fetch(url, { cache: 'no-store', signal });
+    const data = await res.json().catch(() => ({}));
+    cancel();
+    if (!res.ok) throw new Error(`version check failed ${res.status}`);
+    return data;
+  } catch (e) {
+    writeLog('server:version error: ' + String(e));
+    return { ok: false, error: String(e) };
+  }
 });
 
 // DevTools toggle

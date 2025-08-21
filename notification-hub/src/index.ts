@@ -132,6 +132,8 @@ async function main() {
   await app.register(devPublic);
   const verifyRoutes = (await import('./routes/verify')).default;
   await app.register(verifyRoutes);
+  const versionRoutes = (await import('./routes/version')).default;
+  await app.register(versionRoutes);
 
   // Log all registered routes to aid debugging deployments
   try {
