@@ -1336,6 +1336,13 @@ ipcMain.handle('verify:check', async (_evt, { phone, code }) => {
     d.verifiedPhone = j.phone;
     d.verifiedUserId = j.userId;
     d.verifiedTenantId = j.tenantId;
+    // CRITICAL: Save devId from server response
+    if (j.devId) {
+      d.devId = j.devId;
+      writeLog(`verify:check → received devId: ${j.devId}`);
+    } else {
+      writeLog(`verify:check → WARNING: no devId in response`);
+    }
     d.hubUrl = d.hubUrl || baseUrl();
     // Ensure developer identity + API key in cloud immediately after verify (with retry + detailed logs)
     try {
@@ -1375,14 +1382,14 @@ ipcMain.handle('verify:check', async (_evt, { phone, code }) => {
     d = loadDev();
     // Validate or (re)provision developer key now that verification succeeded
     try { const ensured = await ensureValidDeveloper(); if (ensured && ensured.apiKey) notifyDevUpdated(ensured); } catch (e) { writeLog('verify:check → ensure dev failed ' + String(e)); }
-    writeLog(`verify:check → ok user=${j.userId}`);
+    writeLog(`verify:check → ok user=${j.userId} devId=${d.devId || 'none'}`);
     try { await postInitIfNeeded(); } catch {}
     try {
       if (!mainWindow) { await createWindow(); }
       if (verifyWindow) { try { verifyWindow.close(); } catch {} verifyWindow = null; }
       try { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } } catch {}
     } catch (e) { writeLog('verify:check post-init window error: ' + String(e)); }
-    return { ok: true, userId: j.userId, tenantId: d.verifiedTenantId, apiKey: d.apiKey || null };
+    return { ok: true, userId: j.userId, tenantId: d.verifiedTenantId, apiKey: d.apiKey || null, devId: d.devId || null };
   } catch (e) {
     writeLog('verify:check caught exception: ' + String(e));
     // Check if it's already a formatted error object
