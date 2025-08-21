@@ -90,15 +90,13 @@ export default async function routes(fastify: FastifyInstance) {
         // Use the same fixed tenant as auth_complete_sms: 'system'
         let t = await c.query(`select id from tenants where name=$1 limit 1`, ['system']);
         if (t.rows.length === 0) {
-          const newTenant = await c.query(`insert into tenants (name, plan) values ($1,'free') returning id`, ['system']);
-          t = newTenant;
+          t = await c.query(`insert into tenants (name, plan) values ($1,'free') returning id`, ['system']);
         }
         const tenantId = t.rows[0].id as string;
         // Upsert user and set verified timestamp
         let u = await c.query(`select id, phone_verified_at from users where tenant_id=$1 and phone=$2 limit 1`, [tenantId, phone]);
         if (u.rows.length === 0) {
-          const newUser = await c.query(`insert into users (tenant_id, phone, phone_verified_at) values ($1,$2, now()) returning id, phone_verified_at`, [tenantId, phone]);
-          u = newUser;
+          u = await c.query(`insert into users (tenant_id, phone, phone_verified_at) values ($1,$2, now()) returning id, phone_verified_at`, [tenantId, phone]);
         } else if (!u.rows[0].phone_verified_at) {
           await c.query(`update users set phone_verified_at=now() where tenant_id=$1 and phone=$2`, [tenantId, phone]);
         }
