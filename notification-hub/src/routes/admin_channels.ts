@@ -60,28 +60,18 @@ fastify.post('/v1/admin/channels/create', async (req, reply) => {
         if (creator_phone) {
           let userId: string | null = null;
           let ur;
-          try {
-            ur = await client.query(
-              `insert into users (tenant_id, phone) values ($1,$2)
-               on conflict on constraint users_tenant_phone_unique do update set phone=excluded.phone
-               returning id`,
-              [tenant_id, String(creator_phone).trim()]
-            );
-          } catch (e: any) {
-            if (String(e?.code) === '42704' || String(e?.message||'').includes('does not exist')) {
-              ur = await client.query(
-                `insert into users (tenant_id, phone) values ($1,$2)
-                 on conflict (tenant_id, phone) do update set phone=excluded.phone
-                 returning id`,
-                [tenant_id, String(creator_phone).trim()]
-              );
-            } else { throw e; }
-          }
+          // Use column-based ON CONFLICT instead of constraint name
+          ur = await client.query(
+            `insert into users (tenant_id, phone) values ($1,$2)
+             on conflict (tenant_id, phone) do update set phone=excluded.phone
+             returning id`,
+            [tenant_id, String(creator_phone).trim()]
+          );
           userId = ur.rows[0]?.id ?? null;
           if (userId) {
             const sr = await client.query(
               `insert into subscriptions (tenant_id, user_id, topic_id) values ($1,$2,$3)
-               on conflict on constraint subscriptions_user_id_topic_id_key do nothing
+               on conflict (user_id, topic_id) do nothing
                returning user_id`,
               [tenant_id, userId, topicId]
             );
@@ -317,23 +307,13 @@ fastify.post('/v1/public/channels/:short_id/join', async (req, reply) => {
         
         let userId: string | null = null;
         let u;
-        try {
-          u = await client.query(
-            `insert into users (tenant_id, phone) values ($1,$2)
-             on conflict on constraint users_tenant_phone_unique do update set phone=excluded.phone
-             returning id`,
-            [tenant_id, phone]
-          );
-        } catch (e: any) {
-          if (String(e?.code) === '42704' || String(e?.message||'').includes('does not exist')) {
-            u = await client.query(
-              `insert into users (tenant_id, phone) values ($1,$2)
-               on conflict (tenant_id, phone) do update set phone=excluded.phone
-               returning id`,
-              [tenant_id, phone]
-            );
-          } else { throw e; }
-        }
+        // Use column-based ON CONFLICT
+        u = await client.query(
+          `insert into users (tenant_id, phone) values ($1,$2)
+           on conflict (tenant_id, phone) do update set phone=excluded.phone
+           returning id`,
+          [tenant_id, phone]
+        );
         userId = u.rows[0]?.id || null;
         if (!userId) throw new Error('user_ensure_failed');
         
@@ -410,23 +390,13 @@ fastify.post('/v1/channels/:short_id/subscribe', async (req, reply) => {
         let userId: string | null = null;
         try {
           let r;
-          try {
-            r = await client.query(
-              `insert into users (tenant_id, phone) values ($1,$2)
-               on conflict on constraint users_tenant_phone_unique do update set phone=excluded.phone
-               returning id`,
-              [tenant_id, phone]
-            );
-          } catch (e: any) {
-            if (String(e?.code) === '42704' || String(e?.message||'').includes('does not exist')) {
-              r = await client.query(
-                `insert into users (tenant_id, phone) values ($1,$2)
-                 on conflict (tenant_id, phone) do update set phone=excluded.phone
-                 returning id`,
-                [tenant_id, phone]
-              );
-            } else { throw e; }
-          }
+          // Use column-based ON CONFLICT
+          r = await client.query(
+            `insert into users (tenant_id, phone) values ($1,$2)
+             on conflict (tenant_id, phone) do update set phone=excluded.phone
+             returning id`,
+            [tenant_id, phone]
+          );
           userId = r.rows[0]?.id ?? null;
         } catch (e) {
           const r2 = await client.query(`select id from users where tenant_id=$1 and phone=$2`, [tenant_id, phone]);

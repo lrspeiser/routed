@@ -12,10 +12,10 @@ export default async function routes(fastify: FastifyInstance) {
         const p = await client.query(`insert into publishers (tenant_id, name, api_key) values ($1,$2,$3) returning id`, [tenantId, 'Dev Publisher', apiKey]);
         const publisherId = p.rows[0].id as string;
         
-        // Use ON CONFLICT to handle existing topics
+        // Use column-based ON CONFLICT to handle existing topics
         const top = await client.query(
           `insert into topics (tenant_id, name) values ($1,$2) 
-           on conflict on constraint topics_tenant_id_name_key do update set name=excluded.name
+           on conflict (tenant_id, name) do update set name=excluded.name
            returning id`, 
           [tenantId, 'runs.finished']
         );
@@ -24,10 +24,10 @@ export default async function routes(fastify: FastifyInstance) {
         const u = await client.query(`insert into users (tenant_id) values ($1) returning id`, [tenantId]);
         const userId = u.rows[0].id as string;
         
-        // Use ON CONFLICT for subscriptions too
+        // Use column-based ON CONFLICT for subscriptions too
         await client.query(
           `insert into subscriptions (tenant_id, user_id, topic_id) values ($1,$2,$3)
-           on conflict on constraint subscriptions_user_id_topic_id_key do nothing`, 
+           on conflict (user_id, topic_id) do nothing`, 
           [tenantId, userId, topicId]
         );
         
@@ -84,9 +84,10 @@ export default async function routes(fastify: FastifyInstance) {
     if (!tenantId || !name) return reply.status(400).send({ error: 'missing tenantId/name' });
     try {
       const out = await withTxn(async (c) => {
+        // Use column-based ON CONFLICT
         const tr = await c.query(
           `insert into topics (tenant_id, name) values ($1,$2)
-           on conflict on constraint topics_tenant_id_name_key do update set name=excluded.name
+           on conflict (tenant_id, name) do update set name=excluded.name
            returning id`,
           [tenantId, topic]
         );

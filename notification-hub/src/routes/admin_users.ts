@@ -36,29 +36,19 @@ export default async function routes(fastify: FastifyInstance) {
       await client.query('SAVEPOINT ensure_user');
       try {
         if (phone) {
-          let r;
-          try {
-            r = await client.query(
-              `insert into users (tenant_id, phone) values ($1,$2)
-               on conflict on constraint users_tenant_phone_unique do update set phone=excluded.phone
-               returning id`,
-              [tenant_id, phone]
-            );
-          } catch (e: any) {
-            if (String(e?.code) === '42704' || String(e?.message||'').includes('does not exist')) {
-              r = await client.query(
-                `insert into users (tenant_id, phone) values ($1,$2)
-                 on conflict (tenant_id, phone) do update set phone=excluded.phone
-                 returning id`,
-                [tenant_id, phone]
-              );
-            } else { throw e; }
-          }
+          // Use column-based ON CONFLICT
+          const r = await client.query(
+            `insert into users (tenant_id, phone) values ($1,$2)
+             on conflict (tenant_id, phone) do update set phone=excluded.phone
+             returning id`,
+            [tenant_id, phone]
+          );
           userId = r.rows[0]?.id ?? null;
         } else if (email) {
+          // Use column-based ON CONFLICT
           const r = await client.query(
             `insert into users (tenant_id, email) values ($1,$2)
-             on conflict on constraint users_tenant_email_unique do update set email=excluded.email
+             on conflict (tenant_id, email) do update set email=excluded.email
              returning id`,
             [tenant_id, email]
           );
@@ -97,9 +87,10 @@ export default async function routes(fastify: FastifyInstance) {
       await client.query('SAVEPOINT ensure_topic');
       let topicId: string;
       try {
+        // Use column-based ON CONFLICT
         const tr = await client.query(
           `insert into topics (tenant_id, name) values ($1,$2)
-           on conflict on constraint topics_tenant_id_name_key do update set name=excluded.name
+           on conflict (tenant_id, name) do update set name=excluded.name
            returning id`,
           [tenant_id, topicName]
         );
