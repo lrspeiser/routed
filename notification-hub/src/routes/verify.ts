@@ -34,6 +34,7 @@ export default async function routes(fastify: FastifyInstance) {
       const country = (body.country || 'US').toUpperCase();
       if (!phone) return reply.status(400).send({ error: 'missing_phone' });
 
+      console.log(`[VERIFY START] Sending phone to Twilio: ${phone}`);
       const serviceSid = requireEnv('TWILIO_VERIFY_SERVICE_SID');
 
       const url = `https://verify.twilio.com/v2/Services/${encodeURIComponent(serviceSid)}/Verifications`;
@@ -50,7 +51,11 @@ export default async function routes(fastify: FastifyInstance) {
         body: params.toString(),
       });
       const j: any = await res.json().catch(() => ({} as any));
-      if (!res.ok) return reply.status(res.status).send({ error: 'twilio_error', details: j });
+      if (!res.ok) {
+        console.log(`[VERIFY START] Twilio error: ${JSON.stringify(j)}`);
+        return reply.status(res.status).send({ error: 'twilio_error', details: j });
+      }
+      console.log(`[VERIFY START] Twilio confirmed sent to ${phone}`);
       return reply.send({ ok: true });
     } catch (e: any) {
       return reply.status(500).send({ error: 'internal_error', message: String(e?.message || e) });
@@ -64,6 +69,7 @@ export default async function routes(fastify: FastifyInstance) {
       const code = String(body.code || '').trim();
       if (!phone || !code) return reply.status(400).send({ error: 'missing_phone_or_code' });
 
+      console.log(`[VERIFY CHECK] Sending code to Twilio - phone: ${phone}, code: ${code}`);
       const serviceSid = requireEnv('TWILIO_VERIFY_SERVICE_SID');
 
       const url = `https://verify.twilio.com/v2/Services/${encodeURIComponent(serviceSid)}/VerificationCheck`;
@@ -80,10 +86,15 @@ export default async function routes(fastify: FastifyInstance) {
         body: params.toString(),
       });
       const j: any = await res.json().catch(() => ({} as any));
-      if (!res.ok) return reply.status(res.status).send({ error: 'twilio_error', details: j });
-      if ((String(j.status || '')).toLowerCase() !== 'approved') {
-        return reply.status(400).send({ error: 'invalid_code' });
+      if (!res.ok) {
+        console.log(`[VERIFY CHECK] Twilio error: ${JSON.stringify(j)}`);
+        return reply.status(res.status).send({ error: 'twilio_error', details: j });
       }
+      if ((String(j.status || '')).toLowerCase() !== 'approved') {
+        console.log(`[VERIFY CHECK] Twilio could not match code - status: ${j.status}, message: ${j.message || 'No message'}`);
+        return reply.status(400).send({ error: 'invalid_code', status: j.status, message: j.message });
+      }
+      console.log(`[VERIFY CHECK] Twilio confirmed code OK for ${phone}`);
 
       // Create or ensure user record in the same tenant used by auth_complete_sms and mark as verified
       const out = await withTxn(async (c) => {
@@ -106,6 +117,7 @@ export default async function routes(fastify: FastifyInstance) {
 
       return reply.send({ ok: true, ...out, phone });
     } catch (e: any) {
+      console.error(`[VERIFY CHECK] Internal error: ${e?.message || e}`);
       return reply.status(500).send({ error: 'internal_error', message: String(e?.message || e) });
     }
   });
