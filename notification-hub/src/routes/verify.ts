@@ -1,6 +1,22 @@
 import { FastifyInstance } from 'fastify';
 import fetch from 'node-fetch';
 import { withTxn, pool } from '../db';
+import { v4 as uuidv4 } from 'uuid';
+
+/**
+ * IMPORTANT: Twilio Verify Integration
+ * See /TWILIO_INTEGRATION_FIXES.md for troubleshooting and fix history
+ * 
+ * Critical fixes applied:
+ * - Changed const to let for reassignable variables (fixed TypeError)
+ * - Added comprehensive logging for debugging
+ * - Proper error handling for Twilio responses
+ * 
+ * Required ENV vars:
+ * - TWILIO_ACCOUNT_SID
+ * - TWILIO_AUTH_TOKEN (or TWILIO_API_KEY_SID + TWILIO_API_KEY_SECRET)
+ * - TWILIO_VERIFY_SERVICE_SID
+ */
 
 function requireEnv(name: string): string {
   const v = process.env[name];
@@ -28,6 +44,15 @@ function twilioAuthHeader(): string {
 
 export default async function routes(fastify: FastifyInstance) {
   fastify.post('/v1/verify/start', async (req, reply) => {
+    /**
+     * Start phone verification via Twilio Verify
+     * See /TWILIO_INTEGRATION_FIXES.md for troubleshooting
+     * 
+     * Flow:
+     * 1. Accept phone number in E.164 format (+1XXXXXXXXXX)
+     * 2. Send verification code via Twilio Verify API
+     * 3. Return success/failure to client
+     */
     try {
       const body = (req.body ?? {}) as any;
       const phone = String(body.phone || '').trim();
@@ -37,6 +62,7 @@ export default async function routes(fastify: FastifyInstance) {
       console.log(`[VERIFY START] Sending phone to Twilio: ${phone}`);
       const serviceSid = requireEnv('TWILIO_VERIFY_SERVICE_SID');
 
+      // Twilio Verify API endpoint for starting verification
       const url = `https://verify.twilio.com/v2/Services/${encodeURIComponent(serviceSid)}/Verifications`;
       const params = new URLSearchParams();
       params.set('To', phone);
@@ -63,6 +89,20 @@ export default async function routes(fastify: FastifyInstance) {
   });
 
   fastify.post('/v1/verify/check', async (req, reply) => {
+    /**
+     * Check verification code via Twilio Verify
+     * See /TWILIO_INTEGRATION_FIXES.md for troubleshooting
+     * 
+     * Flow:
+     * 1. Accept phone + verification code
+     * 2. Verify with Twilio API
+     * 3. Create/update user in database if successful
+     * 4. Return user info or error
+     * 
+     * Common errors:
+     * - invalid_code: Wrong or expired code (10 min TTL)
+     * - twilio_error: Service error (check details)
+     */
     try {
       const body = (req.body ?? {}) as any;
       const phone = String(body.phone || '').trim();
@@ -72,6 +112,7 @@ export default async function routes(fastify: FastifyInstance) {
       console.log(`[VERIFY CHECK] Sending code to Twilio - phone: ${phone}, code: ${code}`);
       const serviceSid = requireEnv('TWILIO_VERIFY_SERVICE_SID');
 
+      // Twilio Verify API endpoint for checking verification code
       const url = `https://verify.twilio.com/v2/Services/${encodeURIComponent(serviceSid)}/VerificationCheck`;
       const params = new URLSearchParams();
       params.set('To', phone);
@@ -98,23 +139,69 @@ export default async function routes(fastify: FastifyInstance) {
 
       // Create or ensure user record in the same tenant used by auth_complete_sms and mark as verified
       const out = await withTxn(async (c) => {
+        /**
+         * CRITICAL FIX: Use 'let' instead of 'const' for reassignable variables
+         * See /TWILIO_INTEGRATION_FIXES.md for details
+         * 
+         * Bug: Using const caused "TypeError: Assignment to constant variable"
+         * Fix: Changed to let for t and u variables that get reassigned
+         */
+        
         // Use the same fixed tenant as auth_complete_sms: 'system'
         let t = await c.query(`select id from tenants where name=$1 limit 1`, ['system']);
         if (t.rows.length === 0) {
           t = await c.query(`insert into tenants (name, plan) values ($1,'free') returning id`, ['system']);
         }
         const tenantId = t.rows[0].id as string;
-        // Upsert user and set verified timestamp
-        let u = await c.query(`select id, phone_verified_at from users where tenant_id=$1 and phone=$2 limit 1`, [tenantId, phone]);
+        
+        /**
+         * DEV_ID MANAGEMENT: 
+         * - Always ensure user has a dev_id for developer tools integration
+         * - Generate new UUID if missing (for backwards compatibility)
+         * - See /DEV_ID_MANAGEMENT.md for details
+         */
+        
+        // Upsert user and set verified timestamp with dev_id
+        let u = await c.query(`select id, phone_verified_at, dev_id from users where tenant_id=$1 and phone=$2 limit 1`, [tenantId, phone]);
+        let userId: string;
+        let devId: string;
+        
         if (u.rows.length === 0) {
-          u = await c.query(`insert into users (tenant_id, phone, phone_verified_at) values ($1,$2, now()) returning id, phone_verified_at`, [tenantId, phone]);
-        } else if (!u.rows[0].phone_verified_at) {
-          await c.query(`update users set phone_verified_at=now() where tenant_id=$1 and phone=$2`, [tenantId, phone]);
+          // New user - create with dev_id and verified timestamp
+          devId = uuidv4();
+          u = await c.query(
+            `insert into users (tenant_id, phone, phone_verified_at, dev_id) values ($1,$2, now(), $3) returning id, phone_verified_at, dev_id`, 
+            [tenantId, phone, devId]
+          );
+          userId = u.rows[0].id as string;
+          devId = u.rows[0].dev_id as string;
+          console.log(`[VERIFY CHECK] Created new user with dev_id - userId: ${userId}, devId: ${devId}`);
+        } else {
+          // Existing user - update verification and ensure dev_id
+          const user = u.rows[0];
+          userId = user.id as string;
+          devId = user.dev_id;
+          
+          // Generate dev_id if missing (for users created before dev_id was added)
+          if (!devId) {
+            devId = uuidv4();
+            await c.query(`update users set dev_id=$1 where id=$2`, [devId, userId]);
+            console.log(`[VERIFY CHECK] Generated dev_id for existing user - userId: ${userId}, devId: ${devId}`);
+          } else {
+            console.log(`[VERIFY CHECK] Existing user has dev_id - userId: ${userId}, devId: ${devId}`);
+          }
+          
+          // Update verification timestamp if not already verified
+          if (!user.phone_verified_at) {
+            await c.query(`update users set phone_verified_at=now() where tenant_id=$1 and phone=$2`, [tenantId, phone]);
+          }
         }
-        const userId = (u.rows[0].id) as string;
-        return { tenantId, userId };
+        
+        return { tenantId, userId, devId };
       });
 
+      // Include devId in response for client to store/use
+      console.log(`[VERIFY CHECK] Returning response with devId: ${out.devId}`);
       return reply.send({ ok: true, ...out, phone });
     } catch (e: any) {
       console.error(`[VERIFY CHECK] Internal error: ${e?.message || e}`);

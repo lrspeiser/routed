@@ -27,6 +27,11 @@ export default async function routes(fastify: FastifyInstance) {
         base_url: process.env.BASE_URL || 'https://routed.onrender.com',
         timestamp: new Date().toISOString(),
         features: {
+          /**
+           * Feature flags for client compatibility
+           * twilio_verify: Indicates this backend uses Twilio Verify API
+           * See /TWILIO_INTEGRATION_FIXES.md for implementation details
+           */
           twilio_verify: true,
           enhanced_logging: true,
           version_check: true

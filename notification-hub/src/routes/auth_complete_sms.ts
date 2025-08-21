@@ -14,12 +14,29 @@ class PhoneNotVerifiedError extends Error {
 }
 
 export default async function routes(fastify: FastifyInstance) {
+  /**
+   * Complete SMS authentication after phone verification
+   * See /TWILIO_INTEGRATION_FIXES.md for related Twilio verification process
+   * 
+   * This endpoint expects the phone to be already verified via:
+   * - /v1/verify/start and /v1/verify/check (recommended)
+   * - Legacy /v1/auth/start_sms and /v1/auth/complete_sms flow
+   * 
+   * Flow:
+   * 1. Check if phone exists and is verified in database
+   * 2. Create auth device and tokens
+   * 3. Return access/refresh tokens for authenticated session
+   */
   // POST /auth/complete-sms { phone, deviceName, devicePublicJwk?, wantDefaultOpenAIKey? }
   fastify.post('/auth/complete-sms', async (req, reply) => {
     const { phone, deviceName, devicePublicJwk, wantDefaultOpenAIKey } = (req.body ?? {}) as any;
     if (!phone) return reply.status(400).send({ error: 'missing phone' });
 
-    // Resolve (or create) the fixed tenant used for verification flow
+    /**
+     * Resolve (or create) the fixed tenant used for verification flow
+     * NOTE: Uses 'system' tenant - must match the tenant used in /v1/verify/check
+     * See /TWILIO_INTEGRATION_FIXES.md for tenant consistency requirements
+     */
     let tenantId: string;
     {
       const t = await pool.query(`select id from tenants where name=$1`, ['system']);
@@ -36,7 +53,12 @@ export default async function routes(fastify: FastifyInstance) {
 
     try {
       const result = await withTxn(async (client) => {
-        // 1) Load verified user
+        /**
+         * 1) Load verified user
+         * IMPORTANT: User must have phone_verified_at timestamp set
+         * This is set by /v1/verify/check after successful Twilio verification
+         * See /TWILIO_INTEGRATION_FIXES.md for verification flow details
+         */
         const u = await client.query(
           `select * from users where tenant_id=$1 and phone=$2`,
           [tenantId, String(phone)]
@@ -51,10 +73,18 @@ export default async function routes(fastify: FastifyInstance) {
           throw new PhoneNotVerifiedError();
         }
 
-        // 1.5) Ensure dev_id
+        /**
+         * 1.5) Ensure dev_id exists
+         * DEV_ID MANAGEMENT:
+         * - Required for developer tools integration
+         * - Generate new UUID if missing (backwards compatibility)
+         * - Always returned in response for client storage
+         * - See /DEV_ID_MANAGEMENT.md for details
+         */
         if (!user.dev_id) {
           user.dev_id = uuidv4();
           await client.query(`update users set dev_id=$1 where id=$2`, [user.dev_id, user.id]);
+          fastify.log.info(`Generated new dev_id for user ${user.id}: ${user.dev_id}`);
         }
 
         // 2) Ensure user_secrets with default OpenAI key, if requested
