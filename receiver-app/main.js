@@ -4,8 +4,25 @@
 // It is used to receive messages from the Routed Hub.
 
 const { app, BrowserWindow, Notification, dialog, ipcMain, Tray, Menu, nativeImage, globalShortcut, shell, session } = require('electron');
-const { createRuntimeService, registerIpc } = require('../packages/runtime-service/dist');
 const path = require('path');
+
+// Handle runtime-service import for both dev and packaged app
+let createRuntimeService, registerIpc;
+try {
+  // Try packaged app path first (inside app.asar)
+  const packagedPath = path.join(__dirname, 'packages', 'runtime-service', 'dist');
+  ({ createRuntimeService, registerIpc } = require(packagedPath));
+} catch (e1) {
+  try {
+    // Fall back to development path
+    ({ createRuntimeService, registerIpc } = require('../packages/runtime-service/dist'));
+  } catch (e2) {
+    console.error('Failed to load runtime-service:', e2);
+    // Provide stub functions to prevent crashes
+    createRuntimeService = () => ({ subscribe: () => {}, publish: () => {} });
+    registerIpc = () => {};
+  }
+}
 const fs = require('fs');
 const os = require('os');
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));

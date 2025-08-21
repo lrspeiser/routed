@@ -27,8 +27,9 @@
       "verify.html",
       "package.json",
       "routed_icon.png",
-      { "from": "../packages/runtime-service/dist", "to": "packages/runtime-service/dist" },
-      { "from": "../packages/adapters/hub-http/dist", "to": "packages/adapters/hub-http/dist" }
+      { "from": "../packages/runtime-service/dist", "to": "packages/runtime-service/dist", "filter": ["**/*"] },
+      { "from": "../packages/adapters/hub-http/dist", "to": "packages/adapters/hub-http/dist", "filter": ["**/*"] },
+      { "from": "../packages/core/dist", "to": "packages/core/dist", "filter": ["**/*"] }
     ],
     "extraResources": [
       { "from": "routed_icon.png", "to": "routed_icon.png" },

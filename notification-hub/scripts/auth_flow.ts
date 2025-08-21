@@ -152,7 +152,7 @@ async function main() {
   const createRes = await httpJson(createUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-    body: JSON.stringify({ name: chName, topic_name: 'runs.finished', allow_public: true, creator_phone: PHONE }),
+    body: JSON.stringify({ name: chName, topic_name: 'runs.finished', allow_public: true }),
     cache: 'no-store',
   });
 
