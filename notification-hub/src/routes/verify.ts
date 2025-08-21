@@ -155,10 +155,31 @@ export default async function routes(fastify: FastifyInstance) {
         const tenantId = t.rows[0].id as string;
         
         /**
-         * DEV_ID MANAGEMENT: 
-         * - Always ensure user has a dev_id for developer tools integration
-         * - Generate new UUID if missing (for backwards compatibility)
-         * - See /DEV_ID_MANAGEMENT.md for details
+         * DEV_ID MANAGEMENT: CRITICAL - DO NOT REMOVE OR MODIFY WITHOUT UNDERSTANDING
+         * 
+         * Purpose: dev_id is a unique developer identifier for each user that:
+         * - Persists across authentication sessions
+         * - Provides non-PII identifier for developer tools
+         * - Required for analytics and external integrations
+         * 
+         * Flow:
+         * 1. Check if user exists in database
+         * 2. If new user: Generate UUID and save with user record
+         * 3. If existing user without dev_id: Generate and update
+         * 4. If existing user with dev_id: Use existing
+         * 5. ALWAYS return dev_id in response for client storage
+         * 
+         * Client expectations:
+         * - Client saves dev_id to local storage (dev.json)
+         * - Client includes dev_id in subsequent API calls
+         * - Client shows dev_id in UI for developer reference
+         * 
+         * IMPORTANT: Breaking this will cause:
+         * - Missing dev_id in client UI
+         * - Broken developer tool integrations
+         * - Lost user tracking across sessions
+         * 
+         * See /DEV_ID_MANAGEMENT.md for complete documentation
          */
         
         // Upsert user and set verified timestamp with dev_id

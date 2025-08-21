@@ -32,7 +32,7 @@ fastify.post('/v1/admin/channels/create', async (req, reply) => {
         await requireAdmin(req);
         const tr = await client.query(
           `insert into topics (tenant_id, name) values ($1,$2)
-           on conflict on constraint topics_tenant_id_name_key do update set name=excluded.name
+           on conflict (tenant_id, name) do update set name=excluded.name
            returning id`,
           [tenant_id, topic_name]
         );
@@ -123,7 +123,7 @@ fastify.post('/v1/channels/create', async (req, reply) => {
 
         const tr = await client.query(
           `insert into topics (tenant_id, name) values ($1,$2)
-           on conflict on constraint topics_tenant_id_name_key do update set name=excluded.name
+           on conflict (tenant_id, name) do update set name=excluded.name
            returning id`,
           [pub.tenant_id, topicName]
         );
@@ -150,28 +150,18 @@ fastify.post('/v1/channels/create', async (req, reply) => {
         if (creator_phone) {
           let userId: string | null = null;
           let ur;
-          try {
-            ur = await client.query(
-              `insert into users (tenant_id, phone) values ($1,$2)
-               on conflict on constraint users_tenant_phone_unique do update set phone=excluded.phone
-               returning id`,
-              [pub.tenant_id, String(creator_phone).trim()]
-            );
-          } catch (e: any) {
-            if (String(e?.code) === '42704' || String(e?.message||'').includes('does not exist')) {
-              ur = await client.query(
-                `insert into users (tenant_id, phone) values ($1,$2)
-                 on conflict (tenant_id, phone) do update set phone=excluded.phone
-                 returning id`,
-                [pub.tenant_id, String(creator_phone).trim()]
-              );
-            } else { throw e; }
-          }
+          // Use column-based ON CONFLICT instead of constraint name
+          ur = await client.query(
+            `insert into users (tenant_id, phone) values ($1,$2)
+             on conflict (tenant_id, phone) do update set phone=excluded.phone
+             returning id`,
+            [pub.tenant_id, String(creator_phone).trim()]
+          );
           userId = ur.rows[0]?.id ?? null;
           if (userId) {
             const sr = await client.query(
               `insert into subscriptions (tenant_id, user_id, topic_id) values ($1,$2,$3)
-               on conflict on constraint subscriptions_user_id_topic_id_key do nothing
+               on conflict (user_id, topic_id) do nothing
                returning user_id`,
               [pub.tenant_id, userId, topicId]
             );
@@ -182,7 +172,7 @@ fastify.post('/v1/channels/create', async (req, reply) => {
         }
         return sid;
       });
-      return reply.send({ short_id: sid });
+      return reply.send({ ok: true, short_id: sid });
     } catch (e: any) {
       if (e.message === 'unauthorized') {
         return reply.status(401).send({ error: 'unauthorized' });
