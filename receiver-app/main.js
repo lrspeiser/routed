@@ -1332,7 +1332,7 @@ ipcMain.handle('verify:check', async (_evt, { phone, code }) => {
       // Return the full error details to frontend for better debugging
       return { ok: false, error: j.error || `status ${res.status}`, message: j.message, status: j.status, details: j.details };
     }
-    const d = loadDev() || {};
+    let d = loadDev() || {};
     d.verifiedPhone = j.phone;
     d.verifiedUserId = j.userId;
     d.verifiedTenantId = j.tenantId;
