@@ -1133,12 +1133,140 @@ class ScriptsOrchestrator {
 }
 const scriptsOrch = new ScriptsOrchestrator(() => app.getPath('userData'));
 
-// IPC (scaffold + basic actions)
-ipcMain.handle('scripts:list', async () => scriptsOrch.list());
+// Channel Scripts IPC handlers - connect to backend API
+ipcMain.handle('scripts:list', async (_evt, { shortId }) => {
+  try {
+    const dev = loadDev();
+    if (!dev || !dev.apiKey) throw new Error('Developer key not set');
+    if (!shortId) throw new Error('missing_short_id');
+    
+    const url = new URL(`/v1/channels/${encodeURIComponent(String(shortId))}/scripts`, baseUrl()).toString();
+    writeLog(`scripts:list req → short_id=${shortId}`);
+    
+    const res = await fetchWithApiKeyRetry(url, { cache: 'no-store' }, dev);
+    const j = await res.json().catch(() => ({}));
+    
+    if (!res.ok) throw new Error(j && j.error ? j.error : `status ${res.status}`);
+    
+    writeLog(`scripts:list → ok count=${Array.isArray(j.scripts) ? j.scripts.length : 0}`);
+    return j || { scripts: [] };
+  } catch (e) {
+    writeLog(`scripts:list error: ${String(e)}`);
+    return { error: String(e), scripts: [] };
+  }
+});
+
+ipcMain.handle('scripts:create', async (_evt, payload) => {
+  try {
+    const dev = loadDev();
+    if (!dev || !dev.apiKey) throw new Error('Developer key not set');
+    
+    const { shortId, name, prompt, variables = [] } = payload;
+    if (!shortId) throw new Error('missing_short_id');
+    if (!prompt) throw new Error('missing_prompt');
+    
+    // Let the LLM determine trigger type and schedule from the prompt
+    const enrichedPrompt = `${prompt}\n\nBased on this request, determine if this should be:\n1. A webhook (triggered by external HTTP requests)\n2. Scheduled (runs periodically - specify the cron expression)\n3. Manual (triggered by user action only)\n\nIf scheduled, provide the appropriate cron expression.`;
+    
+    const url = new URL(`/v1/channels/${encodeURIComponent(String(shortId))}/scripts`, baseUrl()).toString();
+    writeLog(`scripts:create req → short_id=${shortId} name=${name}`);
+    
+    const res = await fetchWithApiKeyRetry(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: name || 'Untitled Script',
+        request_prompt: enrichedPrompt,
+        trigger_type: 'manual', // Default, LLM will override if needed
+        variables
+      }),
+      cache: 'no-store'
+    }, dev);
+    
+    const txt = await res.text().catch(() => '');
+    let j = null;
+    try { j = JSON.parse(txt); } catch {}
+    
+    if (!res.ok) {
+      writeLog(`scripts:create http_error status=${res.status} body=${txt.slice(0,400)}`);
+      throw new Error((j && j.error) ? j.error : `status ${res.status}`);
+    }
+    
+    writeLog(`scripts:create → ok script_id=${j && j.script && j.script.id ? j.script.id : 'unknown'}`);
+    return j || { ok: true };
+  } catch (e) {
+    writeLog(`scripts:create error: ${String(e)}`);
+    return { ok: false, error: String(e) };
+  }
+});
+
+ipcMain.handle('scripts:execute', async (_evt, { scriptId }) => {
+  try {
+    const dev = loadDev();
+    if (!dev || !dev.apiKey) throw new Error('Developer key not set');
+    if (!scriptId) throw new Error('missing_script_id');
+    
+    const url = new URL(`/v1/scripts/${encodeURIComponent(String(scriptId))}/execute`, baseUrl()).toString();
+    writeLog(`scripts:execute req → script_id=${scriptId}`);
+    
+    const res = await fetchWithApiKeyRetry(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ trigger: { source: 'manual' } }),
+      cache: 'no-store'
+    }, dev);
+    
+    const txt = await res.text().catch(() => '');
+    let j = null;
+    try { j = JSON.parse(txt); } catch {}
+    
+    if (!res.ok) {
+      writeLog(`scripts:execute http_error status=${res.status} body=${txt.slice(0,400)}`);
+      throw new Error((j && j.error) ? j.error : `status ${res.status}`);
+    }
+    
+    writeLog(`scripts:execute → ok notifications_sent=${j && j.notificationsSent ? j.notificationsSent : 0}`);
+    return j || { ok: true };
+  } catch (e) {
+    writeLog(`scripts:execute error: ${String(e)}`);
+    return { ok: false, error: String(e) };
+  }
+});
+
+ipcMain.handle('scripts:delete', async (_evt, { scriptId }) => {
+  try {
+    const dev = loadDev();
+    if (!dev || !dev.apiKey) throw new Error('Developer key not set');
+    if (!scriptId) throw new Error('missing_script_id');
+    
+    const url = new URL(`/v1/scripts/${encodeURIComponent(String(scriptId))}`, baseUrl()).toString();
+    writeLog(`scripts:delete req → script_id=${scriptId}`);
+    
+    const res = await fetchWithApiKeyRetry(url, {
+      method: 'DELETE',
+      cache: 'no-store'
+    }, dev);
+    
+    const txt = await res.text().catch(() => '');
+    let j = null;
+    try { j = JSON.parse(txt); } catch {}
+    
+    if (!res.ok) {
+      writeLog(`scripts:delete http_error status=${res.status} body=${txt.slice(0,400)}`);
+      throw new Error((j && j.error) ? j.error : `status ${res.status}`);
+    }
+    
+    writeLog(`scripts:delete → ok`);
+    return { ok: true };
+  } catch (e) {
+    writeLog(`scripts:delete error: ${String(e)}`);
+    return { ok: false, error: String(e) };
+  }
+});
+
+// Legacy script handlers for compatibility
 ipcMain.handle('scripts:get', async (_evt, id) => scriptsOrch.get(id));
-ipcMain.handle('scripts:create', async (_evt, payload) => scriptsOrch.create(payload));
 ipcMain.handle('scripts:update', async (_evt, { id, payload }) => scriptsOrch.update(id, payload));
-ipcMain.handle('scripts:delete', async () => ({ ok: false, error: 'not_implemented' }));
 ipcMain.handle('scripts:enableToggle', async (_evt, { id, enabled }) => scriptsOrch.enableToggle(id, enabled));
 ipcMain.handle('scripts:runNow', async (_evt, id) => scriptsOrch.runNow(id));
 ipcMain.handle('scripts:test', async (_evt, id) => scriptsOrch.test(id));

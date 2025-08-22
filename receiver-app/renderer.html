@@ -177,38 +177,22 @@
           <div id="create-script-form" style="display: none; border-top: 1px solid #ddd; margin-top: 20px; padding-top: 20px;">
             <h6>Create New Script</h6>
             <div class="form-group">
-              <label class="form-label">Script Name</label>
-              <input class="form-input" type="text" id="script-name" placeholder="e.g., Weather Alerts">
+              <label class="form-label">What do you want this script to do?</label>
+              <textarea class="form-input" id="script-prompt" rows="4" placeholder="Describe what you want. Examples:
+• Send weather alerts when temperature drops below freezing
+• Notify me every morning at 8am with today's news
+• Alert when a webhook from GitHub mentions a critical issue
+• Check stock prices every hour and alert on big changes"></textarea>
+              <p class="form-input-hint">Be specific! The AI will determine if this needs webhooks, schedules, or manual triggers.</p>
             </div>
             <div class="form-group">
-              <label class="form-label">What should this script do?</label>
-              <textarea class="form-input" id="script-request" rows="3" placeholder="e.g., Check weather API every hour and notify users if temperature is below freezing in their area"></textarea>
-            </div>
-            <div class="form-group">
-              <label class="form-label">API Documentation (optional)</label>
-              <textarea class="form-input" id="script-api-docs" rows="3" placeholder="Paste any relevant API documentation or endpoints the script should use"></textarea>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Trigger Type</label>
-              <select class="form-select" id="script-trigger-type" onchange="updateTriggerFields()">
-                <option value="webhook">Webhook (triggered by HTTP request)</option>
-                <option value="schedule">Schedule (runs periodically)</option>
-                <option value="manual">Manual (triggered by you)</option>
-              </select>
-            </div>
-            <div class="form-group" id="schedule-cron-group" style="display: none;">
-              <label class="form-label">Schedule (Cron Expression)</label>
-              <input class="form-input" type="text" id="script-schedule-cron" placeholder="e.g., 0 * * * * (every hour)">
-              <p class="form-input-hint">Examples: "0 * * * *" = hourly, "0 0 * * *" = daily at midnight</p>
-            </div>
-            <div class="form-group">
-              <label class="form-label">User Variables (optional)</label>
-              <p class="text-gray">Define variables that subscribers must fill in (e.g., zip code for weather alerts)</p>
+              <label class="form-label">User Settings (optional)</label>
+              <p class="text-gray">Add settings that each subscriber can customize (like their location for weather alerts)</p>
               <div id="script-variables-list"></div>
-              <button class="btn btn-sm" onclick="addScriptVariable()"><i class="icon icon-plus"></i> Add Variable</button>
+              <button class="btn btn-sm" onclick="addScriptVariable()"><i class="icon icon-plus"></i> Add Setting</button>
             </div>
             <div class="form-group">
-              <button class="btn btn-primary" onclick="createScript()">Generate Script</button>
+              <button class="btn btn-primary" onclick="createScript()">Create Script</button>
               <button class="btn btn-link" onclick="hideCreateScriptForm()">Cancel</button>
             </div>
           </div>
@@ -724,21 +708,15 @@
     }
     
     async function createScript() {
-      const name = document.getElementById('script-name').value.trim();
-      const request = document.getElementById('script-request').value.trim();
-      const apiDocs = document.getElementById('script-api-docs').value.trim();
-      const triggerType = document.getElementById('script-trigger-type').value;
-      const scheduleCron = document.getElementById('script-schedule-cron').value.trim();
+      const prompt = document.getElementById('script-prompt').value.trim();
       
-      if (!name || !request) {
-        showToast('Script name and request are required', 'error');
+      if (!prompt) {
+        showToast('Please describe what the script should do', 'error');
         return;
       }
       
-      if (triggerType === 'schedule' && !scheduleCron) {
-        showToast('Schedule cron expression is required', 'error');
-        return;
-      }
+      // Extract a name from the first line or first 50 chars of the prompt
+      const name = prompt.split('\n')[0].substring(0, 50).replace(/[^a-zA-Z0-9 ]/g, '') || 'Untitled Script';
       
       // Collect variables
       const variables = [];
@@ -765,10 +743,7 @@
       const result = await safeInvoke('scripts:create', {
         shortId: currentChannelShortId,
         name,
-        request_prompt: request,
-        api_docs: apiDocs,
-        trigger_type: triggerType,
-        schedule_cron: scheduleCron,
+        prompt,
         variables
       });
       
