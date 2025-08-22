@@ -28,8 +28,10 @@ async function generateScriptCode(
   variables: Array<{name: string, description: string, type: string}>
 ): Promise<{code: string, error?: string}> {
   try {
-    const openaiKey = process.env.OPENAI_API_KEY;
+    // Support both OPENAI_API_KEY and OPEN_AI_KEY for compatibility
+    const openaiKey = process.env.OPENAI_API_KEY || process.env.OPEN_AI_KEY;
     if (!openaiKey) {
+      console.error('[SCRIPTS] OpenAI key not found. Checked: OPENAI_API_KEY, OPEN_AI_KEY');
       return { code: '', error: 'OpenAI API key not configured' };
     }
 

@@ -17,6 +17,18 @@ export default async function routes(fastify: FastifyInstance) {
         packageVersion = packageJson.version || 'unknown';
       } catch {}
 
+      // Check environment configuration status
+      const configStatus = {
+        database: !!process.env.DATABASE_URL,
+        twilio_configured: !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN),
+        twilio_verify: !!process.env.TWILIO_VERIFY_SERVICE_SID,
+        openai_configured: !!(process.env.OPENAI_API_KEY || process.env.OPEN_AI_KEY),
+        gemini_configured: !!process.env.GEMINI_API_KEY,
+        redis_configured: !!process.env.REDIS_URL,
+        vapid_configured: !!(process.env.VAPID_PUBLIC && process.env.VAPID_PRIVATE),
+        admin_token_set: !!process.env.HUB_ADMIN_TOKEN
+      };
+
       const versionInfo = {
         ok: true,
         backend_version: BACKEND_VERSION,
@@ -34,8 +46,10 @@ export default async function routes(fastify: FastifyInstance) {
            */
           twilio_verify: true,
           enhanced_logging: true,
-          version_check: true
-        }
+          version_check: true,
+          script_generation: configStatus.openai_configured
+        },
+        config_status: configStatus
       };
 
       console.log(`[VERSION] Version check from ${req.ip || 'unknown'}`);

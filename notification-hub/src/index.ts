@@ -135,6 +135,8 @@ async function main() {
   await app.register(verifyRoutes);
   const versionRoutes = (await import('./routes/version')).default;
   await app.register(versionRoutes);
+  const configHealth = (await import('./routes/config_health')).default;
+  await app.register(configHealth);
   const channelScripts = (await import('./routes/channel_scripts')).default;
   await app.register(channelScripts);
   const webhooks = (await import('./routes/webhooks')).default;

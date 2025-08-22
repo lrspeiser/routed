@@ -1157,46 +1157,104 @@ ipcMain.handle('scripts:list', async (_evt, { shortId }) => {
 });
 
 ipcMain.handle('scripts:create', async (_evt, payload) => {
+  writeLog(`scripts:create START - payload: ${JSON.stringify(payload)}`);
+  
   try {
+    // Step 1: Load developer credentials
+    writeLog(`scripts:create Step 1: Loading developer credentials`);
     const dev = loadDev();
-    if (!dev || !dev.apiKey) throw new Error('Developer key not set');
+    if (!dev) {
+      writeLog(`scripts:create ERROR: No developer data found`);
+      throw new Error('Developer data not found - please verify your phone first');
+    }
+    if (!dev.apiKey) {
+      writeLog(`scripts:create ERROR: No API key in developer data`);
+      throw new Error('Developer API key not set - please re-verify');
+    }
+    writeLog(`scripts:create Step 1 ✓: Developer loaded, has API key`);
     
+    // Step 2: Validate input
+    writeLog(`scripts:create Step 2: Validating input`);
     const { shortId, name, prompt, variables = [] } = payload;
-    if (!shortId) throw new Error('missing_short_id');
-    if (!prompt) throw new Error('missing_prompt');
+    if (!shortId) {
+      writeLog(`scripts:create ERROR: missing shortId in payload`);
+      throw new Error('Channel ID is missing');
+    }
+    if (!prompt) {
+      writeLog(`scripts:create ERROR: missing prompt in payload`);
+      throw new Error('Script description is missing');
+    }
+    writeLog(`scripts:create Step 2 ✓: Input valid - shortId=${shortId}, name=${name}, vars=${variables.length}`);
     
-    // Let the LLM determine trigger type and schedule from the prompt
+    // Step 3: Prepare request
+    writeLog(`scripts:create Step 3: Preparing API request`);
     const enrichedPrompt = `${prompt}\n\nBased on this request, determine if this should be:\n1. A webhook (triggered by external HTTP requests)\n2. Scheduled (runs periodically - specify the cron expression)\n3. Manual (triggered by user action only)\n\nIf scheduled, provide the appropriate cron expression.`;
     
     const url = new URL(`/v1/channels/${encodeURIComponent(String(shortId))}/scripts`, baseUrl()).toString();
-    writeLog(`scripts:create req → short_id=${shortId} name=${name}`);
+    const requestBody = {
+      name: name || 'Untitled Script',
+      request_prompt: enrichedPrompt,
+      trigger_type: 'manual',
+      variables
+    };
+    writeLog(`scripts:create Step 3 ✓: Request prepared - URL=${url}`);
+    writeLog(`scripts:create Step 3 details: body=${JSON.stringify(requestBody)}`);
     
+    // Step 4: Make API call
+    writeLog(`scripts:create Step 4: Making API call to backend`);
     const res = await fetchWithApiKeyRetry(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: name || 'Untitled Script',
-        request_prompt: enrichedPrompt,
-        trigger_type: 'manual', // Default, LLM will override if needed
-        variables
-      }),
+      body: JSON.stringify(requestBody),
       cache: 'no-store'
     }, dev);
+    writeLog(`scripts:create Step 4 ✓: Response received - status=${res.status}`);
     
+    // Step 5: Parse response
+    writeLog(`scripts:create Step 5: Parsing response`);
     const txt = await res.text().catch(() => '');
-    let j = null;
-    try { j = JSON.parse(txt); } catch {}
+    writeLog(`scripts:create Step 5 raw response: ${txt.slice(0, 500)}`);
     
-    if (!res.ok) {
-      writeLog(`scripts:create http_error status=${res.status} body=${txt.slice(0,400)}`);
-      throw new Error((j && j.error) ? j.error : `status ${res.status}`);
+    let j = null;
+    try { 
+      j = JSON.parse(txt);
+      writeLog(`scripts:create Step 5 ✓: Response parsed successfully`);
+    } catch (parseErr) {
+      writeLog(`scripts:create Step 5 ERROR: Failed to parse JSON - ${parseErr}`);
     }
     
-    writeLog(`scripts:create → ok script_id=${j && j.script && j.script.id ? j.script.id : 'unknown'}`);
+    // Step 6: Check for errors
+    writeLog(`scripts:create Step 6: Checking response status`);
+    if (!res.ok) {
+      const errorMsg = j?.message || j?.error || `HTTP ${res.status}`;
+      writeLog(`scripts:create Step 6 ERROR: Request failed - ${errorMsg}`);
+      writeLog(`scripts:create Full error response: ${JSON.stringify(j)}`);
+      
+      // Provide user-friendly error messages
+      if (errorMsg.includes('OpenAI API key not configured')) {
+        throw new Error('Script generation service not configured on server - please contact support');
+      } else if (errorMsg.includes('unauthorized')) {
+        throw new Error('Invalid API key - please re-verify your phone');
+      } else if (errorMsg.includes('channel_not_found')) {
+        throw new Error('Channel not found - it may have been deleted');
+      } else {
+        throw new Error(`Server error: ${errorMsg}`);
+      }
+    }
+    
+    writeLog(`scripts:create Step 6 ✓: Success! Script ID=${j?.script?.id || 'unknown'}`);
+    writeLog(`scripts:create COMPLETE - returning: ${JSON.stringify(j)}`);
     return j || { ok: true };
+    
   } catch (e) {
-    writeLog(`scripts:create error: ${String(e)}`);
-    return { ok: false, error: String(e) };
+    writeLog(`scripts:create FAILED: ${String(e)}`);
+    writeLog(`scripts:create Stack trace: ${e.stack}`);
+    return { 
+      ok: false, 
+      error: String(e),
+      details: e.message,
+      timestamp: new Date().toISOString()
+    };
   }
 });
 
