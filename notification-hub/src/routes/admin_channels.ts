@@ -486,6 +486,40 @@ fastify.post('/v1/channels/:short_id/subscribe', async (req, reply) => {
     }
   });
 
+  // Publisher-scoped unsubscribe by userId (for removing users without phone/email)
+  fastify.delete('/v1/channels/:short_id/unsubscribe/user/:user_id', async (req, reply) => {
+    const apiKey = (req.headers.authorization || '').replace('Bearer ', '');
+    const params = req.params as any;
+    const shortId = String(params.short_id || '').trim();
+    const userId = String(params.user_id || '').trim();
+    if (!shortId) return reply.status(400).send({ error: 'missing_short_id' });
+    if (!userId) return reply.status(400).send({ error: 'missing_user_id' });
+    
+    try {
+      await withTxn(async (client) => {
+        const pub = await authPublisher(client, apiKey);
+        if (!pub) throw new Error('unauthorized');
+        const { rows: chRows } = await client.query(`select tenant_id, topic_id from channels where short_id=$1`, [shortId]);
+        if (chRows.length === 0) throw new Error('not_found');
+        const { tenant_id, topic_id } = chRows[0];
+        if (tenant_id !== pub.tenant_id) throw new Error('forbidden');
+        
+        // Verify the user exists and belongs to this tenant
+        const u = await client.query(`select id from users where id=$1 and tenant_id=$2`, [userId, tenant_id]);
+        if (u.rows.length === 0) throw new Error('user_not_found');
+        
+        await client.query(`delete from subscriptions where tenant_id=$1 and user_id=$2 and topic_id=$3`, [tenant_id, userId, topic_id]);
+      });
+      return reply.send({ ok: true });
+    } catch (e: any) {
+      if (e.message === 'unauthorized') return reply.status(401).send({ error: 'unauthorized' });
+      if (e.message === 'not_found') return reply.status(404).send({ error: 'channel_not_found' });
+      if (e.message === 'user_not_found') return reply.status(404).send({ error: 'user_not_found' });
+      if (e.message === 'forbidden') return reply.status(403).send({ error: 'forbidden' });
+      return reply.status(500).send({ error: 'internal_error', detail: String(e?.message || e) });
+    }
+  });
+
   // Publisher-scoped unsubscribe by phone
 fastify.delete('/v1/channels/:short_id/unsubscribe', async (req, reply) => {
     const apiKey = (req.headers.authorization || '').replace('Bearer ', '');
