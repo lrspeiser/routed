@@ -134,6 +134,8 @@ async function main() {
   await app.register(verifyRoutes);
   const versionRoutes = (await import('./routes/version')).default;
   await app.register(versionRoutes);
+  const channelScripts = (await import('./routes/channel_scripts')).default;
+  await app.register(channelScripts);
 
   // Log all registered routes to aid debugging deployments
   try {
