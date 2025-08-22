@@ -17,6 +17,7 @@ import health from './routes/health';
 import './workers/fanout';
 import './workers/deliver';
 import { startTtlSweeper } from './cron/ttl';
+import { initializeScheduler, stopScheduler } from './cron/script_scheduler';
 import fetch from 'node-fetch';
 import { randomUUID } from 'crypto';
 
@@ -136,6 +137,8 @@ async function main() {
   await app.register(versionRoutes);
   const channelScripts = (await import('./routes/channel_scripts')).default;
   await app.register(channelScripts);
+  const webhooks = (await import('./routes/webhooks')).default;
+  await app.register(webhooks);
 
   // Log all registered routes to aid debugging deployments
   try {
@@ -146,9 +149,13 @@ async function main() {
   }
 
   const stopTtl = startTtlSweeper();
+  
+  // Initialize script scheduler
+  await initializeScheduler();
 
   app.addHook('onClose', async () => {
     stopTtl();
+    stopScheduler();
   });
 
   // Optional: Heartbeat to registry if configured
