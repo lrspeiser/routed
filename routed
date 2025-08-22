@@ -1,0 +1,219 @@
+#!/bin/bash
+
+# Routed CLI - Command wrapper for the Routed monorepo
+# See README.md and WARP.md for detailed documentation
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+show_help() {
+    echo -e "${GREEN}Routed CLI${NC} - Notification Hub Service"
+    echo ""
+    echo "Usage: routed <command> [options]"
+    echo ""
+    echo "Commands:"
+    echo "  ${BLUE}hub${NC}          - Notification Hub commands"
+    echo "    start      - Start the hub development server"
+    echo "    build      - Build the hub for production"
+    echo "    test       - Run hub integration tests"
+    echo "    seed       - Seed demo data"
+    echo "    db:setup   - Initialize database schema"
+    echo "    db:clear   - Clear all database data (dangerous!)"
+    echo "    redis:test - Test Redis connectivity"
+    echo ""
+    echo "  ${BLUE}playground${NC}   - Playground (Next.js demo) commands"
+    echo "    start      - Start the playground dev server"
+    echo "    build      - Build playground for production"
+    echo ""
+    echo "  ${BLUE}receiver${NC}     - Receiver app (Electron) commands"
+    echo "    start      - Start receiver in development mode"
+    echo "    build      - Build unsigned DMG"
+    echo "    build:sign - Build signed/notarized DMG (macOS)"
+    echo "    test       - Run receiver tests"
+    echo ""
+    echo "  ${BLUE}docker${NC}       - Docker commands"
+    echo "    up         - Start full stack with Docker Compose"
+    echo "    down       - Stop Docker Compose stack"
+    echo ""
+    echo "  ${BLUE}ws-probe${NC}     - WebSocket probe"
+    echo "    start      - Start the WebSocket probe server"
+    echo ""
+    echo "Examples:"
+    echo "  routed hub start         # Start the notification hub dev server"
+    echo "  routed docker up         # Run full stack with Docker"
+    echo "  routed playground start  # Start the playground demo"
+    echo ""
+    echo "Environment Variables:"
+    echo "  See README.md for required environment variables"
+}
+
+# Change to project root
+cd "$SCRIPT_DIR"
+
+case "$1" in
+    hub)
+        case "$2" in
+            start)
+                echo -e "${GREEN}Starting Notification Hub...${NC}"
+                cd notification-hub
+                [ ! -d "node_modules" ] && npm ci
+                npm run dev
+                ;;
+            build)
+                echo -e "${GREEN}Building Notification Hub...${NC}"
+                cd notification-hub
+                npm run build
+                ;;
+            test)
+                echo -e "${GREEN}Running Hub Integration Tests...${NC}"
+                cd notification-hub
+                if [ -z "$HUB_URL" ] || [ -z "$HUB_ADMIN_TOKEN" ]; then
+                    echo -e "${YELLOW}Warning: HUB_URL and HUB_ADMIN_TOKEN must be set${NC}"
+                    echo "Example:"
+                    echo "  export HUB_URL=https://routed.onrender.com"
+                    echo "  export HUB_ADMIN_TOKEN=your-token-here"
+                    exit 1
+                fi
+                npm run test:integration
+                ;;
+            seed)
+                echo -e "${GREEN}Seeding demo data...${NC}"
+                cd notification-hub
+                npm run seed
+                ;;
+            db:setup)
+                echo -e "${GREEN}Setting up database schema...${NC}"
+                if [ -z "$DATABASE_URL" ]; then
+                    echo -e "${RED}Error: DATABASE_URL must be set${NC}"
+                    exit 1
+                fi
+                psql "$DATABASE_URL" -f notification-hub/sql/schema.sql
+                ;;
+            db:clear)
+                echo -e "${YELLOW}Warning: This will clear all data!${NC}"
+                read -p "Are you sure? (y/N) " -n 1 -r
+                echo
+                if [[ $REPLY =~ ^[Yy]$ ]]; then
+                    psql "$DATABASE_URL" -f notification-hub/sql/clear.sql
+                    echo -e "${GREEN}Database cleared${NC}"
+                fi
+                ;;
+            redis:test)
+                echo -e "${GREEN}Testing Redis connectivity...${NC}"
+                cd notification-hub
+                npm run test:redis
+                ;;
+            *)
+                echo -e "${RED}Unknown hub command: $2${NC}"
+                echo "Run 'routed help' for usage"
+                exit 1
+                ;;
+        esac
+        ;;
+        
+    playground)
+        case "$2" in
+            start)
+                echo -e "${GREEN}Starting Playground...${NC}"
+                cd playground
+                [ ! -d "node_modules" ] && npm ci
+                if [ -z "$HUB_URL" ] || [ -z "$HUB_ADMIN_TOKEN" ]; then
+                    echo -e "${YELLOW}Warning: HUB_URL and HUB_ADMIN_TOKEN should be set${NC}"
+                fi
+                npm run dev
+                ;;
+            build)
+                echo -e "${GREEN}Building Playground...${NC}"
+                cd playground
+                npm run build
+                ;;
+            *)
+                echo -e "${RED}Unknown playground command: $2${NC}"
+                exit 1
+                ;;
+        esac
+        ;;
+        
+    receiver)
+        case "$2" in
+            start)
+                echo -e "${GREEN}Starting Receiver App...${NC}"
+                cd receiver-app
+                [ ! -d "node_modules" ] && npm ci
+                npm run dev
+                ;;
+            build)
+                echo -e "${GREEN}Building Receiver App (unsigned)...${NC}"
+                cd receiver-app
+                npm run dist
+                ;;
+            build:sign)
+                echo -e "${GREEN}Building Receiver App (signed)...${NC}"
+                cd receiver-app
+                if [ -f ".env" ]; then
+                    npx dotenv -e .env -- npm run dist:sign
+                else
+                    echo -e "${YELLOW}Warning: .env file not found. Make sure APPLE_* vars are set${NC}"
+                    npm run dist:sign
+                fi
+                ;;
+            test)
+                echo -e "${GREEN}Running Receiver Tests...${NC}"
+                cd receiver-app
+                TEST_MODE=1 npm run test
+                ;;
+            *)
+                echo -e "${RED}Unknown receiver command: $2${NC}"
+                exit 1
+                ;;
+        esac
+        ;;
+        
+    docker)
+        case "$2" in
+            up)
+                echo -e "${GREEN}Starting Docker Compose stack...${NC}"
+                docker compose -f notification-hub/docker-compose.yml up --build
+                ;;
+            down)
+                echo -e "${GREEN}Stopping Docker Compose stack...${NC}"
+                docker compose -f notification-hub/docker-compose.yml down
+                ;;
+            *)
+                echo -e "${RED}Unknown docker command: $2${NC}"
+                exit 1
+                ;;
+        esac
+        ;;
+        
+    ws-probe)
+        case "$2" in
+            start)
+                echo -e "${GREEN}Starting WebSocket Probe...${NC}"
+                cd ws-probe
+                [ ! -d "node_modules" ] && npm ci
+                npm start
+                ;;
+            *)
+                echo -e "${RED}Unknown ws-probe command: $2${NC}"
+                exit 1
+                ;;
+        esac
+        ;;
+        
+    help|--help|-h|"")
+        show_help
+        ;;
+        
+    *)
+        echo -e "${RED}Unknown command: $1${NC}"
+        echo "Run 'routed help' for usage"
+        exit 1
+        ;;
+esac
