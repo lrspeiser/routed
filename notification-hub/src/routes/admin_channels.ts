@@ -104,28 +104,55 @@ fastify.post('/v1/channels/create', async (req, reply) => {
     const apiKey = (req.headers.authorization || '').replace('Bearer ', '');
     const { name, topic_name, short_id, allow_public, description, creator_phone } = (req.body ?? {}) as any;
     const topicName = (topic_name as string) || 'runs.finished';
+    
+    console.log('[CHANNEL_CREATE] Starting with:', { 
+      name, topic_name, short_id, allow_public, description, 
+      creator_phone: creator_phone ? '***' + String(creator_phone).slice(-4) : 'none',
+      apiKey: apiKey ? '***' + apiKey.slice(-6) : 'none'
+    });
+    
     if (!name) return reply.status(400).send({ error: 'missing name' });
 
     try {
       const sid = await withTxn(async (client) => {
+        console.log('[CHANNEL_CREATE] Transaction started');
+        
         const pub = await authPublisher(client, apiKey);
+        console.log('[CHANNEL_CREATE] Publisher auth result:', pub ? { id: pub.id, tenant_id: pub.tenant_id } : null);
         if (!pub) throw new Error('unauthorized');
 
         // WORKAROUND: SELECT-then-INSERT pattern instead of ON CONFLICT
         // See docs/ON_CONFLICT_WORKAROUND.md for why we can't use ON CONFLICT
         // Render's PostgreSQL doesn't have the required unique constraints
-        let tr = await client.query(
-          `select id from topics where tenant_id=$1 and name=$2`,
-          [pub.tenant_id, topicName]
-        );
-        if (tr.rows.length === 0) {
-          // Create new topic only if it doesn't exist
+        console.log('[CHANNEL_CREATE] Checking for existing topic:', { tenant_id: pub.tenant_id, topicName });
+        let tr;
+        try {
           tr = await client.query(
-            `insert into topics (tenant_id, name) values ($1,$2) returning id`,
+            `select id from topics where tenant_id=$1 and name=$2`,
             [pub.tenant_id, topicName]
           );
+          console.log('[CHANNEL_CREATE] Topic SELECT result:', { rowCount: tr.rows.length, rows: tr.rows });
+        } catch (e: any) {
+          console.error('[CHANNEL_CREATE] Topic SELECT failed:', e.message);
+          throw e;
+        }
+        
+        if (tr.rows.length === 0) {
+          // Create new topic only if it doesn't exist
+          console.log('[CHANNEL_CREATE] Creating new topic');
+          try {
+            tr = await client.query(
+              `insert into topics (tenant_id, name) values ($1,$2) returning id`,
+              [pub.tenant_id, topicName]
+            );
+            console.log('[CHANNEL_CREATE] Topic INSERT result:', tr.rows);
+          } catch (e: any) {
+            console.error('[CHANNEL_CREATE] Topic INSERT failed:', e.message);
+            throw e;
+          }
         }
         const topicId = tr.rows[0].id;
+        console.log('[CHANNEL_CREATE] Using topicId:', topicId);
         let sid = (short_id as string) || makeShortId();
         let chName = name;
         let ok = false;
