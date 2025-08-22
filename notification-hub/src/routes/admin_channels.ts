@@ -174,24 +174,65 @@ fastify.post('/v1/channels/create', async (req, reply) => {
 
         if (creator_phone) {
           let userId: string | null = null;
-          // WORKAROUND: SELECT-then-INSERT pattern instead of ON CONFLICT
-          // See docs/ON_CONFLICT_WORKAROUND.md for full explanation
-          // Required because Render's DB lacks unique constraint on (tenant_id, phone)
-          const existingUser = await client.query(
-            `select id from users where tenant_id=$1 and phone=$2`,
-            [pub.tenant_id, String(creator_phone).trim()]
+          const phoneNormalized = String(creator_phone).trim();
+          
+          // CRITICAL FIX: First check if this phone has a verified user in 'system' tenant
+          // This ensures we use the same userId that was created during phone verification
+          // preventing the user ID mismatch that causes offline status
+          console.log('[CHANNEL_CREATE] Looking for verified user with phone:', phoneNormalized);
+          
+          // Get the system tenant ID
+          const systemTenant = await client.query(
+            `select id from tenants where name='system' limit 1`
           );
-          if (existingUser.rows.length > 0) {
-            userId = existingUser.rows[0].id;
-          } else {
-            // Create new user only if doesn't exist
-            const newUser = await client.query(
-              `insert into users (tenant_id, phone) values ($1,$2) returning id`,
-              [pub.tenant_id, String(creator_phone).trim()]
+          
+          if (systemTenant.rows.length > 0) {
+            const systemTenantId = systemTenant.rows[0].id;
+            const verifiedUser = await client.query(
+              `select id, dev_id from users where tenant_id=$1 and phone=$2 and phone_verified_at is not null limit 1`,
+              [systemTenantId, phoneNormalized]
             );
-            userId = newUser.rows[0]?.id ?? null;
+            
+            if (verifiedUser.rows.length > 0) {
+              // Use the verified user from system tenant
+              userId = verifiedUser.rows[0].id;
+              console.log('[CHANNEL_CREATE] Using verified user from system tenant:', { 
+                userId, 
+                devId: verifiedUser.rows[0].dev_id 
+              });
+            }
+          }
+          
+          // If no verified user found, fall back to publisher's tenant (backwards compatibility)
+          if (!userId) {
+            console.log('[CHANNEL_CREATE] No verified user found, checking publisher tenant');
+            // WORKAROUND: SELECT-then-INSERT pattern instead of ON CONFLICT
+            // See docs/ON_CONFLICT_WORKAROUND.md for full explanation
+            // Required because Render's DB lacks unique constraint on (tenant_id, phone)
+            const existingUser = await client.query(
+              `select id from users where tenant_id=$1 and phone=$2`,
+              [pub.tenant_id, phoneNormalized]
+            );
+            if (existingUser.rows.length > 0) {
+              userId = existingUser.rows[0].id;
+            } else {
+              // Create new user only if doesn't exist
+              const newUser = await client.query(
+                `insert into users (tenant_id, phone) values ($1,$2) returning id`,
+                [pub.tenant_id, phoneNormalized]
+              );
+              userId = newUser.rows[0]?.id ?? null;
+            }
           }
           if (userId) {
+            // CRITICAL: Get the correct tenant_id for the user (could be 'system' or publisher tenant)
+            const userTenantQuery = await client.query(
+              `select tenant_id from users where id=$1`,
+              [userId]
+            );
+            const userTenantId = userTenantQuery.rows[0]?.tenant_id || pub.tenant_id;
+            console.log('[CHANNEL_CREATE] Using tenant for subscription:', { userId, userTenantId });
+            
             // WORKAROUND: SELECT-then-INSERT for subscriptions too
             // See docs/ON_CONFLICT_WORKAROUND.md
             // ON CONFLICT (user_id, topic_id) fails on Render
@@ -203,7 +244,7 @@ fastify.post('/v1/channels/create', async (req, reply) => {
             if (existingSub.rows.length === 0) {
               sr = await client.query(
                 `insert into subscriptions (tenant_id, user_id, topic_id) values ($1,$2,$3) returning user_id`,
-                [pub.tenant_id, userId, topicId]
+                [userTenantId, userId, topicId]
               );
             }
             if ((sr.rowCount ?? 0) > 0) {
