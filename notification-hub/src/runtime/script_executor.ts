@@ -207,44 +207,40 @@ export class ScriptExecutor {
       await jail.set('_getUserVariable', new ivm.Reference(context.getUserVariable));
       await jail.set('_contextLog', new ivm.Reference(context.log));
       
-      // Add fetch function (simplified for isolated-vm)
-      await jail.set('_fetch', new ivm.Reference(async (url: string, optionsStr?: string) => {
+      // Add fetch function - must return simple serializable data
+      await jail.set('_fetchJSON', new ivm.Reference(async (url: string) => {
         try {
-          // Parse options if provided as JSON string
-          const options = optionsStr ? JSON.parse(optionsStr) : {};
-          
-          // Make the actual fetch call with timeout
+          console.log(`[SCRIPT ${this.scriptId}] Fetching: ${url}`);
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 10000);
           
           const response = await fetch(url, {
-            method: options.method || 'GET',
-            headers: options.headers || {},
-            body: options.body ? JSON.stringify(options.body) : undefined,
+            method: 'GET',
+            headers: { 'Accept': 'application/json' },
             signal: controller.signal
           });
           
           clearTimeout(timeoutId);
+          
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
           
           const text = await response.text();
           let data;
           try {
             data = JSON.parse(text);
           } catch {
-            data = text;
+            data = { text };
           }
           
-          // Return serializable result
-          return new ivm.ExternalCopy({
-            ok: response.ok,
-            status: response.status,
-            statusText: response.statusText,
-            data,
-            text
-          }).copyInto();
+          // Return simple object that can be serialized
+          const result = JSON.stringify({ ok: true, data });
+          return result;
         } catch (error: any) {
-          console.error('[SCRIPT] Fetch error:', error);
-          throw new Error(`Fetch failed: ${error.message}`);
+          console.error(`[SCRIPT ${this.scriptId}] Fetch error:`, error);
+          // Return error as JSON string
+          return JSON.stringify({ ok: false, error: error.message });
         }
       }));
       
@@ -278,10 +274,24 @@ export class ScriptExecutor {
           return _contextLog.apply(undefined, [message]);
         };
         
+        // Simplified fetch that only supports GET requests
         const fetch = async (url, options) => {
-          // Convert options to JSON string for transfer
-          const optionsStr = options ? JSON.stringify(options) : undefined;
-          return _fetch.apply(undefined, [url, optionsStr]);
+          if (options && options.method && options.method !== 'GET') {
+            throw new Error('Only GET requests are supported in scripts');
+          }
+          // Fetch and parse the result
+          const resultStr = await _fetchJSON.apply(undefined, [url]);
+          const result = JSON.parse(resultStr);
+          if (!result.ok) {
+            throw new Error(result.error || 'Fetch failed');
+          }
+          return {
+            ok: true,
+            status: 200,
+            json: async () => result.data,
+            text: async () => JSON.stringify(result.data),
+            data: result.data
+          };
         };
         
         // Setup context object with same functions
