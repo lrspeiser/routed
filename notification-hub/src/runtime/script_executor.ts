@@ -160,9 +160,7 @@ export class ScriptExecutor {
 
           const response = await fetch(url, {
             ...options,
-            signal: controller.signal,
-            size: 1000000, // 1MB response limit
-            timeout: 10000
+            signal: controller.signal
           });
 
           clearTimeout(timeout);
@@ -209,10 +207,25 @@ export class ScriptExecutor {
       await jail.set('_getUserVariable', new ivm.Reference(context.getUserVariable));
       await jail.set('_contextLog', new ivm.Reference(context.log));
       
-      // Add fetch function (requires special handling for async network calls)
-      await jail.set('_fetch', new ivm.Reference(async (url: string, options?: any) => {
+      // Add fetch function (simplified for isolated-vm)
+      await jail.set('_fetch', new ivm.Reference(async (url: string, optionsStr?: string) => {
         try {
-          const response = await fetch(url, options || {});
+          // Parse options if provided as JSON string
+          const options = optionsStr ? JSON.parse(optionsStr) : {};
+          
+          // Make the actual fetch call with timeout
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000);
+          
+          const response = await fetch(url, {
+            method: options.method || 'GET',
+            headers: options.headers || {},
+            body: options.body ? JSON.stringify(options.body) : undefined,
+            signal: controller.signal
+          });
+          
+          clearTimeout(timeoutId);
+          
           const text = await response.text();
           let data;
           try {
@@ -220,14 +233,17 @@ export class ScriptExecutor {
           } catch {
             data = text;
           }
-          return {
+          
+          // Return serializable result
+          return new ivm.ExternalCopy({
             ok: response.ok,
             status: response.status,
             statusText: response.statusText,
             data,
-            headers: Object.fromEntries(response.headers.entries())
-          };
+            text
+          }).copyInto();
         } catch (error: any) {
+          console.error('[SCRIPT] Fetch error:', error);
           throw new Error(`Fetch failed: ${error.message}`);
         }
       }));
@@ -262,8 +278,10 @@ export class ScriptExecutor {
           return _contextLog.apply(undefined, [message]);
         };
         
-        const fetch = (url, options) => {
-          return _fetch.apply(undefined, [url, options]);
+        const fetch = async (url, options) => {
+          // Convert options to JSON string for transfer
+          const optionsStr = options ? JSON.stringify(options) : undefined;
+          return _fetch.apply(undefined, [url, optionsStr]);
         };
         
         // Setup context object with same functions
