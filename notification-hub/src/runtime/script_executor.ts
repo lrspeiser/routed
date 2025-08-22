@@ -139,13 +139,16 @@ export class ScriptExecutor {
       },
 
       // Safe fetch with timeout and size limits
-      fetch: async (url: string, options: any = {}) => {
+      fetch: async (url: string | URL | Request, options: any = {}) => {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
         try {
-          // Validate URL
-          const urlObj = new URL(url);
+          // Convert to string if needed and validate URL
+          const urlString = typeof url === 'string' ? url : 
+                           url instanceof URL ? url.toString() : 
+                           (url as Request).url;
+          const urlObj = new URL(urlString);
           if (!['http:', 'https:'].includes(urlObj.protocol)) {
             throw new Error('Only HTTP/HTTPS protocols allowed');
           }

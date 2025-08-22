@@ -257,7 +257,7 @@ export default async function routes(fastify: FastifyInstance) {
           [short_id, pub.tenant_id]
         );
 
-        return rows.map(script => ({
+        return rows.map((script: any) => ({
           ...script,
           webhook_url: script.webhook_path ? 
             `${process.env.BASE_URL || 'http://localhost:3030'}/v1/webhooks/${script.webhook_path}` : 
