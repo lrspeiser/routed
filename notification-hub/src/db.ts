@@ -15,6 +15,7 @@ pool.on('error', (err: unknown) => {
 
 export async function withTxn<T>(fn: (client: any) => Promise<T>): Promise<T> {
   const client = await pool.connect();
+  let shouldDestroy = false;
   try {
     await client.query('BEGIN');
     const res = await fn(client);
@@ -27,9 +28,17 @@ export async function withTxn<T>(fn: (client: any) => Promise<T>): Promise<T> {
       console.log('[DB] TXN rolled back successfully.');
     } catch (rollbackErr) {
       console.error('[DB] TXN rollback failed:', rollbackErr);
+      // Mark connection for destruction if rollback fails
+      shouldDestroy = true;
     }
     throw e;
   } finally {
-    client.release();
+    // Destroy the connection if it's in a bad state, otherwise release it
+    if (shouldDestroy) {
+      client.release(true); // true = destroy the connection
+      console.log('[DB] Connection destroyed due to rollback failure.');
+    } else {
+      client.release();
+    }
   }
 }
