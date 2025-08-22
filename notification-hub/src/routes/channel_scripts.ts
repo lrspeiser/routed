@@ -20,7 +20,7 @@ function generateWebhookSecret(): string {
   return crypto.randomBytes(32).toString('base64');
 }
 
-// Generate code using OpenAI
+// Generate code using OpenAI with structured output
 async function generateScriptCode(
   request: string,
   apiDocs: string,
@@ -37,27 +37,31 @@ async function generateScriptCode(
 
     const openai = new OpenAI({ apiKey: openaiKey });
 
-    const systemPrompt = `You are a code generator for the Routed notification system. Generate secure JavaScript code that sends notifications to channel subscribers.
+    const systemPrompt = `You are a code generator for the Routed notification system. You must return a structured JSON response with the JavaScript code and metadata.
 
-Available APIs:
+Available APIs in the script context:
 - sendNotification(userId, { title, body, data }): Send notification to a specific user
-- getSubscribers(): Returns array of {userId, phone, variables} for all channel subscribers
+- getSubscribers(): Returns array of {userId, phone, email, variables} for all channel subscribers  
 - getUserVariable(userId, variableName): Get a user's variable value
 - log(message): Log message for debugging
+- fetch(url, options): Make HTTP requests (with 10s timeout and 1MB response limit)
 
-The script will receive these inputs:
+The script receives these inputs:
 - trigger: Object with trigger data (webhook payload or schedule info)
 - channel: Object with channel info {id, name, shortId}
-- context: Execution context with helper functions
+- context: Object with all the above functions
 
-User-defined variables available: ${variables.map(v => `${v.name} (${v.type}): ${v.description}`).join(', ')}
+User-defined variables available: ${variables.map(v => `${v.name} (${v.type}): ${v.description}`).join(', ') || 'none'}
 
-Security requirements:
-- Never expose API keys or secrets
-- Validate all inputs
-- Handle errors gracefully
-- Rate limit external API calls
-- Use try-catch blocks`;
+Return a JSON object with this structure:
+{
+  "code": "// The complete async function executeScript(trigger, channel, context) { ... } implementation",
+  "description": "Brief description of what the script does",
+  "required_variables": ["list", "of", "variable", "names", "used"],
+  "external_apis": ["list", "of", "external", "API", "urls", "called"],
+  "notification_strategy": "Description of when/how notifications are sent",
+  "error_handling": "Description of error handling approach"
+}`;
 
     const userPrompt = `Channel: ${channelName}
 
@@ -66,43 +70,61 @@ Developer Request: ${request}
 API Documentation:
 ${apiDocs || 'No additional API documentation provided'}
 
-Generate a JavaScript function that:
-1. Implements the requested functionality
-2. Sends notifications to relevant subscribers
-3. Uses user variables where appropriate
-4. Handles errors properly
-5. Returns execution summary
-
-The function signature should be:
+Generate the script implementation. The code field must contain ONLY the JavaScript function with this exact signature:
 async function executeScript(trigger, channel, context) {
-  // Your code here
-}`;
+  // Implementation here
+}
+
+Do not include any markdown, comments before the function, or explanatory text. The function must:
+1. Implement the requested functionality
+2. Send notifications to relevant subscribers using sendNotification()
+3. Use try-catch for error handling
+4. Return a summary string
+5. Log progress using log()`;
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4',
+      model: 'gpt-4-turbo-preview',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.3,
       max_tokens: 2000,
+      response_format: { type: "json_object" }
     });
 
-    let code = completion.choices[0]?.message?.content || '';
+    const responseContent = completion.choices[0]?.message?.content || '{}';
     
-    // Clean up the code - remove markdown code blocks if present
-    code = code.replace(/^```javascript\n/, '').replace(/^```js\n/, '').replace(/\n```$/, '').replace(/^```\n/, '');
-    
-    // Remove any leading explanatory text before the function
-    const functionMatch = code.match(/async\s+function\s+executeScript[\s\S]*/m);
-    if (functionMatch) {
-      code = functionMatch[0];
+    let parsed: any;
+    try {
+      parsed = JSON.parse(responseContent);
+    } catch (e) {
+      console.error('Failed to parse OpenAI response as JSON:', e);
+      // Fallback to old parsing method
+      let code = responseContent;
+      code = code.replace(/^```javascript\n/, '').replace(/^```js\n/, '').replace(/\n```$/, '').replace(/^```\n/, '');
+      const functionMatch = code.match(/async\s+function\s+executeScript[\s\S]*/m);
+      if (functionMatch) {
+        code = functionMatch[0];
+      }
+      return { code, error: undefined };
     }
     
-    // Basic validation
+    // Extract the code from structured response
+    const code = parsed.code || '';
+    
+    // Log metadata for debugging
+    console.log('[SCRIPTS] Generated script metadata:', {
+      description: parsed.description,
+      required_variables: parsed.required_variables,
+      external_apis: parsed.external_apis,
+      notification_strategy: parsed.notification_strategy
+    });
+    
+    // Validate the code
     if (!code.includes('async function executeScript')) {
       return { 
-        code: `async function executeScript(trigger, channel, context) {\n  // Generated script\n  ${code}\n}`,
+        code: `async function executeScript(trigger, channel, context) {\n  // Auto-wrapped generated code\n  try {\n    ${code}\n  } catch (error) {\n    context.log('Error: ' + error.message);\n    return 'Script failed: ' + error.message;\n  }\n}`,
         error: undefined 
       };
     }
