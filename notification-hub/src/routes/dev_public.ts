@@ -21,17 +21,10 @@ export default async function routes(fastify: FastifyInstance) {
         );
         const topicId = top.rows[0].id as string;
         
-        const u = await client.query(`insert into users (tenant_id) values ($1) returning id`, [tenantId]);
-        const userId = u.rows[0].id as string;
+        // Don't create an empty user during provisioning - let users be created with proper phone/email
+        // This prevents "Unknown" users in channel subscriber lists
         
-        // Use column-based ON CONFLICT for subscriptions too
-        await client.query(
-          `insert into subscriptions (tenant_id, user_id, topic_id) values ($1,$2,$3)
-           on conflict (user_id, topic_id) do nothing`, 
-          [tenantId, userId, topicId]
-        );
-        
-        return { tenantId, publisherId, apiKey, userId, topicId };
+        return { tenantId, publisherId, apiKey, topicId };
       });
       return reply.send(result);
     } catch (e: any) {
