@@ -452,12 +452,12 @@
       devlog(`createChannel: creating channel: ${name}`);
 
       // FIX: use camelCase keys expected by main
-      // Include creator phone to auto-subscribe creator
+      // Don't auto-subscribe creator to avoid transaction issues
       const result = await safeInvoke('channels:create', {
         name,
         description,
-        allowPublic: allow_public,
-        creatorPhone: confirmedPhone  // This ensures creator is added as subscriber
+        allowPublic: allow_public
+        // Removed creatorPhone to prevent transaction errors
       });
 
       devlog(`createChannel: channels:create result: ${JSON.stringify(result)}`);
