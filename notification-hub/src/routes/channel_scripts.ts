@@ -88,12 +88,21 @@ async function executeScript(trigger, channel, context) {
       max_tokens: 2000,
     });
 
-    const code = completion.choices[0]?.message?.content || '';
+    let code = completion.choices[0]?.message?.content || '';
+    
+    // Clean up the code - remove markdown code blocks if present
+    code = code.replace(/^```javascript\n/, '').replace(/^```js\n/, '').replace(/\n```$/, '').replace(/^```\n/, '');
+    
+    // Remove any leading explanatory text before the function
+    const functionMatch = code.match(/async\s+function\s+executeScript[\s\S]*/m);
+    if (functionMatch) {
+      code = functionMatch[0];
+    }
     
     // Basic validation
     if (!code.includes('async function executeScript')) {
       return { 
-        code: `async function executeScript(trigger, channel, context) {\n${code}\n}`,
+        code: `async function executeScript(trigger, channel, context) {\n  // Generated script\n  ${code}\n}`,
         error: undefined 
       };
     }

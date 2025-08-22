@@ -222,19 +222,32 @@ export class ScriptExecutor {
           warn: (...args) => _warn.apply(undefined, [args.map(a => String(a)).join(' ')])
         };
         
-        // Setup context
+        // Setup helper functions in global scope
+        const sendNotification = (userId, notification) => {
+          return _sendNotification.apply(undefined, [userId, notification]);
+        };
+        
+        const getSubscribers = () => {
+          return _getSubscribers.apply(undefined, []);
+        };
+        
+        const getUserVariable = (userId, variableName) => {
+          return _getUserVariable.apply(undefined, [userId, variableName]);
+        };
+        
+        const log = (message) => {
+          return _contextLog.apply(undefined, [message]);
+        };
+        
+        // Setup context object with same functions
         const context = {
-          sendNotification: (userId, notification) => {
-            return _sendNotification.apply(undefined, [userId, notification]);
-          },
-          getSubscribers: () => {
-            return _getSubscribers.apply(undefined, []);
-          },
-          getUserVariable: (userId, variableName) => {
-            return _getUserVariable.apply(undefined, [userId, variableName]);
-          },
-          log: (message) => {
-            return _contextLog.apply(undefined, [message]);
+          sendNotification,
+          getSubscribers,
+          getUserVariable,
+          log,
+          rateLimit: async (key, limit) => {
+            // Simple rate limiting stub
+            return true;
           }
         };
         

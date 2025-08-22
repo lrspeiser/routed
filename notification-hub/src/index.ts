@@ -141,6 +141,8 @@ async function main() {
   await app.register(channelScripts);
   const webhooks = (await import('./routes/webhooks')).default;
   await app.register(webhooks);
+  const testMessages = (await import('./routes/test_messages')).default;
+  await app.register(testMessages);
 
   // Log all registered routes to aid debugging deployments
   try {
