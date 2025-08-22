@@ -54,16 +54,8 @@ class WebSocketManager {
           }
           
           // Handle different message types
-          if (message.type === 'notification') {
-            // Show notification using Electron's notification API
-            const { Notification } = require('electron');
-            const notification = new Notification({
-              title: message.title || 'Routed',
-              body: message.body || '',
-              silent: false
-            });
-            notification.show();
-          }
+          // Note: Notifications are handled by the main process via onMessageCallback
+          // to avoid duplicate notifications
         } catch (e) {
           console.error('[WebSocketManager] Error parsing message:', e);
         }

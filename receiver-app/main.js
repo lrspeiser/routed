@@ -568,7 +568,22 @@ async function postInitIfNeeded() {
       // Handle incoming messages
       wsManager.onMessage((message) => {
         if (message.type === 'notification') {
-          // Forward to renderer if needed
+          // Show native notification
+          const title = message.title || 'Routed';
+          const body = message.body || '';
+          const n = new Notification({ title, body, silent: false });
+          n.on('click', () => {
+            try {
+              if (mainWindow) {
+                mainWindow.show();
+                mainWindow.focus();
+              }
+            } catch {}
+          });
+          try { n.show(); } catch {}
+          writeLog(`WebSocket notification shown: ${title} :: ${body}`);
+          
+          // Also forward to renderer for UI updates if needed
           if (mainWindow && mainWindow.webContents) {
             try {
               mainWindow.webContents.send('notification', message);

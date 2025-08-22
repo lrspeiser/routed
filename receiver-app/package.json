@@ -1,6 +1,6 @@
 {
   "name": "routed",
-  "version": "1.9.4",
+  "version": "1.9.5",
   "private": true,
   "author": "Routed",
   "description": "Routed desktop receiver",
@@ -22,6 +22,7 @@
     "productName": "Routed",
     "files": [
       "main.js",
+      "websocket-manager.js",
       "preload.js",
       "renderer.html",
       "verify.html",
