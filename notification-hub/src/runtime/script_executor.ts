@@ -209,6 +209,29 @@ export class ScriptExecutor {
       await jail.set('_getUserVariable', new ivm.Reference(context.getUserVariable));
       await jail.set('_contextLog', new ivm.Reference(context.log));
       
+      // Add fetch function (requires special handling for async network calls)
+      await jail.set('_fetch', new ivm.Reference(async (url: string, options?: any) => {
+        try {
+          const response = await fetch(url, options || {});
+          const text = await response.text();
+          let data;
+          try {
+            data = JSON.parse(text);
+          } catch {
+            data = text;
+          }
+          return {
+            ok: response.ok,
+            status: response.status,
+            statusText: response.statusText,
+            data,
+            headers: Object.fromEntries(response.headers.entries())
+          };
+        } catch (error: any) {
+          throw new Error(`Fetch failed: ${error.message}`);
+        }
+      }));
+      
       // Set trigger and channel data
       await jail.set('_trigger', new ivm.ExternalCopy(trigger).copyInto());
       await jail.set('_channel', new ivm.ExternalCopy(channel).copyInto());
@@ -239,12 +262,17 @@ export class ScriptExecutor {
           return _contextLog.apply(undefined, [message]);
         };
         
+        const fetch = (url, options) => {
+          return _fetch.apply(undefined, [url, options]);
+        };
+        
         // Setup context object with same functions
         const context = {
           sendNotification,
           getSubscribers,
           getUserVariable,
           log,
+          fetch,
           rateLimit: async (key, limit) => {
             // Simple rate limiting stub
             return true;
