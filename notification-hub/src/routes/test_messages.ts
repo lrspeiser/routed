@@ -29,9 +29,8 @@ export default async function routes(fastify: FastifyInstance) {
 
         // Get channel and topic
         const { rows: channelRows } = await client.query(
-          `SELECT c.id, c.name, c.tenant_id, c.topic_id, t.topic 
+          `SELECT c.id, c.name, c.tenant_id, c.topic_id
            FROM channels c 
-           JOIN topics t ON c.topic_id = t.id
            WHERE c.short_id = $1 AND c.tenant_id = $2`,
           [short_id, pub.tenant_id]
         );
