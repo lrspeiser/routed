@@ -358,11 +358,15 @@ fastify.get('/v1/channels/:short_id/users', async (req, reply) => {
         if (chRows.length === 0) throw new Error('not_found');
         const { tenant_id, topic_id } = chRows[0];
         if (tenant_id !== pub.tenant_id) throw new Error('forbidden');
+        // CRITICAL FIX: Query subscriptions by topic_id, not limited to channel tenant
+        // This ensures we see ALL users subscribed to the topic, including verified users from 'system' tenant
         const { rows } = await client.query(
-          `select u.id as user_id, u.email as email, u.phone as phone from users u
-           join subscriptions s on s.user_id=u.id and s.tenant_id=u.tenant_id and s.topic_id=$2
-           where u.tenant_id=$1 order by lower(coalesce(u.phone,u.email)) asc`,
-          [tenant_id, topic_id]
+          `select u.id as user_id, u.email as email, u.phone as phone, u.tenant_id as user_tenant_id
+           from subscriptions s
+           join users u on s.user_id=u.id
+           where s.topic_id=$1
+           order by lower(coalesce(u.phone,u.email)) asc`,
+          [topic_id]
         );
         return rows.map((r: any) => ({ user_id: r.user_id, email: r.email, phone: r.phone, online: isUserOnline(r.user_id) }));
       });
