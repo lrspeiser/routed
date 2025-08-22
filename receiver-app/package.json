@@ -27,17 +27,53 @@
       "verify.html",
       "package.json",
       "routed_icon.png",
-      { "from": "../packages/runtime-service/dist", "to": "packages/runtime-service/dist", "filter": ["**/*"] },
-      { "from": "../packages/adapters/hub-http/dist", "to": "packages/adapters/hub-http/dist", "filter": ["**/*"] },
-      { "from": "../packages/core/dist", "to": "packages/core/dist", "filter": ["**/*"] }
+      {
+        "from": "../packages/runtime-service/dist",
+        "to": "packages/runtime-service/dist",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "../packages/adapters/hub-http/dist",
+        "to": "packages/adapters/hub-http/dist",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "../packages/core/dist",
+        "to": "packages/core/dist",
+        "filter": [
+          "**/*"
+        ]
+      }
     ],
     "extraResources": [
-      { "from": "routed_icon.png", "to": "routed_icon.png" },
-      { "from": "assets", "to": "assets" },
-      { "from": "resources", "to": "resources" },
-      { "from": "resources/ai/.env", "to": "resources/ai/.env" },
-      { "from": "resources/ai/openai.env", "to": "resources/ai/openai.env" },
-      { "from": "resources/ai/openai.key", "to": "resources/ai/openai.key" }
+      {
+        "from": "routed_icon.png",
+        "to": "routed_icon.png"
+      },
+      {
+        "from": "assets",
+        "to": "assets"
+      },
+      {
+        "from": "resources",
+        "to": "resources"
+      },
+      {
+        "from": "resources/ai/.env",
+        "to": "resources/ai/.env"
+      },
+      {
+        "from": "resources/ai/openai.env",
+        "to": "resources/ai/openai.env"
+      },
+      {
+        "from": "resources/ai/openai.key",
+        "to": "resources/ai/openai.key"
+      }
     ],
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "mac": {
@@ -49,24 +85,27 @@
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
       "gatekeeperAssess": false,
-      "notarize": { "teamId": "F25JD2C29Z" }
+      "notarize": {
+        "teamId": "F25JD2C29Z"
+      }
     },
     "dmg": {}
   },
   "dependencies": {
     "keytar": "^7.9.0",
     "node-fetch": "^3.3.2",
+    "ws": "^8.18.3",
     "wscat": "^6.1.0"
   },
   "devDependencies": {
     "@electron/notarize": "^2.2.1",
-    "electron": "^31.3.1",
-    "electron-builder": "^24.13.3",
-    "dotenv-cli": "^7.4.2",
+    "@playwright/test": "^1.47.0",
     "@types/node": "^22.5.1",
     "@vitest/coverage-v8": "^1.6.0",
+    "dotenv-cli": "^7.4.2",
+    "electron": "^31.3.1",
+    "electron-builder": "^24.13.3",
     "playwright": "^1.47.0",
-    "@playwright/test": "^1.47.0",
     "vitest": "^1.6.0"
   }
 }

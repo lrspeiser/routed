@@ -5,6 +5,10 @@
 
 const { app, BrowserWindow, Notification, dialog, ipcMain, Tray, Menu, nativeImage, globalShortcut, shell, session } = require('electron');
 const path = require('path');
+const { WebSocketManager } = require('./websocket-manager');
+
+// WebSocket manager instance
+const wsManager = new WebSocketManager();
 
 // Handle runtime-service import for both dev and packaged app
 let createRuntimeService, registerIpc;
@@ -140,6 +144,23 @@ function persistUserOpenAIKey(key) {
 
   // IMPORTANT: Do not rely on env OPENAI_* for generation. Only server-provisioned keys stored under userData are used.
 try { tryLoadLocalEnv(); } catch {}
+
+// Ensure OpenAI key from server
+async function ensureOpenAIKeyFromServer() {
+  try {
+    const existingKey = tryReadUserOpenAIKey();
+    if (existingKey) return { ok: true, key: existingKey, source: 'userData' };
+    
+    // Request key from server if not found locally
+    writeLog('ensureOpenAIKeyFromServer: no local key, requesting from server');
+    // This would normally make an API call to get the key
+    // For now, return not found
+    return { ok: false, error: 'no_key_available' };
+  } catch (e) {
+    writeLog('ensureOpenAIKeyFromServer error: ' + String(e));
+    return { ok: false, error: String(e) };
+  }
+}
 // Start runtime service and register IPC
 let _service;
 app.whenReady().then(() => {
@@ -537,6 +558,25 @@ async function postInitIfNeeded() {
     const d = loadDev();
     const verified = !!(d && d.verifiedUserId && d.verifiedPhone);
     if (!verified) { writeLog('post-init: awaiting phone verification'); return; }
+    
+    // Establish WebSocket connection for real-time messaging
+    if (d.verifiedUserId) {
+      const b = baseUrl();
+      writeLog(`post-init: connecting WebSocket userId=${d.verifiedUserId} base=${b}`);
+      wsManager.connect(d.verifiedUserId, b);
+      
+      // Handle incoming messages
+      wsManager.onMessage((message) => {
+        if (message.type === 'notification') {
+          // Forward to renderer if needed
+          if (mainWindow && mainWindow.webContents) {
+            try {
+              mainWindow.webContents.send('notification', message);
+            } catch {}
+          }
+        }
+      });
+    }
   } catch {}
   try { createTray(); } catch {}
   try { buildAppMenu(); } catch {}
@@ -663,7 +703,11 @@ if (!process.env.TEST_MODE && !process.env.VITEST) {
     writeLog('App activated');
   });
 
-  app.on('before-quit', () => { isQuitting = true; try { tray?.destroy?.(); } catch {} });
+  app.on('before-quit', () => { 
+    isQuitting = true; 
+    try { tray?.destroy?.(); } catch {} 
+    try { wsManager.disconnect(); } catch {} 
+  });
 }
 
 ipcMain.handle('subscriptions:list', async () => {
@@ -1383,6 +1427,14 @@ ipcMain.handle('verify:check', async (_evt, { phone, code }) => {
     // Validate or (re)provision developer key now that verification succeeded
     try { const ensured = await ensureValidDeveloper(); if (ensured && ensured.apiKey) notifyDevUpdated(ensured); } catch (e) { writeLog('verify:check → ensure dev failed ' + String(e)); }
     writeLog(`verify:check → ok user=${j.userId} devId=${d.devId || 'none'}`);
+    
+    // Connect WebSocket after verification
+    if (j.userId) {
+      const b = baseUrl();
+      writeLog(`verify:check → connecting WebSocket userId=${j.userId} base=${b}`);
+      wsManager.connect(j.userId, b);
+    }
+    
     try { await postInitIfNeeded(); } catch {}
     try {
       if (!mainWindow) { await createWindow(); }
