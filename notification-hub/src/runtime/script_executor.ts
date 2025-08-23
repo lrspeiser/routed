@@ -250,11 +250,47 @@ export class ScriptExecutor {
 
       // Prepare the script with context injection
       const wrappedCode = `
-        // Setup console
+        // Setup console with proper object stringification
         const console = {
-          log: (...args) => _log.apply(undefined, [args.map(a => String(a)).join(' ')]),
-          error: (...args) => _error.apply(undefined, [args.map(a => String(a)).join(' ')]),
-          warn: (...args) => _warn.apply(undefined, [args.map(a => String(a)).join(' ')])
+          log: (...args) => {
+            const formatted = args.map(a => {
+              if (typeof a === 'object' && a !== null) {
+                try {
+                  return JSON.stringify(a);
+                } catch (e) {
+                  return String(a);
+                }
+              }
+              return String(a);
+            }).join(' ');
+            _log.apply(undefined, [formatted]);
+          },
+          error: (...args) => {
+            const formatted = args.map(a => {
+              if (typeof a === 'object' && a !== null) {
+                try {
+                  return JSON.stringify(a);
+                } catch (e) {
+                  return String(a);
+                }
+              }
+              return String(a);
+            }).join(' ');
+            _error.apply(undefined, [formatted]);
+          },
+          warn: (...args) => {
+            const formatted = args.map(a => {
+              if (typeof a === 'object' && a !== null) {
+                try {
+                  return JSON.stringify(a);
+                } catch (e) {
+                  return String(a);
+                }
+              }
+              return String(a);
+            }).join(' ');
+            _warn.apply(undefined, [formatted]);
+          }
         };
         
         // Setup helper functions in global scope
@@ -277,9 +313,6 @@ export class ScriptExecutor {
         // Simplified fetch that only supports GET requests
         const fetch = async (url, options) => {
           try {
-            // Log what we're fetching for debugging
-            console.log('Script fetch called with:', url, typeof options, options);
-            
             if (options && options.method && options.method !== 'GET') {
               throw new Error('Only GET requests are supported in scripts');
             }
@@ -302,7 +335,6 @@ export class ScriptExecutor {
               data: result.data
             };
           } catch (error) {
-            console.error('Fetch error in script:', error);
             throw error;
           }
         };
