@@ -16,9 +16,9 @@ const BACKEND_PORT = 3030;
 // Create the main application window
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 600,
+    width: 1200,
     height: 800,
-    minWidth: 500,
+    minWidth: 900,
     minHeight: 600,
     title: APP_NAME,
     icon: path.join(__dirname, 'assets', 'icon.png'),
@@ -32,8 +32,8 @@ function createWindow() {
     show: false
   });
 
-  // Load the updated renderer
-  mainWindow.loadFile(path.join(__dirname, 'public', 'renderer_updated.html'));
+  // Load the improved app with retry logic and better error handling
+  mainWindow.loadFile(path.join(__dirname, 'public', 'app.html'));
 
   // Show window when ready
   mainWindow.once('ready-to-show', () => {

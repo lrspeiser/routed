@@ -957,16 +957,21 @@
                         
                     } catch (error) {
                         lastError = error;
+                        console.log('[RETRY DEBUG] Error caught:', error.message);
                         
                         // Check if this is a transaction error that should be retried
-                        if (error.message && 
-                            (error.message.includes('transaction') || 
-                             error.message.includes('aborted') ||
-                             error.message.includes('Please try again'))) {
-                            
+                        const errorMsg = (error.message || '').toLowerCase();
+                        const isRetryable = errorMsg.includes('transaction') || 
+                                          errorMsg.includes('aborted') ||
+                                          errorMsg.includes('please try again');
+                        
+                        console.log('[RETRY DEBUG] Is retryable?', isRetryable, 'Retries left:', retries - 1);
+                        
+                        if (error.message && isRetryable) {
                             retries--;
                             if (retries > 0) {
-                                console.log(`Transaction error, retrying... (${retries} attempts left)`);
+                                console.log(`[RETRY] Transaction error detected, retrying... (${retries} attempts left)`);
+                                this.showAlert(`Channel creation failed, retrying... (${retries} attempts left)`, 'info');
                                 // Wait a bit before retrying
                                 await new Promise(resolve => setTimeout(resolve, 1000));
                                 continue;
@@ -1014,7 +1019,7 @@
                         console.log('Message Delivery Details:', summary.details);
                         
                         // Check if current user received it
-                        const myDelivery = summary.details?.find((d: any) => d.user_id === this.userData.id);
+                        const myDelivery = summary.details?.find((d) => d.user_id === this.userData.id);
                         if (myDelivery) {
                             if (myDelivery.socket_delivery === 'success') {
                                 message += `\n✅ You should receive this message!`;
@@ -1193,7 +1198,7 @@
                         debugInfo += `  • Status: ${response.user.is_online ? '🟢 ONLINE' : '🔴 OFFLINE'}\n\n`;
                         
                         debugInfo += `📬 SUBSCRIPTIONS (${response.subscriptions.length}):\n`;
-                        response.subscriptions.forEach((sub: any) => {
+                        response.subscriptions.forEach((sub) => {
                             debugInfo += `  • ${sub.channel_name || sub.topic_name} (${sub.channel_id || 'no channel'})\n`;
                         });
                         

@@ -47,12 +47,11 @@ export default async function routes(fastify: FastifyInstance) {
       const result = await withTxn(async (client) => {
         // Ensure admin user exists with verified status
         const ensureUserQuery = `
-          INSERT INTO users (phone, tenant_id, phone_verified_at, is_verified, dev_id)
-          VALUES ($1, $2, NOW(), true, $3)
+          INSERT INTO users (phone, tenant_id, phone_verified_at, dev_id)
+          VALUES ($1, $2, NOW(), $3)
           ON CONFLICT (phone, tenant_id) 
           DO UPDATE SET 
             phone_verified_at = COALESCE(users.phone_verified_at, NOW()),
-            is_verified = true,
             dev_id = COALESCE(users.dev_id, $3)
           RETURNING *
         `;
@@ -103,8 +102,8 @@ export default async function routes(fastify: FastifyInstance) {
         
         if (sandboxTenant.rowCount > 0) {
           await client.query(
-            `INSERT INTO users (phone, tenant_id, phone_verified_at, is_verified, dev_id)
-             VALUES ($1, $2, NOW(), true, $3)
+            `INSERT INTO users (phone, tenant_id, phone_verified_at, dev_id)
+             VALUES ($1, $2, NOW(), $3)
              ON CONFLICT (phone, tenant_id) DO NOTHING`,
             [ADMIN_PHONE, sandboxTenant.rows[0].id, user.dev_id]
           );
