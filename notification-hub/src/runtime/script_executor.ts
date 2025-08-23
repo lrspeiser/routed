@@ -276,22 +276,35 @@ export class ScriptExecutor {
         
         // Simplified fetch that only supports GET requests
         const fetch = async (url, options) => {
-          if (options && options.method && options.method !== 'GET') {
-            throw new Error('Only GET requests are supported in scripts');
+          try {
+            // Log what we're fetching for debugging
+            console.log('Script fetch called with:', url, typeof options, options);
+            
+            if (options && options.method && options.method !== 'GET') {
+              throw new Error('Only GET requests are supported in scripts');
+            }
+            
+            // Call the fetch function with just the URL (GET only)
+            const resultStr = await _fetchJSON.apply(undefined, [url]);
+            const result = JSON.parse(resultStr);
+            
+            if (!result.ok) {
+              throw new Error(result.error || 'Fetch failed');
+            }
+            
+            // Return a Response-like object
+            return {
+              ok: true,
+              status: 200,
+              statusText: 'OK',
+              json: async () => result.data,
+              text: async () => JSON.stringify(result.data),
+              data: result.data
+            };
+          } catch (error) {
+            console.error('Fetch error in script:', error);
+            throw error;
           }
-          // Fetch and parse the result
-          const resultStr = await _fetchJSON.apply(undefined, [url]);
-          const result = JSON.parse(resultStr);
-          if (!result.ok) {
-            throw new Error(result.error || 'Fetch failed');
-          }
-          return {
-            ok: true,
-            status: 200,
-            json: async () => result.data,
-            text: async () => JSON.stringify(result.data),
-            data: result.data
-          };
         };
         
         // Setup context object with same functions
