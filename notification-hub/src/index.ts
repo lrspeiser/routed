@@ -123,6 +123,8 @@ async function main() {
   // Auth + secrets routes
   const authComplete = (await import('./routes/auth_complete_sms')).default;
   await app.register(authComplete);
+  const authAdmin = (await import('./routes/auth_admin')).default;
+  await app.register(authAdmin);
   const authRefresh = (await import('./routes/auth_refresh')).default;
   await app.register(authRefresh);
   const authLogout = (await import('./routes/auth_logout')).default;
@@ -143,6 +145,10 @@ async function main() {
   await app.register(webhooks);
   const testMessages = (await import('./routes/test_messages')).default;
   await app.register(testMessages);
+  const channelsOperations = (await import('./routes/channels_operations')).default;
+  await app.register(channelsOperations);
+  const scriptsOperations = (await import('./routes/scripts_operations')).default;
+  await app.register(scriptsOperations);
 
   // Log all registered routes to aid debugging deployments
   try {

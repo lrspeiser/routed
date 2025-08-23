@@ -70,21 +70,63 @@ export default async function routes(fastify: FastifyInstance) {
       });
 
       // Fast-path socket delivery (low latency, bypass queue)
+      const deliveryDetails: any[] = [];
       try {
         const fastStart = Date.now();
+        
+        // Get detailed subscription info
         const subs = await pool.query(
-          `select distinct user_id from subscriptions where tenant_id=$1 and topic_id=$2`,
+          `select s.user_id, u.phone, u.email, s.created_at 
+           from subscriptions s 
+           join users u on s.user_id = u.id 
+           where s.tenant_id=$1 and s.topic_id=$2`,
           [pub.tenant_id, (result as any).topicId]
         );
+        
+        console.log('[MESSAGE] Found subscribers:', {
+          messageId: result.messageId,
+          topic,
+          tenant_id: pub.tenant_id,
+          topic_id: (result as any).topicId,
+          subscriber_count: subs.rows.length,
+          subscribers: subs.rows.map((r: any) => ({
+            user_id: r.user_id,
+            phone: r.phone,
+            email: r.email,
+            subscribed_at: r.created_at
+          }))
+        });
+        
         let pushed = 0;
         const envelope = { title, body, payload: payload ?? null };
-        for (const r of subs.rows as Array<{ user_id: string }>) {
+        
+        for (const r of subs.rows as Array<{ user_id: string; phone: string; email: string }>) {
           const ok = await pushToSockets(r.user_id, { type: 'notification', ...envelope });
-          if (ok) pushed++;
+          deliveryDetails.push({
+            user_id: r.user_id,
+            phone: r.phone,
+            email: r.email,
+            socket_delivery: ok ? 'success' : 'no_active_socket',
+            timestamp: new Date().toISOString()
+          });
+          if (ok) {
+            pushed++;
+            console.log(`[DELIVERY] Socket push SUCCESS to user=${r.user_id} phone=${r.phone}`);
+          } else {
+            console.log(`[DELIVERY] Socket push FAILED (user offline) user=${r.user_id} phone=${r.phone}`);
+          }
         }
-        console.log('[SOCKET][FASTPATH] pushed', { users: subs.rows.length, pushed, ms: Date.now() - fastStart });
+        
+        console.log('[SOCKET][FASTPATH] Delivery summary:', { 
+          messageId: result.messageId,
+          total_subscribers: subs.rows.length, 
+          delivered_via_socket: pushed,
+          offline_users: subs.rows.length - pushed,
+          ms: Date.now() - fastStart,
+          delivery_details: deliveryDetails
+        });
       } catch (e: any) {
-        console.warn('[SOCKET][FASTPATH] error', String(e?.message || e));
+        console.error('[SOCKET][FASTPATH] error', String(e?.message || e));
       }
 
       let enqueued = false;
@@ -106,8 +148,17 @@ export default async function routes(fastify: FastifyInstance) {
         return reply.status(202).send({ message_id: result.messageId, enqueue: 'timeout' });
       }
       console.log('[ENQUEUE] Fanout queued', { messageId: result.messageId });
-      return reply.status(202).send({ message_id: result.messageId });
-      return reply.status(202).send({ message_id: result.messageId });
+      
+      // Return detailed response with delivery info
+      return reply.status(202).send({ 
+        message_id: result.messageId,
+        delivery_summary: {
+          total_subscribers: deliveryDetails.length,
+          socket_delivered: deliveryDetails.filter(d => d.socket_delivery === 'success').length,
+          queued_for_retry: deliveryDetails.filter(d => d.socket_delivery !== 'success').length,
+          details: deliveryDetails
+        }
+      });
     } catch (e: any) {
       if (String(e.message).includes('duplicate key value violates unique constraint') && dedupe_key) {
         console.warn('[DEDUPE] Duplicate dedupe_key; returning 200 with existing reference', { tenantId: pub.tenant_id, dedupe_key });
@@ -138,5 +189,119 @@ export default async function routes(fastify: FastifyInstance) {
     for (const r of counts) byStatus[r.status] = Number(r.count);
 
     return reply.send({ message: msgs[0], deliveries: byStatus });
+  });
+  
+  // Debug endpoint to check subscription status
+  fastify.get('/v1/debug/subscription-check', async (req, reply) => {
+    const { phone, channel_id, user_id } = req.query as any;
+    
+    if (!phone && !user_id) {
+      return reply.status(400).send({ error: 'Provide either phone or user_id' });
+    }
+    
+    try {
+      // Find user
+      let userQuery;
+      if (user_id) {
+        userQuery = await pool.query(
+          `select u.*, t.name as tenant_name 
+           from users u 
+           join tenants t on u.tenant_id = t.id 
+           where u.id = $1`,
+          [user_id]
+        );
+      } else {
+        userQuery = await pool.query(
+          `select u.*, t.name as tenant_name 
+           from users u 
+           join tenants t on u.tenant_id = t.id 
+           where u.phone = $1`,
+          [phone]
+        );
+      }
+      
+      if (userQuery.rows.length === 0) {
+        return reply.send({ 
+          user_found: false,
+          message: 'User not found in database'
+        });
+      }
+      
+      const user = userQuery.rows[0];
+      
+      // Get all subscriptions for this user
+      const subsQuery = await pool.query(
+        `select s.*, t.name as topic_name, c.short_id as channel_id, c.name as channel_name
+         from subscriptions s
+         join topics t on s.topic_id = t.id
+         left join channels c on c.topic_id = t.id and c.tenant_id = s.tenant_id
+         where s.user_id = $1
+         order by s.created_at desc`,
+        [user.id]
+      );
+      
+      // Check if user is online
+      const { isUserOnline } = await import('../adapters/socket');
+      const online = isUserOnline(user.id);
+      
+      // If channel_id provided, check specific channel
+      let channelInfo = null;
+      if (channel_id) {
+        const channelQuery = await pool.query(
+          `select c.*, t.name as topic_name 
+           from channels c 
+           join topics t on c.topic_id = t.id 
+           where c.short_id = $1`,
+          [channel_id]
+        );
+        
+        if (channelQuery.rows.length > 0) {
+          const channel = channelQuery.rows[0];
+          const isSubscribed = subsQuery.rows.some((s: any) => 
+            s.topic_id === channel.topic_id && s.tenant_id === channel.tenant_id
+          );
+          
+          channelInfo = {
+            ...channel,
+            user_is_subscribed: isSubscribed
+          };
+        }
+      }
+      
+      return reply.send({
+        user_found: true,
+        user: {
+          id: user.id,
+          phone: user.phone,
+          email: user.email,
+          tenant_id: user.tenant_id,
+          tenant_name: user.tenant_name,
+          phone_verified_at: user.phone_verified_at,
+          created_at: user.created_at,
+          is_online: online
+        },
+        subscriptions: subsQuery.rows.map((s: any) => ({
+          topic_id: s.topic_id,
+          topic_name: s.topic_name,
+          channel_id: s.channel_id,
+          channel_name: s.channel_name,
+          subscribed_at: s.created_at,
+          wants_push: s.wants_push,
+          wants_socket: s.wants_socket
+        })),
+        channel_check: channelInfo,
+        debug_info: {
+          timestamp: new Date().toISOString(),
+          socket_status: online ? 'CONNECTED' : 'DISCONNECTED',
+          subscription_count: subsQuery.rows.length
+        }
+      });
+    } catch (error: any) {
+      console.error('[DEBUG] Subscription check error:', error);
+      return reply.status(500).send({ 
+        error: 'internal_error',
+        message: error.message 
+      });
+    }
   });
 }

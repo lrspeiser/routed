@@ -27,18 +27,49 @@ export function removeSocket(userId: string, ws: WebSocket) {
 export async function pushToSockets(userId: string, payload: any): Promise<boolean> {
   const arr = sockets.get(userId) ?? [];
   let sent = 0;
+  const deliveryAttempts: any[] = [];
+  
+  console.log(`[SOCKET] Attempting push to user=${userId}, found ${arr.length} socket(s)`);
+  
   for (const s of arr) {
+    const attempt: any = {
+      userId,
+      socketState: s.ws.readyState,
+      socketOpen: s.ws.readyState === s.ws.OPEN,
+      updatedAt: s.updatedAt,
+      age: Date.now() - s.updatedAt
+    };
+    
     if (s.ws.readyState === s.ws.OPEN) {
       try {
-        s.ws.send(JSON.stringify(payload));
+        const message = JSON.stringify(payload);
+        s.ws.send(message);
         sent++;
-      } catch (e) {
-        console.warn('[SOCKET] send failed; will drop socket:', e);
+        attempt.result = 'success';
+        attempt.messageSize = message.length;
+        console.log(`[SOCKET] ✓ Message sent to user=${userId}, size=${message.length} bytes`);
+      } catch (e: any) {
+        attempt.result = 'error';
+        attempt.error = e.message;
+        console.warn(`[SOCKET] ✗ Send failed for user=${userId}:`, e.message);
         try { s.ws.terminate(); } catch {}
       }
+    } else {
+      attempt.result = 'socket_not_open';
+      console.log(`[SOCKET] Socket not open for user=${userId}, state=${s.ws.readyState}`);
     }
+    
+    deliveryAttempts.push(attempt);
   }
-  if (sent > 0) console.log(`[SOCKET] pushed to user=${userId} sockets=${sent}`);
+  
+  console.log(`[SOCKET] Push summary for user=${userId}:`, {
+    total_sockets: arr.length,
+    successful_sends: sent,
+    payload_type: payload.type,
+    payload_title: payload.title,
+    attempts: deliveryAttempts
+  });
+  
   return sent > 0;
 }
 

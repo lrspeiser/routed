@@ -1,0 +1,1254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notification Hub - Channel Manager</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .app-container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            border-radius: 12px;
+            padding: 20px 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            color: #333;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .user-badge {
+            background: #f0f2f5;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            color: #666;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            gap: 20px;
+        }
+
+        .sidebar {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            max-height: calc(100vh - 140px);
+            overflow-y: auto;
+        }
+
+        .content-area {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            min-height: 600px;
+        }
+
+        .section-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: #333;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #f0f2f5;
+        }
+
+        .channel-list {
+            margin-top: 15px;
+        }
+
+        .channel-item {
+            padding: 15px;
+            border: 1px solid #e1e8ed;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+        }
+
+        .channel-item:hover {
+            background: #f8f9fa;
+            border-color: #667eea;
+        }
+
+        .channel-item.active {
+            background: linear-gradient(135deg, #667eea10 0%, #764ba210 100%);
+            border-color: #667eea;
+        }
+
+        .channel-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .channel-badge {
+            background: #667eea;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 500;
+        }
+
+        .channel-info {
+            font-size: 12px;
+            color: #666;
+            display: flex;
+            gap: 15px;
+            margin-top: 5px;
+        }
+
+        .channel-stat {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: #e1e8ed;
+            color: #333;
+        }
+
+        .btn-secondary:hover {
+            background: #d1d8dd;
+            box-shadow: none;
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+        }
+
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #555;
+            font-size: 14px;
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e1e8ed;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        .members-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .member-card {
+            padding: 15px;
+            border: 1px solid #e1e8ed;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .member-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .member-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+        }
+
+        .member-details {
+            flex: 1;
+        }
+
+        .member-phone {
+            font-weight: 500;
+            color: #333;
+            font-size: 14px;
+        }
+
+        .member-status {
+            font-size: 12px;
+            color: #666;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            margin-top: 2px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #ccc;
+        }
+
+        .status-dot.online {
+            background: #4ade80;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 25px;
+            border-bottom: 2px solid #e1e8ed;
+        }
+
+        .tab {
+            padding: 12px 20px;
+            background: none;
+            border: none;
+            color: #666;
+            font-weight: 500;
+            cursor: pointer;
+            position: relative;
+            transition: color 0.3s;
+        }
+
+        .tab:hover {
+            color: #333;
+        }
+
+        .tab.active {
+            color: #667eea;
+        }
+
+        .tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: #667eea;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #999;
+        }
+
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 20px;
+            opacity: 0.5;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.show {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            margin-bottom: 20px;
+        }
+
+        .modal-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .message-preview {
+            background: #f8f9fa;
+            border: 1px solid #e1e8ed;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+
+        .message-preview-title {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 8px;
+        }
+
+        .message-preview-body {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
+            margin-right: 10px;
+        }
+
+        .alert {
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .alert-info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 8px;
+        }
+
+        .icon-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 4px;
+            color: #666;
+            transition: color 0.2s;
+        }
+
+        .icon-btn:hover {
+            color: #667eea;
+        }
+
+        .icon-btn.danger:hover {
+            color: #ff6b6b;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+            
+            .sidebar {
+                max-height: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <div class="header">
+            <h1>🔔 Notification Hub</h1>
+            <div class="user-info">
+                <div class="user-badge">📱 <span id="userPhone">Loading...</span></div>
+                <div class="user-badge">👤 <span id="userId">Loading...</span></div>
+                <button class="btn btn-secondary btn-small" onclick="app.logout()">Logout</button>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Sidebar -->
+            <div class="sidebar">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h3 class="section-title" style="margin: 0; border: none; padding: 0;">My Channels</h3>
+                    <button class="btn btn-small" onclick="app.showCreateChannelModal()">+ New</button>
+                </div>
+                
+                <div id="channelList" class="channel-list">
+                    <div class="empty-state">
+                        <div>Loading channels...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Content Area -->
+            <div class="content-area">
+                <div id="welcomeView">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📢</div>
+                        <h2>Welcome to Notification Hub</h2>
+                        <p style="margin-top: 10px;">Select a channel from the sidebar or create a new one to get started</p>
+                    </div>
+                </div>
+
+                <div id="channelView" style="display: none;">
+                    <!-- Channel Header -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;">
+                        <div>
+                            <h2 id="channelName" style="margin: 0; color: #333;">Channel Name</h2>
+                            <div id="channelMeta" style="margin-top: 8px; color: #666; font-size: 14px;"></div>
+                        </div>
+                        <div class="btn-group">
+                            <button class="btn btn-secondary" onclick="app.checkSubscriptionStatus()">🔍 Debug</button>
+                            <button class="btn btn-secondary" onclick="app.editChannel()">⚙️ Settings</button>
+                            <button class="btn" onclick="app.showSendMessageModal()">📤 Send Message</button>
+                        </div>
+                    </div>
+
+                    <!-- Tabs -->
+                    <div class="tabs">
+                        <button class="tab active" data-tab="members" onclick="app.switchTab('members')">Members</button>
+                        <button class="tab" data-tab="messages" onclick="app.switchTab('messages')">Recent Messages</button>
+                        <button class="tab" data-tab="settings" onclick="app.switchTab('settings')">Settings</button>
+                    </div>
+
+                    <!-- Members Tab -->
+                    <div id="membersTab" class="tab-content active">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <h3 class="section-title" style="margin: 0; border: none; padding: 0;">Channel Members</h3>
+                            <button class="btn btn-small" onclick="app.showAddMemberModal()">+ Add Member</button>
+                        </div>
+                        <div id="membersList" class="members-grid">
+                            <!-- Members will be loaded here -->
+                        </div>
+                    </div>
+
+                    <!-- Messages Tab -->
+                    <div id="messagesTab" class="tab-content">
+                        <h3 class="section-title">Recent Messages</h3>
+                        <div id="messagesList">
+                            <div class="empty-state">
+                                <p>No messages sent yet</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Settings Tab -->
+                    <div id="settingsTab" class="tab-content">
+                        <h3 class="section-title">Channel Settings</h3>
+                        <form id="channelSettingsForm">
+                            <div class="form-group">
+                                <label>Channel Name</label>
+                                <input type="text" id="settingsName" placeholder="Channel name">
+                            </div>
+                            <div class="form-group">
+                                <label>Description</label>
+                                <textarea id="settingsDescription" placeholder="Channel description"></textarea>
+                            </div>
+                            <div class="checkbox-group">
+                                <input type="checkbox" id="settingsPublic">
+                                <label for="settingsPublic">Make this channel public</label>
+                            </div>
+                            <div class="btn-group">
+                                <button type="submit" class="btn">Save Changes</button>
+                                <button type="button" class="btn btn-danger" onclick="app.deleteChannel()">Delete Channel</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <!-- Create Channel Modal -->
+    <div id="createChannelModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Create New Channel</h3>
+            </div>
+            <form id="createChannelForm">
+                <div class="form-group">
+                    <label>Channel Name</label>
+                    <input type="text" id="newChannelName" placeholder="e.g., Team Updates" required>
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea id="newChannelDescription" placeholder="What's this channel about?"></textarea>
+                </div>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="newChannelPublic">
+                    <label for="newChannelPublic">Make this channel public</label>
+                </div>
+                <div class="btn-group">
+                    <button type="submit" class="btn">Create Channel</button>
+                    <button type="button" class="btn btn-secondary" onclick="app.hideModal('createChannelModal')">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Send Message Modal -->
+    <div id="sendMessageModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Send Message</h3>
+            </div>
+            <form id="sendMessageForm">
+                <div class="form-group">
+                    <label>Message Title</label>
+                    <input type="text" id="messageTitle" placeholder="Notification title" required>
+                </div>
+                <div class="form-group">
+                    <label>Message Body</label>
+                    <textarea id="messageBody" placeholder="Write your message here..." required></textarea>
+                </div>
+                <div class="message-preview">
+                    <div class="message-preview-title">Preview</div>
+                    <div class="message-preview-body" id="messagePreview">Your message will appear here...</div>
+                </div>
+                <div class="btn-group">
+                    <button type="submit" class="btn">Send Message</button>
+                    <button type="button" class="btn btn-secondary" onclick="app.hideModal('sendMessageModal')">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add Member Modal -->
+    <div id="addMemberModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Add Member</h3>
+            </div>
+            <form id="addMemberForm">
+                <div class="form-group">
+                    <label>Phone Number</label>
+                    <input type="tel" id="memberPhone" placeholder="+1 (555) 123-4567" required>
+                </div>
+                <div class="alert alert-info">
+                    The user will be notified that they've been added to this channel.
+                </div>
+                <div class="btn-group">
+                    <button type="submit" class="btn">Add Member</button>
+                    <button type="button" class="btn btn-secondary" onclick="app.hideModal('addMemberModal')">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        class NotificationHubApp {
+            constructor() {
+                this.baseUrl = window.location.hostname === 'localhost' 
+                    ? 'http://localhost:3030' 
+                    : 'https://routed.onrender.com';
+                
+                this.userData = JSON.parse(localStorage.getItem('userData') || '{}');
+                this.sandboxData = JSON.parse(localStorage.getItem('sandboxData') || '{}');
+                this.token = localStorage.getItem('authToken');
+                
+                this.channels = [];
+                this.currentChannel = null;
+                this.currentMembers = [];
+                
+                this.init();
+            }
+
+            async init() {
+                if (!this.token || !this.userData.id) {
+                    window.location.href = 'renderer_updated.html';
+                    return;
+                }
+                
+                // Display user info
+                document.getElementById('userPhone').textContent = this.userData.phone || 'Not available';
+                document.getElementById('userId').textContent = this.userData.id?.substring(0, 8) + '...';
+                
+                // Load channels
+                await this.loadChannels();
+                
+                // Setup event listeners
+                this.setupEventListeners();
+            }
+
+            setupEventListeners() {
+                // Create channel form
+                document.getElementById('createChannelForm').addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    await this.createChannel();
+                });
+                
+                // Send message form
+                document.getElementById('sendMessageForm').addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    await this.sendMessage();
+                });
+                
+                // Add member form
+                document.getElementById('addMemberForm').addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    await this.addMember();
+                });
+                
+                // Channel settings form
+                document.getElementById('channelSettingsForm').addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    await this.saveChannelSettings();
+                });
+                
+                // Message preview
+                document.getElementById('messageTitle').addEventListener('input', () => this.updateMessagePreview());
+                document.getElementById('messageBody').addEventListener('input', () => this.updateMessagePreview());
+            }
+
+            async apiCall(endpoint, method = 'GET', body = null, useApiKey = false) {
+                const url = `${this.baseUrl}${endpoint}`;
+                const options = {
+                    method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                };
+
+                if (useApiKey && this.sandboxData.apiKey) {
+                    options.headers['Authorization'] = `Bearer ${this.sandboxData.apiKey}`;
+                } else if (this.token) {
+                    options.headers['Authorization'] = `Bearer ${this.token}`;
+                }
+
+                if (body) {
+                    options.body = JSON.stringify(body);
+                }
+
+                try {
+                    const response = await fetch(url, options);
+                    const data = await response.json();
+                    
+                    if (!response.ok) {
+                        throw new Error(data.message || data.error || `API call failed: ${response.status}`);
+                    }
+                    
+                    return data;
+                } catch (error) {
+                    console.error(`API Error: ${error.message}`, { endpoint });
+                    throw error;
+                }
+            }
+
+            async loadChannels() {
+                try {
+                    const response = await this.apiCall(`/v1/users/${this.userData.id}/channels`, 'GET');
+                    this.channels = response.channels || [];
+                    this.renderChannels();
+                } catch (error) {
+                    console.error('Failed to load channels:', error);
+                    this.showAlert('Failed to load channels', 'error');
+                }
+            }
+
+            renderChannels() {
+                const channelList = document.getElementById('channelList');
+                
+                if (this.channels.length === 0) {
+                    channelList.innerHTML = `
+                        <div class="empty-state">
+                            <div>No channels yet</div>
+                            <button class="btn btn-small" onclick="app.showCreateChannelModal()" style="margin-top: 10px;">Create First Channel</button>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                channelList.innerHTML = this.channels.map(channel => `
+                    <div class="channel-item ${this.currentChannel?.short_id === channel.short_id ? 'active' : ''}" 
+                         onclick="app.selectChannel('${channel.short_id}')">
+                        <div class="channel-name">
+                            ${channel.name}
+                            ${channel.allow_public ? '<span class="channel-badge">Public</span>' : ''}
+                        </div>
+                        <div class="channel-info">
+                            <div class="channel-stat">📍 ${channel.short_id}</div>
+                            <div class="channel-stat">👥 <span id="members-${channel.short_id}">-</span></div>
+                        </div>
+                    </div>
+                `).join('');
+                
+                // Load member counts
+                this.channels.forEach(channel => {
+                    this.loadMemberCount(channel.short_id);
+                });
+            }
+
+            async loadMemberCount(shortId) {
+                try {
+                    const response = await this.apiCall(`/v1/channels/${shortId}/users`, 'GET', null, true);
+                    const count = response.users?.length || 0;
+                    const element = document.getElementById(`members-${shortId}`);
+                    if (element) {
+                        element.textContent = count;
+                    }
+                } catch (error) {
+                    console.error(`Failed to load member count for ${shortId}:`, error);
+                }
+            }
+
+            async selectChannel(shortId) {
+                this.currentChannel = this.channels.find(c => c.short_id === shortId);
+                if (!this.currentChannel) return;
+                
+                // Update UI
+                document.getElementById('welcomeView').style.display = 'none';
+                document.getElementById('channelView').style.display = 'block';
+                
+                // Update channel info
+                document.getElementById('channelName').textContent = this.currentChannel.name;
+                document.getElementById('channelMeta').innerHTML = `
+                    ID: ${this.currentChannel.short_id} | 
+                    Type: ${this.currentChannel.allow_public ? 'Public' : 'Private'} | 
+                    Topic: ${this.currentChannel.topic || 'runs.finished'}
+                `;
+                
+                // Update active state in sidebar
+                document.querySelectorAll('.channel-item').forEach(item => {
+                    item.classList.remove('active');
+                });
+                event.currentTarget.classList.add('active');
+                
+                // Load channel data
+                await this.loadChannelMembers();
+                
+                // Update settings form
+                document.getElementById('settingsName').value = this.currentChannel.name;
+                document.getElementById('settingsDescription').value = this.currentChannel.description || '';
+                document.getElementById('settingsPublic').checked = this.currentChannel.allow_public;
+            }
+
+            async loadChannelMembers() {
+                if (!this.currentChannel) return;
+                
+                try {
+                    const response = await this.apiCall(`/v1/channels/${this.currentChannel.short_id}/users`, 'GET', null, true);
+                    this.currentMembers = response.users || [];
+                    this.renderMembers();
+                } catch (error) {
+                    console.error('Failed to load members:', error);
+                    this.showAlert('Failed to load channel members', 'error');
+                }
+            }
+
+            renderMembers() {
+                const membersList = document.getElementById('membersList');
+                
+                if (this.currentMembers.length === 0) {
+                    membersList.innerHTML = `
+                        <div class="empty-state" style="grid-column: 1 / -1;">
+                            <p>No members yet. Add members to start sending notifications.</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                membersList.innerHTML = this.currentMembers.map(member => `
+                    <div class="member-card">
+                        <div class="member-info">
+                            <div class="member-avatar">${this.getInitials(member.phone || member.email)}</div>
+                            <div class="member-details">
+                                <div class="member-phone">${member.phone || member.email || 'Unknown'}</div>
+                                <div class="member-status">
+                                    <span class="status-dot ${member.online ? 'online' : ''}"></span>
+                                    ${member.online ? 'Online' : 'Offline'}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="action-buttons">
+                            <button class="icon-btn danger" onclick="app.removeMember('${member.user_id}')" title="Remove">
+                                ❌
+                            </button>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            getInitials(text) {
+                if (!text) return '?';
+                if (text.includes('@')) {
+                    return text.substring(0, 1).toUpperCase();
+                }
+                // For phone numbers, return last 2 digits
+                const digits = text.replace(/\D/g, '');
+                return digits.slice(-2) || '?';
+            }
+
+            async createChannel() {
+                const name = document.getElementById('newChannelName').value.trim();
+                const description = document.getElementById('newChannelDescription').value.trim();
+                const isPublic = document.getElementById('newChannelPublic').checked;
+                
+                if (!name) return;
+                
+                // Ensure we have API key
+                if (!this.sandboxData.apiKey) {
+                    await this.provisionSandbox();
+                    if (!this.sandboxData.apiKey) {
+                        this.showAlert('Unable to create channel: No API key available', 'error');
+                        return;
+                    }
+                }
+                
+                // Retry logic for transaction errors
+                let retries = 3;
+                let lastError = null;
+                
+                while (retries > 0) {
+                    try {
+                        const response = await this.apiCall('/v1/channels/create', 'POST', {
+                            name,
+                            topic_name: 'runs.finished',
+                            allow_public: isPublic,
+                            description: description || null,
+                            creator_phone: this.userData.phone
+                        }, true);
+                        
+                        this.showAlert(`Channel "${name}" created successfully!`, 'success');
+                        this.hideModal('createChannelModal');
+                        
+                        // Clear form
+                        document.getElementById('newChannelName').value = '';
+                        document.getElementById('newChannelDescription').value = '';
+                        document.getElementById('newChannelPublic').checked = false;
+                        
+                        // Reload channels
+                        await this.loadChannels();
+                        return; // Success, exit the function
+                        
+                    } catch (error) {
+                        lastError = error;
+                        
+                        // Check if this is a transaction error that should be retried
+                        if (error.message && 
+                            (error.message.includes('transaction') || 
+                             error.message.includes('aborted') ||
+                             error.message.includes('Please try again'))) {
+                            
+                            retries--;
+                            if (retries > 0) {
+                                console.log(`Transaction error, retrying... (${retries} attempts left)`);
+                                // Wait a bit before retrying
+                                await new Promise(resolve => setTimeout(resolve, 1000));
+                                continue;
+                            }
+                        }
+                        
+                        // Non-retryable error or out of retries
+                        break;
+                    }
+                }
+                
+                // If we get here, all retries failed
+                this.showAlert(`Failed to create channel: ${lastError?.message || 'Unknown error'}`, 'error');
+            }
+
+            async sendMessage() {
+                if (!this.currentChannel) return;
+                
+                const title = document.getElementById('messageTitle').value.trim();
+                const body = document.getElementById('messageBody').value.trim();
+                
+                if (!title || !body) return;
+                
+                try {
+                    const response = await this.apiCall('/v1/messages', 'POST', {
+                        topic: this.currentChannel.topic || 'runs.finished',
+                        title,
+                        body,
+                        payload: {
+                            channel_id: this.currentChannel.short_id,
+                            sent_at: new Date().toISOString()
+                        }
+                    }, true);
+                    
+                    // Show detailed delivery status
+                    if (response.delivery_summary) {
+                        const summary = response.delivery_summary;
+                        let message = `Message sent!\n`;
+                        message += `✅ Delivered instantly: ${summary.socket_delivered}/${summary.total_subscribers}\n`;
+                        if (summary.queued_for_retry > 0) {
+                            message += `⏳ Queued for offline users: ${summary.queued_for_retry}`;
+                        }
+                        
+                        // Log detailed delivery info to console
+                        console.log('Message Delivery Details:', summary.details);
+                        
+                        // Check if current user received it
+                        const myDelivery = summary.details?.find((d: any) => d.user_id === this.userData.id);
+                        if (myDelivery) {
+                            if (myDelivery.socket_delivery === 'success') {
+                                message += `\n✅ You should receive this message!`;
+                            } else {
+                                message += `\n⚠️ You appear offline - check your connection`;
+                            }
+                        }
+                        
+                        this.showAlert(message, 'success', 8000);
+                    } else {
+                        this.showAlert(`Message sent to ${this.currentMembers.length} members!`, 'success');
+                    }
+                    
+                    this.hideModal('sendMessageModal');
+                    
+                    // Clear form
+                    document.getElementById('messageTitle').value = '';
+                    document.getElementById('messageBody').value = '';
+                    document.getElementById('messagePreview').textContent = 'Your message will appear here...';
+                } catch (error) {
+                    this.showAlert(`Failed to send message: ${error.message}`, 'error');
+                }
+            }
+
+            async addMember() {
+                if (!this.currentChannel) return;
+                
+                const phone = document.getElementById('memberPhone').value.trim();
+                if (!phone) return;
+                
+                try {
+                    // First ensure the user exists in the tenant
+                    await this.apiCall('/v1/dev/users/ensure', 'POST', {
+                        tenant_id: this.sandboxData.tenantId,
+                        phone,
+                        topic: this.currentChannel.topic || 'runs.finished'
+                    });
+                    
+                    this.showAlert(`Member ${phone} added successfully!`, 'success');
+                    this.hideModal('addMemberModal');
+                    
+                    // Clear form
+                    document.getElementById('memberPhone').value = '';
+                    
+                    // Reload members
+                    await this.loadChannelMembers();
+                } catch (error) {
+                    this.showAlert(`Failed to add member: ${error.message}`, 'error');
+                }
+            }
+
+            async removeMember(userId) {
+                if (!confirm('Remove this member from the channel?')) return;
+                
+                // Note: This would need a backend endpoint to unsubscribe a user
+                this.showAlert('Remove member functionality needs backend implementation', 'info');
+            }
+
+            async saveChannelSettings() {
+                // Note: This would need a backend endpoint to update channel settings
+                this.showAlert('Channel settings update needs backend implementation', 'info');
+            }
+
+            async deleteChannel() {
+                if (!confirm('Are you sure you want to delete this channel? This cannot be undone.')) return;
+                
+                // Note: This would need a backend endpoint to delete a channel
+                this.showAlert('Channel deletion needs backend implementation', 'info');
+            }
+
+            async provisionSandbox() {
+                try {
+                    const response = await this.apiCall('/v1/dev/sandbox/provision', 'POST', {});
+                    this.sandboxData = {
+                        tenantId: response.tenantId,
+                        publisherId: response.publisherId,
+                        apiKey: response.apiKey,
+                        topicId: response.topicId
+                    };
+                    localStorage.setItem('sandboxData', JSON.stringify(this.sandboxData));
+                    
+                    // Ensure user exists in tenant
+                    if (this.userData.phone) {
+                        await this.apiCall('/v1/dev/users/ensure', 'POST', {
+                            tenant_id: this.sandboxData.tenantId,
+                            phone: this.userData.phone,
+                            topic: 'runs.finished'
+                        });
+                    }
+                } catch (error) {
+                    console.error('Failed to provision sandbox:', error);
+                }
+            }
+
+            updateMessagePreview() {
+                const title = document.getElementById('messageTitle').value || 'Notification title';
+                const body = document.getElementById('messageBody').value || 'Your message will appear here...';
+                document.getElementById('messagePreview').innerHTML = `
+                    <strong>${title}</strong><br>
+                    ${body}
+                `;
+            }
+
+            switchTab(tabName) {
+                // Update tab buttons
+                document.querySelectorAll('.tab').forEach(tab => {
+                    tab.classList.toggle('active', tab.dataset.tab === tabName);
+                });
+                
+                // Update tab content
+                document.querySelectorAll('.tab-content').forEach(content => {
+                    content.classList.toggle('active', content.id === `${tabName}Tab`);
+                });
+            }
+
+            showCreateChannelModal() {
+                this.showModal('createChannelModal');
+            }
+
+            showSendMessageModal() {
+                this.showModal('sendMessageModal');
+            }
+
+            showAddMemberModal() {
+                this.showModal('addMemberModal');
+            }
+
+            showModal(modalId) {
+                document.getElementById(modalId).classList.add('show');
+            }
+
+            hideModal(modalId) {
+                document.getElementById(modalId).classList.remove('show');
+            }
+
+            showAlert(message, type = 'info', duration = 5000) {
+                // Create alert element
+                const alert = document.createElement('div');
+                alert.className = `alert alert-${type}`;
+                alert.style.position = 'fixed';
+                alert.style.top = '20px';
+                alert.style.right = '20px';
+                alert.style.zIndex = '2000';
+                alert.style.maxWidth = '400px';
+                alert.style.whiteSpace = 'pre-line'; // Allow line breaks
+                alert.textContent = message;
+                
+                document.body.appendChild(alert);
+                
+                // Auto-remove after specified duration
+                setTimeout(() => {
+                    alert.remove();
+                }, duration);
+            }
+
+            editChannel() {
+                this.switchTab('settings');
+            }
+
+            async checkSubscriptionStatus() {
+                if (!this.currentChannel) return;
+                
+                try {
+                    const response = await this.apiCall(
+                        `/v1/debug/subscription-check?phone=${encodeURIComponent(this.userData.phone)}&channel_id=${this.currentChannel.short_id}`,
+                        'GET'
+                    );
+                    
+                    let debugInfo = '🔍 SUBSCRIPTION DEBUG INFO\n\n';
+                    
+                    if (response.user_found) {
+                        debugInfo += `👤 USER INFO:\n`;
+                        debugInfo += `  • ID: ${response.user.id}\n`;
+                        debugInfo += `  • Phone: ${response.user.phone}\n`;
+                        debugInfo += `  • Tenant: ${response.user.tenant_name} (${response.user.tenant_id})\n`;
+                        debugInfo += `  • Status: ${response.user.is_online ? '🟢 ONLINE' : '🔴 OFFLINE'}\n\n`;
+                        
+                        debugInfo += `📬 SUBSCRIPTIONS (${response.subscriptions.length}):\n`;
+                        response.subscriptions.forEach((sub: any) => {
+                            debugInfo += `  • ${sub.channel_name || sub.topic_name} (${sub.channel_id || 'no channel'})\n`;
+                        });
+                        
+                        if (response.channel_check) {
+                            debugInfo += `\n📢 CHANNEL "${response.channel_check.name}":\n`;
+                            debugInfo += `  • ID: ${response.channel_check.short_id}\n`;
+                            debugInfo += `  • Topic: ${response.channel_check.topic_name}\n`;
+                            debugInfo += `  • Subscribed: ${response.channel_check.user_is_subscribed ? '✅ YES' : '❌ NO'}\n`;
+                        }
+                        
+                        debugInfo += `\n⚡ WEBSOCKET: ${response.debug_info.socket_status}`;
+                        
+                        if (!response.user.is_online) {
+                            debugInfo += `\n\n⚠️ You appear OFFLINE - notifications won't be received!`;
+                            debugInfo += `\nTry refreshing the page to reconnect.`;
+                        }
+                    } else {
+                        debugInfo += '❌ User not found in database';
+                    }
+                    
+                    // Show debug info in an alert
+                    const debugAlert = document.createElement('div');
+                    debugAlert.className = 'alert alert-info';
+                    debugAlert.style.position = 'fixed';
+                    debugAlert.style.top = '50%';
+                    debugAlert.style.left = '50%';
+                    debugAlert.style.transform = 'translate(-50%, -50%)';
+                    debugAlert.style.zIndex = '3000';
+                    debugAlert.style.maxWidth = '600px';
+                    debugAlert.style.whiteSpace = 'pre-line';
+                    debugAlert.style.fontFamily = 'monospace';
+                    debugAlert.style.fontSize = '12px';
+                    debugAlert.innerHTML = debugInfo + `<br><br><button onclick="this.parentElement.remove()" class="btn btn-small">Close</button>`;
+                    
+                    document.body.appendChild(debugAlert);
+                    
+                    // Also log to console
+                    console.log('Subscription Debug Info:', response);
+                } catch (error) {
+                    this.showAlert(`Debug check failed: ${error.message}`, 'error');
+                }
+            }
+            
+            logout() {
+                if (confirm('Are you sure you want to logout?')) {
+                    localStorage.removeItem('authToken');
+                    localStorage.removeItem('userData');
+                    localStorage.removeItem('sandboxData');
+                    window.location.href = 'renderer_updated.html';
+                }
+            }
+        }
+
+        // Initialize the app
+        const app = new NotificationHubApp();
+    </script>
+</body>
+</html>

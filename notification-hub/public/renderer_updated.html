@@ -1,0 +1,1312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notification Hub</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            width: 100%;
+            max-width: 500px;
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .section {
+            margin-bottom: 30px;
+        }
+
+        .section-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #555;
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e1e8ed;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            width: 100%;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: #e1e8ed;
+            color: #333;
+            margin-top: 10px;
+        }
+
+        .btn-secondary:hover {
+            background: #d1d8dd;
+            box-shadow: none;
+        }
+
+        .status {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .channels-list {
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #e1e8ed;
+            border-radius: 8px;
+            padding: 10px;
+        }
+
+        .channel-item {
+            padding: 12px;
+            border: 1px solid #e1e8ed;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .channel-item:hover {
+            background: #f8f9fa;
+        }
+
+        .channel-item.selected {
+            background: linear-gradient(135deg, #667eea20 0%, #764ba220 100%);
+            border-color: #667eea;
+        }
+
+        .channel-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .channel-info {
+            font-size: 12px;
+            color: #666;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #e1e8ed;
+        }
+
+        .tab {
+            padding: 12px 20px;
+            background: none;
+            border: none;
+            color: #666;
+            font-weight: 500;
+            cursor: pointer;
+            position: relative;
+            transition: color 0.3s;
+        }
+
+        .tab:hover {
+            color: #333;
+        }
+
+        .tab.active {
+            color: #667eea;
+        }
+
+        .tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: #667eea;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .dev-info {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+
+        .dev-info-item {
+            margin-bottom: 5px;
+        }
+
+        .script-item {
+            padding: 15px;
+            border: 1px solid #e1e8ed;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+
+        .script-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 8px;
+        }
+
+        .script-info {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 10px;
+        }
+
+        .script-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .script-btn {
+            padding: 8px 16px;
+            font-size: 12px;
+            flex: 1;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
+            margin-right: 10px;
+        }
+        
+        .debug-console {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 200px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 11px;
+            padding: 10px;
+            overflow-y: auto;
+            border-top: 2px solid #667eea;
+            transform: translateY(100%);
+            transition: transform 0.3s;
+            z-index: 1000;
+        }
+        
+        .debug-console.open {
+            transform: translateY(0);
+        }
+        
+        .debug-toggle {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: #667eea;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-size: 20px;
+            z-index: 1001;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+        
+        .debug-toggle:hover {
+            background: #764ba2;
+        }
+        
+        .debug-line {
+            margin-bottom: 4px;
+            padding: 2px 0;
+            border-bottom: 1px solid #2d2d2d;
+        }
+        
+        .debug-time {
+            color: #858585;
+            margin-right: 10px;
+        }
+        
+        .debug-level-info {
+            color: #4ec9b0;
+        }
+        
+        .debug-level-error {
+            color: #f48771;
+        }
+        
+        .debug-level-success {
+            color: #6a9955;
+        }
+        
+        .debug-level-warn {
+            color: #dcdcaa;
+        }
+        
+        .debug-clear {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #333;
+            color: #ccc;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+        }
+        
+        .debug-clear:hover {
+            background: #444;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔔 Notification Hub</h1>
+            <p>Manage your channels and send notifications</p>
+        </div>
+
+        <div class="content">
+            <!-- Status Messages -->
+            <div id="status" class="status hidden"></div>
+
+            <!-- Authentication Section -->
+            <div id="authSection" class="section">
+                <h2 class="section-title">📱 Phone Verification</h2>
+                <div id="phoneStep">
+                    <div class="form-group">
+                        <label for="countrySelect">Country</label>
+                        <select id="countrySelect">
+                            <option value="+1" selected>🇺🇸 United States (+1)</option>
+                            <option value="+44">🇬🇧 United Kingdom (+44)</option>
+                            <option value="+33">🇫🇷 France (+33)</option>
+                            <option value="+49">🇩🇪 Germany (+49)</option>
+                            <option value="+39">🇮🇹 Italy (+39)</option>
+                            <option value="+34">🇪🇸 Spain (+34)</option>
+                            <option value="+31">🇳🇱 Netherlands (+31)</option>
+                            <option value="+46">🇸🇪 Sweden (+46)</option>
+                            <option value="+47">🇳🇴 Norway (+47)</option>
+                            <option value="+45">🇩🇰 Denmark (+45)</option>
+                            <option value="+358">🇫🇮 Finland (+358)</option>
+                            <option value="+48">🇵🇱 Poland (+48)</option>
+                            <option value="+41">🇨🇭 Switzerland (+41)</option>
+                            <option value="+43">🇦🇹 Austria (+43)</option>
+                            <option value="+32">🇧🇪 Belgium (+32)</option>
+                            <option value="+353">🇮🇪 Ireland (+353)</option>
+                            <option value="+351">🇵🇹 Portugal (+351)</option>
+                            <option value="+30">🇬🇷 Greece (+30)</option>
+                            <option value="+90">🇹🇷 Turkey (+90)</option>
+                            <option value="+7">🇷🇺 Russia (+7)</option>
+                            <option value="+380">🇺🇦 Ukraine (+380)</option>
+                            <option value="+86">🇨🇳 China (+86)</option>
+                            <option value="+81">🇯🇵 Japan (+81)</option>
+                            <option value="+82">🇰🇷 South Korea (+82)</option>
+                            <option value="+91">🇮🇳 India (+91)</option>
+                            <option value="+62">🇮🇩 Indonesia (+62)</option>
+                            <option value="+60">🇲🇾 Malaysia (+60)</option>
+                            <option value="+65">🇸🇬 Singapore (+65)</option>
+                            <option value="+66">🇹🇭 Thailand (+66)</option>
+                            <option value="+84">🇻🇳 Vietnam (+84)</option>
+                            <option value="+63">🇵🇭 Philippines (+63)</option>
+                            <option value="+61">🇦🇺 Australia (+61)</option>
+                            <option value="+64">🇳🇿 New Zealand (+64)</option>
+                            <option value="+27">🇿🇦 South Africa (+27)</option>
+                            <option value="+234">🇳🇬 Nigeria (+234)</option>
+                            <option value="+254">🇰🇪 Kenya (+254)</option>
+                            <option value="+20">🇪🇬 Egypt (+20)</option>
+                            <option value="+212">🇲🇦 Morocco (+212)</option>
+                            <option value="+216">🇹🇳 Tunisia (+216)</option>
+                            <option value="+213">🇩🇿 Algeria (+213)</option>
+                            <option value="+966">🇸🇦 Saudi Arabia (+966)</option>
+                            <option value="+971">🇦🇪 UAE (+971)</option>
+                            <option value="+972">🇮🇱 Israel (+972)</option>
+                            <option value="+98">🇮🇷 Iran (+98)</option>
+                            <option value="+92">🇵🇰 Pakistan (+92)</option>
+                            <option value="+880">🇧🇩 Bangladesh (+880)</option>
+                            <option value="+52">🇲🇽 Mexico (+52)</option>
+                            <option value="+55">🇧🇷 Brazil (+55)</option>
+                            <option value="+54">🇦🇷 Argentina (+54)</option>
+                            <option value="+56">🇨🇱 Chile (+56)</option>
+                            <option value="+57">🇨🇴 Colombia (+57)</option>
+                            <option value="+58">🇻🇪 Venezuela (+58)</option>
+                            <option value="+51">🇵🇪 Peru (+51)</option>
+                            <option value="+1-242">🇧🇸 Bahamas (+1-242)</option>
+                            <option value="+1-246">🇧🇧 Barbados (+1-246)</option>
+                            <option value="+1-264">🇦🇮 Anguilla (+1-264)</option>
+                            <option value="+1-268">🇦🇬 Antigua (+1-268)</option>
+                            <option value="+1-284">🇻🇬 British Virgin Islands (+1-284)</option>
+                            <option value="+1-340">🇻🇮 US Virgin Islands (+1-340)</option>
+                            <option value="+1-345">🇰🇾 Cayman Islands (+1-345)</option>
+                            <option value="+1-441">🇧🇲 Bermuda (+1-441)</option>
+                            <option value="+1-473">🇬🇩 Grenada (+1-473)</option>
+                            <option value="+1-649">🇹🇨 Turks and Caicos (+1-649)</option>
+                            <option value="+1-664">🇲🇸 Montserrat (+1-664)</option>
+                            <option value="+1-670">🇲🇵 Northern Mariana Islands (+1-670)</option>
+                            <option value="+1-671">🇬🇺 Guam (+1-671)</option>
+                            <option value="+1-684">🇦🇸 American Samoa (+1-684)</option>
+                            <option value="+1-721">🇸🇽 Sint Maarten (+1-721)</option>
+                            <option value="+1-758">🇱🇨 Saint Lucia (+1-758)</option>
+                            <option value="+1-767">🇩🇲 Dominica (+1-767)</option>
+                            <option value="+1-784">🇻🇨 Saint Vincent (+1-784)</option>
+                            <option value="+1-787">🇵🇷 Puerto Rico (+1-787)</option>
+                            <option value="+1-809">🇩🇴 Dominican Republic (+1-809)</option>
+                            <option value="+1-868">🇹🇹 Trinidad and Tobago (+1-868)</option>
+                            <option value="+1-869">🇰🇳 Saint Kitts and Nevis (+1-869)</option>
+                            <option value="+1-876">🇯🇲 Jamaica (+1-876)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="phoneInput">Phone Number</label>
+                        <input type="tel" id="phoneInput" placeholder="(650) 207-9445" />
+                    </div>
+                    <button id="sendCodeBtn" class="btn">Send Verification Code</button>
+                </div>
+                <div id="codeStep" class="hidden">
+                    <div class="form-group">
+                        <label for="codeInput">Verification Code</label>
+                        <input type="text" id="codeInput" placeholder="Enter 6-digit code" maxlength="6" />
+                    </div>
+                    <button id="verifyCodeBtn" class="btn">Verify Code</button>
+                    <button id="resendCodeBtn" class="btn btn-secondary">Resend Code</button>
+                </div>
+            </div>
+
+            <!-- Main App Section (Hidden until authenticated) -->
+            <div id="appSection" class="hidden">
+                <!-- Developer Info -->
+                <div class="dev-info">
+                    <div class="dev-info-item">📱 Phone: <span id="userPhone"></span></div>
+                    <div class="dev-info-item">🔑 Dev ID: <span id="devId"></span></div>
+                    <div class="dev-info-item">👤 User ID: <span id="userId"></span></div>
+                </div>
+
+                <!-- Tabs -->
+                <div class="tabs">
+                    <button class="tab active" data-tab="channels">Channels</button>
+                    <button class="tab" data-tab="messages">Messages</button>
+                    <button class="tab" data-tab="scripts">Scripts</button>
+                </div>
+
+                <!-- Channels Tab -->
+                <div id="channelsTab" class="tab-content active">
+                    <div class="section">
+                        <h3 class="section-title">My Channels</h3>
+                        <div id="channelsList" class="channels-list">
+                            <p style="color: #666; text-align: center;">Loading channels...</p>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <h3 class="section-title">Create New Channel</h3>
+                        <div class="form-group">
+                            <label for="channelName">Channel Name</label>
+                            <input type="text" id="channelName" placeholder="My Awesome Channel" />
+                        </div>
+                        <div class="form-group">
+                            <label for="channelDesc">Description</label>
+                            <textarea id="channelDesc" placeholder="What's this channel about?"></textarea>
+                        </div>
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="channelPublic" />
+                            <label for="channelPublic">Make this channel public</label>
+                        </div>
+                        <button id="createChannelBtn" class="btn">Create Channel</button>
+                    </div>
+
+                    <div class="section">
+                        <h3 class="section-title">Join Public Channel</h3>
+                        <div class="form-group">
+                            <label for="joinChannelId">Channel ID</label>
+                            <input type="text" id="joinChannelId" placeholder="abc123" />
+                        </div>
+                        <button id="joinChannelBtn" class="btn">Join Channel</button>
+                    </div>
+                </div>
+
+                <!-- Messages Tab -->
+                <div id="messagesTab" class="tab-content">
+                    <div class="section">
+                        <h3 class="section-title">Send Message</h3>
+                        <div class="form-group">
+                            <label for="messageChannel">Select Channel</label>
+                            <select id="messageChannel">
+                                <option value="">Select a channel...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="messageText">Message</label>
+                            <textarea id="messageText" placeholder="Enter your message..."></textarea>
+                        </div>
+                        <button id="sendMessageBtn" class="btn">Send Message</button>
+                    </div>
+                </div>
+
+                <!-- Scripts Tab -->
+                <div id="scriptsTab" class="tab-content">
+                    <div class="section">
+                        <h3 class="section-title">Channel Scripts</h3>
+                        <div class="form-group">
+                            <label for="scriptChannel">Select Channel</label>
+                            <select id="scriptChannel">
+                                <option value="">Select a channel...</option>
+                            </select>
+                        </div>
+                        <div id="scriptsList"></div>
+                    </div>
+
+                    <div class="section">
+                        <h3 class="section-title">Create New Script</h3>
+                        <div class="form-group">
+                            <label for="scriptPrompt">What should this script do?</label>
+                            <textarea id="scriptPrompt" placeholder="Example: Send weather updates every morning at 8am with temperature and conditions"></textarea>
+                        </div>
+                        <button id="createScriptBtn" class="btn">Create Script</button>
+                    </div>
+                </div>
+
+                <!-- Logout -->
+                <div class="section">
+                    <button id="logoutBtn" class="btn btn-secondary">Logout</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Debug Console -->
+    <button class="debug-toggle" onclick="app.toggleDebug()">🐛</button>
+    <div id="debugConsole" class="debug-console">
+        <button class="debug-clear" onclick="app.clearDebug()">Clear</button>
+        <div id="debugContent"></div>
+    </div>
+
+    <script>
+        // Thin Client - All business logic delegated to backend
+        class NotificationHubClient {
+            constructor() {
+                // Use OnRender backend in production, local in development
+                this.baseUrl = window.location.hostname === 'localhost' 
+                    ? 'http://localhost:3030' 
+                    : 'https://routed.onrender.com';
+                    
+                this.token = localStorage.getItem('authToken');
+                this.userData = JSON.parse(localStorage.getItem('userData') || '{}');
+                this.sandboxData = JSON.parse(localStorage.getItem('sandboxData') || '{}');
+                this.channels = [];
+                this.selectedChannelId = null;
+                this.debugMode = localStorage.getItem('debugMode') === 'true';
+                
+                this.initializeElements();
+                this.attachEventListeners();
+                this.initDebugConsole();
+                this.checkAuthentication();
+            }
+
+            initializeElements() {
+                // Auth elements
+                this.authSection = document.getElementById('authSection');
+                this.appSection = document.getElementById('appSection');
+                this.countrySelect = document.getElementById('countrySelect');
+                this.phoneInput = document.getElementById('phoneInput');
+                this.codeInput = document.getElementById('codeInput');
+                this.phoneStep = document.getElementById('phoneStep');
+                this.codeStep = document.getElementById('codeStep');
+                this.sendCodeBtn = document.getElementById('sendCodeBtn');
+                this.verifyCodeBtn = document.getElementById('verifyCodeBtn');
+                this.resendCodeBtn = document.getElementById('resendCodeBtn');
+                
+                // App elements
+                this.status = document.getElementById('status');
+                this.userPhone = document.getElementById('userPhone');
+                this.devId = document.getElementById('devId');
+                this.userId = document.getElementById('userId');
+                this.channelsList = document.getElementById('channelsList');
+                this.channelName = document.getElementById('channelName');
+                this.channelDesc = document.getElementById('channelDesc');
+                this.channelPublic = document.getElementById('channelPublic');
+                this.createChannelBtn = document.getElementById('createChannelBtn');
+                this.joinChannelId = document.getElementById('joinChannelId');
+                this.joinChannelBtn = document.getElementById('joinChannelBtn');
+                this.messageChannel = document.getElementById('messageChannel');
+                this.messageText = document.getElementById('messageText');
+                this.sendMessageBtn = document.getElementById('sendMessageBtn');
+                this.scriptChannel = document.getElementById('scriptChannel');
+                this.scriptsList = document.getElementById('scriptsList');
+                this.scriptPrompt = document.getElementById('scriptPrompt');
+                this.createScriptBtn = document.getElementById('createScriptBtn');
+                this.logoutBtn = document.getElementById('logoutBtn');
+                
+                // Tab elements
+                this.tabs = document.querySelectorAll('.tab');
+                this.tabContents = document.querySelectorAll('.tab-content');
+            }
+
+            attachEventListeners() {
+                // Auth listeners
+                this.sendCodeBtn.addEventListener('click', () => this.sendVerificationCode());
+                this.verifyCodeBtn.addEventListener('click', () => this.verifyCode());
+                this.resendCodeBtn.addEventListener('click', () => this.sendVerificationCode());
+                
+                // App listeners
+                this.createChannelBtn.addEventListener('click', () => this.createChannel());
+                this.joinChannelBtn.addEventListener('click', () => this.joinChannel());
+                this.sendMessageBtn.addEventListener('click', () => this.sendMessage());
+                this.createScriptBtn.addEventListener('click', () => this.createScript());
+                this.logoutBtn.addEventListener('click', () => this.logout());
+                
+                // Tab listeners
+                this.tabs.forEach(tab => {
+                    tab.addEventListener('click', () => this.switchTab(tab.dataset.tab));
+                });
+                
+                // Channel select listeners
+                this.messageChannel.addEventListener('change', (e) => {
+                    this.selectedChannelId = e.target.value;
+                });
+                
+                this.scriptChannel.addEventListener('change', (e) => {
+                    this.selectedChannelId = e.target.value;
+                    this.loadScripts(e.target.value);
+                });
+            }
+
+            async checkAuthentication() {
+                if (this.token && this.userData.id) {
+                    // Verify token is still valid by checking user's channels
+                    try {
+                        // Use the correct endpoint with user ID
+                        const response = await this.apiCall(`/v1/users/${this.userData.id}/channels`, 'GET');
+                        this.showApp();
+                        // Process the channels from the response
+                        this.channels = response.channels || [];
+                        this.renderChannels();
+                        this.updateChannelSelects();
+                    } catch (error) {
+                        // If error, try to get user info from token
+                        this.showAuth();
+                    }
+                } else {
+                    this.showAuth();
+                }
+            }
+
+            showAuth() {
+                this.authSection.classList.remove('hidden');
+                this.appSection.classList.add('hidden');
+            }
+
+            showApp() {
+                this.authSection.classList.add('hidden');
+                this.appSection.classList.remove('hidden');
+                
+                // Display user info
+                if (this.userData) {
+                    this.userPhone.textContent = this.userData.phone || 'Not available';
+                    this.devId.textContent = this.userData.devId || 'Not available';
+                    this.userId.textContent = this.userData.id || 'Not available';
+                }
+            }
+
+            async apiCall(endpoint, method = 'GET', body = null, useApiKey = false) {
+                const url = `${this.baseUrl}${endpoint}`;
+                const options = {
+                    method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                };
+
+                // Use API key for publisher endpoints, JWT token for user endpoints
+                if (useApiKey && this.sandboxData.apiKey) {
+                    options.headers['Authorization'] = `Bearer ${this.sandboxData.apiKey}`;
+                } else if (this.token) {
+                    options.headers['Authorization'] = `Bearer ${this.token}`;
+                }
+
+                if (body) {
+                    options.body = JSON.stringify(body);
+                }
+
+                // Log the request
+                this.debug('info', `→ ${method} ${endpoint}`, { 
+                    url, 
+                    headers: options.headers,
+                    body: body 
+                });
+
+                try {
+                    const response = await fetch(url, options);
+                    const text = await response.text();
+                    let data;
+                    
+                    try {
+                        data = JSON.parse(text);
+                    } catch (e) {
+                        this.debug('error', `Invalid JSON response from ${endpoint}`, { text });
+                        throw new Error(`Invalid response from server: ${text.substring(0, 100)}`);
+                    }
+
+                    // Log the response
+                    this.debug(response.ok ? 'success' : 'error', 
+                        `← ${response.status} ${endpoint}`, 
+                        { status: response.status, data });
+
+                    if (!response.ok) {
+                        throw new Error(data.message || data.error || `API call failed: ${response.status}`);
+                    }
+
+                    return data;
+                } catch (error) {
+                    this.debug('error', `API Error: ${error.message}`, { endpoint, error: error.toString() });
+                    throw error;
+                }
+            }
+
+            showStatus(message, type = 'info') {
+                this.status.textContent = message;
+                this.status.className = `status ${type}`;
+                this.status.classList.remove('hidden');
+                
+                if (type !== 'error') {
+                    setTimeout(() => {
+                        this.status.classList.add('hidden');
+                    }, 5000);
+                }
+            }
+
+            formatPhone(phone) {
+                // Get selected country code
+                const countryCode = this.countrySelect.value;
+                
+                // Remove all non-digits from phone
+                const cleaned = phone.replace(/\D/g, '');
+                
+                // If phone already has country code, return as is
+                if (phone.startsWith('+')) {
+                    return phone;
+                }
+                
+                // For US numbers (+1)
+                if (countryCode === '+1') {
+                    if (cleaned.length === 10) {
+                        return `${countryCode}${cleaned}`;
+                    } else if (cleaned.length === 11 && cleaned[0] === '1') {
+                        return `+${cleaned}`;
+                    }
+                }
+                
+                // For other countries, just prepend country code
+                return `${countryCode}${cleaned}`;
+            }
+
+            async sendVerificationCode() {
+                const phone = this.phoneInput.value.trim();
+                if (!phone) {
+                    this.showStatus('Please enter your phone number', 'error');
+                    return;
+                }
+
+                this.sendCodeBtn.disabled = true;
+                this.sendCodeBtn.innerHTML = 'Sending... <span class="loading"></span>';
+
+                try {
+                    // Backend handles phone formatting and validation
+                    await this.apiCall('/v1/verify/start', 'POST', {
+                        phone: this.formatPhone(phone)
+                    });
+
+                    this.showStatus('Verification code sent! Check your SMS.', 'success');
+                    this.phoneStep.classList.add('hidden');
+                    this.codeStep.classList.remove('hidden');
+                    this.codeInput.focus();
+                } catch (error) {
+                    this.showStatus(`Failed to send code: ${error.message}`, 'error');
+                } finally {
+                    this.sendCodeBtn.disabled = false;
+                    this.sendCodeBtn.textContent = 'Send Verification Code';
+                }
+            }
+
+            async verifyCode() {
+                const phone = this.phoneInput.value.trim();
+                const code = this.codeInput.value.trim();
+                
+                if (!code || code.length !== 6) {
+                    this.showStatus('Please enter the 6-digit code', 'error');
+                    return;
+                }
+
+                this.verifyCodeBtn.disabled = true;
+                this.verifyCodeBtn.innerHTML = 'Verifying... <span class="loading"></span>';
+
+                try {
+                    // Step 1: Verify the code
+                    const verifyResponse = await this.apiCall('/v1/verify/check', 'POST', {
+                        phone: this.formatPhone(phone),
+                        code
+                    });
+
+                    // Step 2: Complete authentication
+                    const authResponse = await this.apiCall('/auth/complete-sms', 'POST', {
+                        phone: this.formatPhone(phone),
+                        deviceName: 'Web Browser'
+                    });
+
+                    // Store auth data
+                    this.token = authResponse.accessToken;
+                    this.userData = authResponse.user;
+                    
+                    localStorage.setItem('authToken', this.token);
+                    localStorage.setItem('userData', JSON.stringify(this.userData));
+
+                    // Step 3: Provision sandbox environment for the user
+                    await this.provisionSandbox();
+
+                    this.showStatus('Successfully authenticated!', 'success');
+                    this.showApp();
+                    await this.loadChannels();
+                } catch (error) {
+                    this.showStatus(`Verification failed: ${error.message}`, 'error');
+                } finally {
+                    this.verifyCodeBtn.disabled = false;
+                    this.verifyCodeBtn.textContent = 'Verify Code';
+                }
+            }
+
+            async loadChannels() {
+                try {
+                    // Use the user ID from stored userData
+                    if (!this.userData.id) {
+                        this.debug('warn', 'No user ID available to load channels');
+                        this.channelsList.innerHTML = '<p style="color: #666; text-align: center;">Please login to view channels</p>';
+                        return;
+                    }
+                    
+                    this.debug('info', `Loading channels for user ${this.userData.id}...`);
+                    const response = await this.apiCall(`/v1/users/${this.userData.id}/channels`, 'GET');
+                    this.channels = response.channels || [];
+                    
+                    // Map the response to include expected fields
+                    this.channels = this.channels.map(ch => ({
+                        ...ch,
+                        shortId: ch.short_id || ch.shortId,
+                        isPublic: ch.allow_public !== undefined ? ch.allow_public : ch.isPublic
+                    }));
+                    
+                    this.debug('success', `Loaded ${this.channels.length} channels`);
+                    this.renderChannels();
+                    this.updateChannelSelects();
+                } catch (error) {
+                    this.debug('error', `Failed to load channels: ${error.message}`);
+                    this.showStatus(`Failed to load channels: ${error.message}`, 'error');
+                    // Show empty state
+                    this.channelsList.innerHTML = '<p style="color: red; text-align: center;">Failed to load channels. Check debug console.</p>';
+                }
+            }
+
+            renderChannels() {
+                if (this.channels.length === 0) {
+                    this.channelsList.innerHTML = '<p style="color: #666; text-align: center;">No channels yet. Create one!</p>';
+                    return;
+                }
+
+                this.channelsList.innerHTML = this.channels.map(channel => `
+                    <div class="channel-item" data-id="${channel.shortId}">
+                        <div class="channel-name">${channel.name}</div>
+                        <div class="channel-info">
+                            ID: ${channel.shortId} | 
+                            ${channel.isPublic ? 'Public' : 'Private'} | 
+                            ${channel.subscriberCount || 0} subscribers
+                        </div>
+                    </div>
+                `).join('');
+
+                // Add click listeners
+                document.querySelectorAll('.channel-item').forEach(item => {
+                    item.addEventListener('click', () => {
+                        document.querySelectorAll('.channel-item').forEach(i => i.classList.remove('selected'));
+                        item.classList.add('selected');
+                        this.selectedChannelId = item.dataset.id;
+                    });
+                });
+            }
+
+            updateChannelSelects() {
+                const options = '<option value="">Select a channel...</option>' + 
+                    this.channels.map(c => `<option value="${c.shortId}">${c.name}</option>`).join('');
+                
+                this.messageChannel.innerHTML = options;
+                this.scriptChannel.innerHTML = options;
+            }
+
+            async createChannel() {
+                const name = this.channelName.value.trim();
+                const description = this.channelDesc.value.trim();
+                const isPublic = this.channelPublic.checked;
+
+                if (!name) {
+                    this.showStatus('Please enter a channel name', 'error');
+                    return;
+                }
+                
+                // Ensure we have sandbox provisioned
+                if (!this.sandboxData.apiKey) {
+                    this.debug('warn', 'No API key available, attempting to provision sandbox...');
+                    await this.provisionSandbox();
+                    
+                    if (!this.sandboxData.apiKey) {
+                        this.showStatus('Unable to create channel: No API key available', 'error');
+                        return;
+                    }
+                }
+
+                this.createChannelBtn.disabled = true;
+                this.createChannelBtn.innerHTML = 'Creating... <span class="loading"></span>';
+
+                try {
+                    // Use the /v1/channels/create endpoint with API key authentication
+                    // Include creator_phone to link the channel to the current user
+                    const response = await this.apiCall('/v1/channels/create', 'POST', {
+                        name,
+                        topic_name: 'runs.finished',  // Default topic
+                        allow_public: isPublic,
+                        description: description || null,
+                        creator_phone: this.userData.phone  // Link to authenticated user
+                    }, true);  // Use API key for this call
+
+                    this.showStatus(`Channel created successfully! ID: ${response.short_id}`, 'success');
+                    this.debug('success', 'Channel created', response);
+                    
+                    // Clear form
+                    this.channelName.value = '';
+                    this.channelDesc.value = '';
+                    this.channelPublic.checked = false;
+                    
+                    // Reload channels
+                    await this.loadChannels();
+                } catch (error) {
+                    this.showStatus(`Failed to create channel: ${error.message}`, 'error');
+                    this.debug('error', 'Channel creation failed', { error: error.message });
+                } finally {
+                    this.createChannelBtn.disabled = false;
+                    this.createChannelBtn.textContent = 'Create Channel';
+                }
+            }
+
+            async joinChannel() {
+                const shortId = this.joinChannelId.value.trim();
+                
+                if (!shortId) {
+                    this.showStatus('Please enter a channel ID', 'error');
+                    return;
+                }
+
+                this.joinChannelBtn.disabled = true;
+                this.joinChannelBtn.innerHTML = 'Joining... <span class="loading"></span>';
+
+                try {
+                    const response = await this.apiCall('/v1/user/channels/join', 'POST', {
+                        shortId
+                    });
+
+                    this.showStatus(`Joined channel "${response.channel.name}" successfully!`, 'success');
+                    this.joinChannelId.value = '';
+                    await this.loadChannels();
+                } catch (error) {
+                    this.showStatus(`Failed to join channel: ${error.message}`, 'error');
+                } finally {
+                    this.joinChannelBtn.disabled = false;
+                    this.joinChannelBtn.textContent = 'Join Channel';
+                }
+            }
+
+            async sendMessage() {
+                const channelId = this.messageChannel.value;
+                const message = this.messageText.value.trim();
+
+                if (!channelId) {
+                    this.showStatus('Please select a channel', 'error');
+                    return;
+                }
+
+                if (!message) {
+                    this.showStatus('Please enter a message', 'error');
+                    return;
+                }
+
+                this.sendMessageBtn.disabled = true;
+                this.sendMessageBtn.innerHTML = 'Sending... <span class="loading"></span>';
+
+                try {
+                    const response = await this.apiCall(`/v1/user/channels/${channelId}/send`, 'POST', {
+                        message
+                    });
+
+                    this.showStatus(`Message sent to ${response.notificationsSent} subscribers!`, 'success');
+                    this.messageText.value = '';
+                } catch (error) {
+                    this.showStatus(`Failed to send message: ${error.message}`, 'error');
+                } finally {
+                    this.sendMessageBtn.disabled = false;
+                    this.sendMessageBtn.textContent = 'Send Message';
+                }
+            }
+
+            async loadScripts(channelId) {
+                if (!channelId) {
+                    this.scriptsList.innerHTML = '<p style="color: #666;">Select a channel to view scripts</p>';
+                    return;
+                }
+
+                try {
+                    const response = await this.apiCall(`/v1/user/channels/${channelId}/scripts`, 'GET');
+                    const scripts = response.scripts || [];
+                    
+                    if (scripts.length === 0) {
+                        this.scriptsList.innerHTML = '<p style="color: #666;">No scripts yet for this channel</p>';
+                        return;
+                    }
+
+                    this.scriptsList.innerHTML = scripts.map(script => `
+                        <div class="script-item">
+                            <div class="script-name">${script.name}</div>
+                            <div class="script-info">
+                                Type: ${script.triggerType} | 
+                                Created: ${new Date(script.createdAt).toLocaleDateString()}
+                            </div>
+                            <div class="script-actions">
+                                <button class="btn script-btn" onclick="app.executeScript('${script.id}')">
+                                    Execute Now
+                                </button>
+                                <button class="btn btn-secondary script-btn" onclick="app.deleteScript('${script.id}')">
+                                    Delete
+                                </button>
+                            </div>
+                        </div>
+                    `).join('');
+                } catch (error) {
+                    this.scriptsList.innerHTML = '<p style="color: red;">Failed to load scripts</p>';
+                }
+            }
+
+            async createScript() {
+                const channelId = this.scriptChannel.value;
+                const prompt = this.scriptPrompt.value.trim();
+
+                if (!channelId) {
+                    this.showStatus('Please select a channel', 'error');
+                    return;
+                }
+
+                if (!prompt) {
+                    this.showStatus('Please describe what the script should do', 'error');
+                    return;
+                }
+
+                this.createScriptBtn.disabled = true;
+                this.createScriptBtn.innerHTML = 'Creating script... <span class="loading"></span>';
+
+                try {
+                    const response = await this.apiCall(`/v1/user/channels/${channelId}/scripts`, 'POST', {
+                        userPrompt: prompt,
+                        variables: []
+                    });
+
+                    this.showStatus(`Script "${response.script.name}" created successfully!`, 'success');
+                    this.scriptPrompt.value = '';
+                    await this.loadScripts(channelId);
+                } catch (error) {
+                    this.showStatus(`Failed to create script: ${error.message}`, 'error');
+                } finally {
+                    this.createScriptBtn.disabled = false;
+                    this.createScriptBtn.textContent = 'Create Script';
+                }
+            }
+
+            async executeScript(scriptId) {
+                if (!confirm('Execute this script now?')) return;
+
+                try {
+                    const response = await this.apiCall(`/v1/user/scripts/${scriptId}/execute`, 'POST', {});
+                    this.showStatus(`Script executed! Sent ${response.notificationsSent} notifications.`, 'success');
+                } catch (error) {
+                    this.showStatus(`Failed to execute script: ${error.message}`, 'error');
+                }
+            }
+
+            async deleteScript(scriptId) {
+                if (!confirm('Delete this script?')) return;
+
+                try {
+                    await this.apiCall(`/v1/user/scripts/${scriptId}`, 'DELETE');
+                    this.showStatus('Script deleted successfully', 'success');
+                    await this.loadScripts(this.scriptChannel.value);
+                } catch (error) {
+                    this.showStatus(`Failed to delete script: ${error.message}`, 'error');
+                }
+            }
+
+            switchTab(tabName) {
+                this.tabs.forEach(tab => {
+                    if (tab.dataset.tab === tabName) {
+                        tab.classList.add('active');
+                    } else {
+                        tab.classList.remove('active');
+                    }
+                });
+
+                this.tabContents.forEach(content => {
+                    if (content.id === `${tabName}Tab`) {
+                        content.classList.add('active');
+                    } else {
+                        content.classList.remove('active');
+                    }
+                });
+            }
+
+            async provisionSandbox() {
+                try {
+                    // Check if we already have sandbox data
+                    if (this.sandboxData.tenantId && this.sandboxData.apiKey) {
+                        this.debug('info', 'Using existing sandbox data');
+                        return;
+                    }
+
+                    this.debug('info', 'Provisioning sandbox environment...');
+                    const sandboxResponse = await this.apiCall('/v1/dev/sandbox/provision', 'POST', {});
+                    
+                    this.sandboxData = {
+                        tenantId: sandboxResponse.tenantId,
+                        publisherId: sandboxResponse.publisherId,
+                        apiKey: sandboxResponse.apiKey,
+                        topicId: sandboxResponse.topicId
+                    };
+                    
+                    localStorage.setItem('sandboxData', JSON.stringify(this.sandboxData));
+                    
+                    // Ensure the user exists in this tenant
+                    if (this.userData.phone) {
+                        await this.apiCall('/v1/dev/users/ensure', 'POST', {
+                            tenant_id: this.sandboxData.tenantId,
+                            phone: this.userData.phone,
+                            topic: 'runs.finished'
+                        });
+                    }
+                    
+                    this.debug('success', 'Sandbox provisioned', this.sandboxData);
+                } catch (error) {
+                    this.debug('error', `Failed to provision sandbox: ${error.message}`);
+                    // Continue anyway - channel creation might fail but other features will work
+                }
+            }
+
+            logout() {
+                if (confirm('Are you sure you want to logout?')) {
+                    localStorage.removeItem('authToken');
+                    localStorage.removeItem('userData');
+                    localStorage.removeItem('sandboxData');
+                    this.token = null;
+                    this.userData = {};
+                    this.sandboxData = {};
+                    this.showAuth();
+                    this.phoneStep.classList.remove('hidden');
+                    this.codeStep.classList.add('hidden');
+                    this.phoneInput.value = '';
+                    this.codeInput.value = '';
+                    this.showStatus('Logged out successfully', 'info');
+                }
+            }
+
+            // Debug console methods
+            initDebugConsole() {
+                this.debugConsole = document.getElementById('debugConsole');
+                this.debugContent = document.getElementById('debugContent');
+                
+                if (this.debugMode) {
+                    this.debugConsole.classList.add('open');
+                }
+                
+                // Log initial state
+                this.debug('info', 'App initialized', {
+                    baseUrl: this.baseUrl,
+                    hasToken: !!this.token,
+                    userData: this.userData
+                });
+            }
+            
+            toggleDebug() {
+                this.debugMode = !this.debugMode;
+                localStorage.setItem('debugMode', this.debugMode);
+                this.debugConsole.classList.toggle('open');
+            }
+            
+            clearDebug() {
+                this.debugContent.innerHTML = '';
+            }
+            
+            debug(level, message, data = null) {
+                const time = new Date().toLocaleTimeString();
+                const line = document.createElement('div');
+                line.className = 'debug-line';
+                
+                let html = `<span class="debug-time">${time}</span>`;
+                html += `<span class="debug-level-${level}">[${level.toUpperCase()}]</span> ${message}`;
+                
+                if (data) {
+                    html += `<br><pre style="margin: 2px 0 0 60px; color: #969696;">${JSON.stringify(data, null, 2)}</pre>`;
+                }
+                
+                line.innerHTML = html;
+                this.debugContent.appendChild(line);
+                
+                // Auto-scroll to bottom
+                this.debugContent.scrollTop = this.debugContent.scrollHeight;
+                
+                // Also log to browser console
+                console.log(`[${level.toUpperCase()}] ${message}`, data || '');
+            }
+        }
+
+        // Initialize the app
+        const app = new NotificationHubClient();
+    </script>
+</body>
+</html>

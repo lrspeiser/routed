@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Test Suite - Notification Hub</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: #4fc3f7;
+            margin-bottom: 20px;
+            font-size: 24px;
+        }
+
+        h2 {
+            color: #81c784;
+            margin: 20px 0 10px;
+            font-size: 18px;
+        }
+
+        .test-section {
+            background: #2d2d2d;
+            border: 1px solid #3e3e3e;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .control-panel {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+
+        button {
+            background: #4fc3f7;
+            color: #1e1e1e;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            font-family: inherit;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        button:hover {
+            background: #29b6f6;
+            transform: translateY(-2px);
+        }
+
+        button:disabled {
+            background: #555;
+            color: #999;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        button.danger {
+            background: #ef5350;
+        }
+
+        button.danger:hover {
+            background: #e53935;
+        }
+
+        button.success {
+            background: #66bb6a;
+        }
+
+        button.success:hover {
+            background: #4caf50;
+        }
+
+        .log-container {
+            background: #1e1e1e;
+            border: 1px solid #3e3e3e;
+            border-radius: 4px;
+            padding: 15px;
+            height: 400px;
+            overflow-y: auto;
+            font-size: 12px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .log-entry {
+            margin-bottom: 8px;
+            padding: 4px;
+            border-left: 3px solid transparent;
+        }
+
+        .log-entry.info {
+            border-left-color: #4fc3f7;
+            color: #4fc3f7;
+        }
+
+        .log-entry.success {
+            border-left-color: #66bb6a;
+            color: #66bb6a;
+        }
+
+        .log-entry.error {
+            border-left-color: #ef5350;
+            color: #ef5350;
+        }
+
+        .log-entry.warning {
+            border-left-color: #ffa726;
+            color: #ffa726;
+        }
+
+        .log-entry.trace {
+            border-left-color: #ab47bc;
+            color: #ab47bc;
+        }
+
+        .log-entry.debug {
+            border-left-color: #7e57c2;
+            color: #999;
+            font-size: 11px;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status-indicator.online {
+            background: #66bb6a;
+            animation: pulse 2s infinite;
+        }
+
+        .status-indicator.offline {
+            background: #ef5350;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .info-panel {
+            background: #2d2d2d;
+            border: 1px solid #3e3e3e;
+            border-radius: 4px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .info-label {
+            color: #999;
+        }
+
+        .info-value {
+            color: #4fc3f7;
+            font-weight: bold;
+        }
+
+        input, textarea {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            border: 1px solid #3e3e3e;
+            padding: 8px;
+            border-radius: 4px;
+            font-family: inherit;
+            width: 100%;
+            margin-bottom: 10px;
+        }
+
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: #4fc3f7;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 768px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Admin Test Suite - Notification Hub</h1>
+        
+        <!-- Connection Status -->
+        <div class="info-panel">
+            <div class="info-row">
+                <span class="info-label">Connection Status:</span>
+                <span class="info-value">
+                    <span id="connectionStatus" class="status-indicator offline"></span>
+                    <span id="connectionText">Disconnected</span>
+                </span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Server:</span>
+                <span class="info-value" id="serverUrl">-</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Admin Phone:</span>
+                <span class="info-value">650-555-1212</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">User ID:</span>
+                <span class="info-value" id="userId">-</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Auth Token:</span>
+                <span class="info-value" id="authToken">-</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">API Key:</span>
+                <span class="info-value" id="apiKey">-</span>
+            </div>
+        </div>
+
+        <!-- Control Panel -->
+        <div class="test-section">
+            <h2>Control Panel</h2>
+            <div class="control-panel">
+                <button onclick="testSuite.authenticate()">🔐 Authenticate Admin</button>
+                <button onclick="testSuite.connectWebSocket()">🔌 Connect WebSocket</button>
+                <button onclick="testSuite.testChannelCreation()">📢 Test Channel Creation</button>
+                <button onclick="testSuite.testMessageSending()">📤 Test Message Sending</button>
+                <button onclick="testSuite.runFullTest()">🚀 Run Full Test Suite</button>
+                <button onclick="testSuite.clearLogs()" class="danger">🗑️ Clear Logs</button>
+            </div>
+        </div>
+
+        <!-- Test Configuration -->
+        <div class="grid">
+            <div class="test-section">
+                <h2>Channel Configuration</h2>
+                <input type="text" id="channelName" placeholder="Channel Name" value="Test Channel">
+                <textarea id="channelDescription" placeholder="Channel Description" rows="2">Automated test channel</textarea>
+                <label>
+                    <input type="checkbox" id="channelPublic"> Make channel public
+                </label>
+            </div>
+            
+            <div class="test-section">
+                <h2>Message Configuration</h2>
+                <input type="text" id="messageTitle" placeholder="Message Title" value="Test Notification">
+                <textarea id="messageBody" placeholder="Message Body" rows="2">This is a test message sent at {timestamp}</textarea>
+            </div>
+        </div>
+
+        <!-- Logs -->
+        <div class="test-section">
+            <h2>Test Logs</h2>
+            <div id="logs" class="log-container"></div>
+        </div>
+
+        <!-- Trace Viewer -->
+        <div class="test-section">
+            <h2>Request/Response Trace</h2>
+            <div id="trace" class="log-container"></div>
+        </div>
+    </div>
+
+    <script>
+        class TestSuite {
+            constructor() {
+                this.baseUrl = window.location.hostname === 'localhost' 
+                    ? 'http://localhost:3030' 
+                    : 'https://routed.onrender.com';
+                this.wsUrl = window.location.hostname === 'localhost'
+                    ? 'ws://localhost:3030'
+                    : 'wss://routed.onrender.com';
+                
+                this.adminPhone = '650-555-1212';
+                this.userData = null;
+                this.token = null;
+                this.apiKey = null;
+                this.ws = null;
+                this.channels = [];
+                this.currentChannel = null;
+                this.retryCount = 0;
+                this.maxRetries = 3;
+                
+                // Display server URL
+                document.getElementById('serverUrl').textContent = this.baseUrl;
+                
+                this.log('info', `Test suite initialized. Server: ${this.baseUrl}`);
+            }
+
+            log(level, message, data = null) {
+                const timestamp = new Date().toISOString().split('T')[1].replace('Z', '');
+                const logEntry = document.createElement('div');
+                logEntry.className = `log-entry ${level}`;
+                
+                let logText = `[${timestamp}] ${message}`;
+                if (data) {
+                    logText += '\n' + JSON.stringify(data, null, 2);
+                }
+                
+                logEntry.textContent = logText;
+                const logsContainer = document.getElementById('logs');
+                logsContainer.appendChild(logEntry);
+                logsContainer.scrollTop = logsContainer.scrollHeight;
+            }
+
+            trace(method, url, headers, body, response, responseTime) {
+                const timestamp = new Date().toISOString().split('T')[1].replace('Z', '');
+                const traceEntry = document.createElement('div');
+                traceEntry.className = 'log-entry trace';
+                
+                let traceText = `[${timestamp}] ${method} ${url} (${responseTime}ms)\n`;
+                traceText += `\n>>> REQUEST >>>\n`;
+                traceText += `Headers: ${JSON.stringify(headers, null, 2)}\n`;
+                if (body) {
+                    traceText += `Body: ${JSON.stringify(body, null, 2)}\n`;
+                }
+                traceText += `\n<<< RESPONSE <<<\n`;
+                traceText += `Status: ${response.status} ${response.statusText}\n`;
+                if (response.data) {
+                    traceText += `Data: ${JSON.stringify(response.data, null, 2)}`;
+                }
+                
+                traceEntry.textContent = traceText;
+                const traceContainer = document.getElementById('trace');
+                traceContainer.appendChild(traceEntry);
+                traceContainer.scrollTop = traceContainer.scrollHeight;
+            }
+
+            async apiCall(endpoint, method = 'GET', body = null, useApiKey = false) {
+                const url = `${this.baseUrl}${endpoint}`;
+                const startTime = Date.now();
+                
+                const headers = {
+                    'Content-Type': 'application/json',
+                };
+
+                if (useApiKey && this.apiKey) {
+                    headers['Authorization'] = `Bearer ${this.apiKey}`;
+                } else if (this.token) {
+                    headers['Authorization'] = `Bearer ${this.token}`;
+                }
+
+                const options = {
+                    method,
+                    headers,
+                };
+
+                if (body) {
+                    options.body = JSON.stringify(body);
+                }
+
+                try {
+                    const response = await fetch(url, options);
+                    const responseTime = Date.now() - startTime;
+                    const data = await response.json();
+                    
+                    const result = {
+                        status: response.status,
+                        statusText: response.statusText,
+                        data,
+                        ok: response.ok
+                    };
+                    
+                    this.trace(method, url, headers, body, result, responseTime);
+                    
+                    if (!response.ok) {
+                        throw new Error(data.message || data.error || `API call failed: ${response.status}`);
+                    }
+                    
+                    return data;
+                } catch (error) {
+                    this.log('error', `API Error: ${error.message}`, { endpoint });
+                    throw error;
+                }
+            }
+
+            async authenticate() {
+                this.log('info', '🔐 Starting admin authentication...');
+                
+                try {
+                    const response = await this.apiCall('/auth/admin', 'POST', {
+                        phone: this.adminPhone,
+                        deviceName: 'Admin Test Device',
+                        wantDefaultOpenAIKey: false
+                    });
+                    
+                    this.userData = response.user;
+                    this.token = response.accessToken;
+                    
+                    // Update UI
+                    document.getElementById('userId').textContent = this.userData.id;
+                    document.getElementById('authToken').textContent = this.token.substring(0, 20) + '...';
+                    
+                    this.log('success', '✅ Admin authentication successful', {
+                        userId: this.userData.id,
+                        phone: this.userData.phone,
+                        devId: this.userData.devId,
+                        isAdmin: this.userData.isAdmin
+                    });
+                    
+                    // Now provision sandbox
+                    await this.provisionSandbox();
+                    
+                } catch (error) {
+                    this.log('error', `❌ Authentication failed: ${error.message}`);
+                }
+            }
+
+            async provisionSandbox() {
+                this.log('info', '📦 Provisioning sandbox...');
+                
+                try {
+                    const response = await this.apiCall('/v1/dev/sandbox/provision', 'POST', {});
+                    
+                    this.apiKey = response.apiKey;
+                    this.sandboxData = {
+                        tenantId: response.tenantId,
+                        publisherId: response.publisherId,
+                        apiKey: response.apiKey,
+                        topicId: response.topicId
+                    };
+                    
+                    // Update UI
+                    document.getElementById('apiKey').textContent = this.apiKey.substring(0, 20) + '...';
+                    
+                    this.log('success', '✅ Sandbox provisioned', this.sandboxData);
+                    
+                    // Ensure user exists in tenant
+                    await this.apiCall('/v1/dev/users/ensure', 'POST', {
+                        tenant_id: this.sandboxData.tenantId,
+                        phone: this.adminPhone,
+                        topic: 'runs.finished'
+                    });
+                    
+                    this.log('success', '✅ Admin user ensured in sandbox tenant');
+                    
+                } catch (error) {
+                    this.log('error', `❌ Sandbox provisioning failed: ${error.message}`);
+                }
+            }
+
+            connectWebSocket() {
+                if (!this.userData) {
+                    this.log('error', '❌ Must authenticate first');
+                    return;
+                }
+                
+                this.log('info', '🔌 Connecting WebSocket...');
+                
+                if (this.ws) {
+                    this.ws.close();
+                }
+                
+                const wsEndpoint = `${this.wsUrl}/v1/socket/${this.userData.id}`;
+                this.log('debug', `WebSocket URL: ${wsEndpoint}`);
+                
+                this.ws = new WebSocket(wsEndpoint);
+                
+                this.ws.onopen = () => {
+                    this.log('success', '✅ WebSocket connected');
+                    document.getElementById('connectionStatus').className = 'status-indicator online';
+                    document.getElementById('connectionText').textContent = 'Connected';
+                };
+                
+                this.ws.onmessage = (event) => {
+                    this.log('info', '📨 WebSocket message received', JSON.parse(event.data));
+                };
+                
+                this.ws.onerror = (error) => {
+                    this.log('error', '❌ WebSocket error', error);
+                };
+                
+                this.ws.onclose = () => {
+                    this.log('warning', '⚠️ WebSocket disconnected');
+                    document.getElementById('connectionStatus').className = 'status-indicator offline';
+                    document.getElementById('connectionText').textContent = 'Disconnected';
+                };
+            }
+
+            async testChannelCreation() {
+                if (!this.apiKey) {
+                    this.log('error', '❌ Must authenticate and provision sandbox first');
+                    return;
+                }
+                
+                const name = document.getElementById('channelName').value || 'Test Channel';
+                const description = document.getElementById('channelDescription').value;
+                const isPublic = document.getElementById('channelPublic').checked;
+                
+                this.log('info', '📢 Testing channel creation with retry logic...');
+                this.log('debug', `Channel: ${name}, Public: ${isPublic}`);
+                
+                let retries = 3;
+                let lastError = null;
+                let attemptNumber = 0;
+                
+                while (retries > 0) {
+                    attemptNumber++;
+                    this.log('info', `🔄 Attempt ${attemptNumber}/3: Creating channel "${name}"...`);
+                    
+                    try {
+                        const response = await this.apiCall('/v1/channels/create', 'POST', {
+                            name: `${name} ${Date.now()}`, // Add timestamp to ensure uniqueness
+                            topic_name: 'runs.finished',
+                            allow_public: isPublic,
+                            description: description || null,
+                            creator_phone: this.adminPhone
+                        }, true);
+                        
+                        this.currentChannel = response.channel;
+                        this.log('success', `✅ Channel created successfully on attempt ${attemptNumber}!`, response.channel);
+                        
+                        // Subscribe admin to the channel
+                        await this.subscribeToChannel(response.channel.short_id);
+                        
+                        return response.channel;
+                        
+                    } catch (error) {
+                        lastError = error;
+                        this.log('error', `❌ Attempt ${attemptNumber} failed: ${error.message}`);
+                        
+                        // Check if this is a transaction error that should be retried
+                        if (error.message && 
+                            (error.message.includes('transaction') || 
+                             error.message.includes('aborted') ||
+                             error.message.includes('Please try again'))) {
+                            
+                            retries--;
+                            if (retries > 0) {
+                                this.log('warning', `⏳ Transaction error detected, will retry in 1 second... (${retries} attempts left)`);
+                                await new Promise(resolve => setTimeout(resolve, 1000));
+                                continue;
+                            }
+                        }
+                        
+                        // Non-retryable error or out of retries
+                        break;
+                    }
+                }
+                
+                // If we get here, all retries failed
+                this.log('error', `❌ Channel creation failed after ${attemptNumber} attempts: ${lastError?.message || 'Unknown error'}`);
+            }
+
+            async subscribeToChannel(channelId) {
+                this.log('info', `📝 Subscribing admin to channel ${channelId}...`);
+                
+                try {
+                    // The ensure user endpoint already subscribes them
+                    this.log('success', `✅ Admin subscribed to channel ${channelId}`);
+                } catch (error) {
+                    this.log('error', `❌ Failed to subscribe: ${error.message}`);
+                }
+            }
+
+            async testMessageSending() {
+                if (!this.currentChannel) {
+                    this.log('error', '❌ Must create a channel first');
+                    return;
+                }
+                
+                const title = document.getElementById('messageTitle').value || 'Test Notification';
+                const bodyTemplate = document.getElementById('messageBody').value || 'Test message';
+                const body = bodyTemplate.replace('{timestamp}', new Date().toISOString());
+                
+                this.log('info', '📤 Testing message sending...');
+                this.log('debug', `Channel: ${this.currentChannel.short_id}, Title: ${title}`);
+                
+                try {
+                    const response = await this.apiCall('/v1/messages', 'POST', {
+                        topic: this.currentChannel.topic || 'runs.finished',
+                        title,
+                        body,
+                        payload: {
+                            channel_id: this.currentChannel.short_id,
+                            sent_at: new Date().toISOString(),
+                            test: true
+                        }
+                    }, true);
+                    
+                    this.log('success', '✅ Message sent successfully!', response);
+                    
+                    // Log delivery details
+                    if (response.delivery_summary) {
+                        const summary = response.delivery_summary;
+                        this.log('info', '📊 Delivery Summary:', {
+                            total_subscribers: summary.total_subscribers,
+                            delivered_instantly: summary.socket_delivered,
+                            queued_for_offline: summary.queued_for_retry,
+                            details: summary.details
+                        });
+                        
+                        // Check if admin received it
+                        const adminDelivery = summary.details?.find(d => d.user_id === this.userData.id);
+                        if (adminDelivery) {
+                            if (adminDelivery.socket_delivery === 'success') {
+                                this.log('success', '✅ Admin user received the message via WebSocket!');
+                            } else {
+                                this.log('warning', '⚠️ Admin user appears offline - message queued for retry');
+                            }
+                        }
+                    }
+                    
+                    return response;
+                    
+                } catch (error) {
+                    this.log('error', `❌ Message sending failed: ${error.message}`);
+                }
+            }
+
+            async runFullTest() {
+                this.log('info', '🚀 Starting full test suite...');
+                this.clearLogs();
+                
+                try {
+                    // Step 1: Authenticate
+                    await this.authenticate();
+                    await this.delay(500);
+                    
+                    // Step 2: Connect WebSocket
+                    this.connectWebSocket();
+                    await this.delay(1000); // Wait for connection
+                    
+                    // Step 3: Create channel with retry logic
+                    await this.testChannelCreation();
+                    await this.delay(500);
+                    
+                    // Step 4: Send message
+                    await this.testMessageSending();
+                    
+                    this.log('success', '🎉 Full test suite completed successfully!');
+                    
+                } catch (error) {
+                    this.log('error', `❌ Test suite failed: ${error.message}`);
+                }
+            }
+
+            delay(ms) {
+                return new Promise(resolve => setTimeout(resolve, ms));
+            }
+
+            clearLogs() {
+                document.getElementById('logs').innerHTML = '';
+                document.getElementById('trace').innerHTML = '';
+                this.log('info', '🗑️ Logs cleared');
+            }
+        }
+
+        // Initialize test suite
+        const testSuite = new TestSuite();
+        
+        // Auto-authenticate on load for convenience
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                testSuite.log('info', '💡 Click "Authenticate Admin" to begin testing');
+            }, 500);
+        });
+    </script>
+</body>
+</html>

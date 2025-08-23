@@ -4,13 +4,22 @@
   "private": true,
   "type": "commonjs",
   "license": "MIT",
+  "main": "electron-main.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
+    "electron": "electron .",
+    "electron-dev": "NODE_ENV=development electron .",
+    "build-backend": "npm run build",
+    "build-electron": "npm run build-backend && electron-builder",
+    "dist": "npm run build-backend && electron-builder --mac",
+    "dist-dmg": "npm run build-backend && electron-builder --mac dmg",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "seed": "ts-node scripts/seed.ts",
     "register:host": "ts-node scripts/register_with_registry.ts",
+    "test": "vitest",
+    "test:backend": "ts-node tests/backend_business_logic.test.ts",
     "test:integration": "ts-node scripts/integration.ts",
     "test:redis": "ts-node scripts/redis_test.ts",
     "test:e2e": "ts-node scripts/e2e_smoke.ts",
@@ -41,8 +50,64 @@
     "@types/uuid": "^9.0.7",
     "@types/web-push": "^3.6.4",
     "@types/ws": "^8.5.10",
+    "electron": "^27.3.11",
+    "electron-builder": "^24.13.3",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
-    "typescript": "^5.6.2"
+    "typescript": "^5.6.2",
+    "vitest": "^3.2.4"
+  },
+  "build": {
+    "appId": "com.notificationhub.app",
+    "productName": "Notification Hub",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "electron-main.js",
+      "electron-preload.js",
+      "public/**/*",
+      "dist/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "dist",
+        "to": "backend/dist",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "assets/icon.icns",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "assets/entitlements.mac.plist",
+      "entitlementsInherit": "assets/entitlements.mac.plist"
+    },
+    "dmg": {
+      "contents": [
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ],
+      "window": {
+        "width": 540,
+        "height": 380
+      },
+      "icon": "assets/icon.icns",
+      "backgroundColor": "#667eea",
+      "title": "Install Notification Hub"
+    }
   }
 }

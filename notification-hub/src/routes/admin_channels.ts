@@ -117,6 +117,15 @@ fastify.post('/v1/channels/create', async (req, reply) => {
       const sid = await withTxn(async (client) => {
         console.log('[CHANNEL_CREATE] Transaction started');
         
+        // Ensure clean transaction state
+        try {
+          await client.query('SELECT 1');
+        } catch (txError: any) {
+          console.error('[CHANNEL_CREATE] Transaction state check failed, attempting recovery:', txError.message);
+          // If transaction is in error state, we need to rollback and retry
+          throw new Error('transaction_state_error');
+        }
+        
         const pub = await authPublisher(client, apiKey);
         console.log('[CHANNEL_CREATE] Publisher auth result:', pub ? { id: pub.id, tenant_id: pub.tenant_id } : null);
         if (!pub) throw new Error('unauthorized');
@@ -176,16 +185,18 @@ fastify.post('/v1/channels/create', async (req, reply) => {
           let userId: string | null = null;
           const phoneNormalized = String(creator_phone).trim();
           
-          // CRITICAL FIX: First check if this phone has a verified user in 'system' tenant
-          // This ensures we use the same userId that was created during phone verification
-          // preventing the user ID mismatch that causes offline status
-          console.log('[CHANNEL_CREATE] Looking for verified user with phone:', phoneNormalized);
+          console.log('[CHANNEL_CREATE] Processing creator_phone:', phoneNormalized);
           
-          // Get the system tenant ID
+          // IMPORTANT: We need to handle two cases:
+          // 1. Verified users from 'system' tenant (created via phone auth)
+          // 2. Users in the publisher's tenant
+          
+          // First, try to find verified user in system tenant
           const systemTenant = await client.query(
             `select id from tenants where name='system' limit 1`
           );
           
+          let verifiedUserId: string | null = null;
           if (systemTenant.rows.length > 0) {
             const systemTenantId = systemTenant.rows[0].id;
             const verifiedUser = await client.query(
@@ -194,61 +205,82 @@ fastify.post('/v1/channels/create', async (req, reply) => {
             );
             
             if (verifiedUser.rows.length > 0) {
-              // Use the verified user from system tenant
-              userId = verifiedUser.rows[0].id;
-              console.log('[CHANNEL_CREATE] Using verified user from system tenant:', { 
-                userId, 
+              verifiedUserId = verifiedUser.rows[0].id;
+              console.log('[CHANNEL_CREATE] Found verified user in system tenant:', { 
+                userId: verifiedUserId, 
                 devId: verifiedUser.rows[0].dev_id 
               });
             }
           }
           
-          // If no verified user found, fall back to publisher's tenant (backwards compatibility)
-          if (!userId) {
-            console.log('[CHANNEL_CREATE] No verified user found, checking publisher tenant');
-            // WORKAROUND: SELECT-then-INSERT pattern instead of ON CONFLICT
-            // See docs/ON_CONFLICT_WORKAROUND.md for full explanation
-            // Required because Render's DB lacks unique constraint on (tenant_id, phone)
-            const existingUser = await client.query(
-              `select id from users where tenant_id=$1 and phone=$2`,
+          // Now ensure user exists in publisher's tenant for subscription
+          // WORKAROUND: SELECT-then-INSERT pattern instead of ON CONFLICT
+          console.log('[CHANNEL_CREATE] Ensuring user in publisher tenant:', pub.tenant_id);
+          const existingUser = await client.query(
+            `select id from users where tenant_id=$1 and phone=$2`,
+            [pub.tenant_id, phoneNormalized]
+          );
+          
+          if (existingUser.rows.length > 0) {
+            userId = existingUser.rows[0].id;
+            console.log('[CHANNEL_CREATE] Found existing user in publisher tenant:', userId);
+          } else {
+            // Create new user in publisher's tenant
+            const newUser = await client.query(
+              `insert into users (tenant_id, phone) values ($1,$2) returning id`,
               [pub.tenant_id, phoneNormalized]
             );
-            if (existingUser.rows.length > 0) {
-              userId = existingUser.rows[0].id;
-            } else {
-              // Create new user only if doesn't exist
-              const newUser = await client.query(
-                `insert into users (tenant_id, phone) values ($1,$2) returning id`,
-                [pub.tenant_id, phoneNormalized]
-              );
-              userId = newUser.rows[0]?.id ?? null;
-            }
+            userId = newUser.rows[0]?.id ?? null;
+            console.log('[CHANNEL_CREATE] Created new user in publisher tenant:', userId);
           }
           if (userId) {
-            // CRITICAL: Get the correct tenant_id for the user (could be 'system' or publisher tenant)
-            const userTenantQuery = await client.query(
-              `select tenant_id from users where id=$1`,
-              [userId]
-            );
-            const userTenantId = userTenantQuery.rows[0]?.tenant_id || pub.tenant_id;
-            console.log('[CHANNEL_CREATE] Using tenant for subscription:', { userId, userTenantId });
+            // Subscribe the user in publisher's tenant
+            console.log('[CHANNEL_CREATE] Creating subscription for user:', { userId, tenantId: pub.tenant_id, topicId });
             
-            // WORKAROUND: SELECT-then-INSERT for subscriptions too
-            // See docs/ON_CONFLICT_WORKAROUND.md
-            // ON CONFLICT (user_id, topic_id) fails on Render
+            // WORKAROUND: SELECT-then-INSERT for subscriptions
             const existingSub = await client.query(
               `select 1 from subscriptions where user_id=$1 and topic_id=$2`,
               [userId, topicId]
             );
+            
             let sr = { rowCount: 0 };
             if (existingSub.rows.length === 0) {
               sr = await client.query(
                 `insert into subscriptions (tenant_id, user_id, topic_id) values ($1,$2,$3) returning user_id`,
-                [userTenantId, userId, topicId]
+                [pub.tenant_id, userId, topicId]
               );
+              console.log('[CHANNEL_CREATE] Subscription created');
+            } else {
+              console.log('[CHANNEL_CREATE] User already subscribed to this topic');
             }
-            if ((sr.rowCount ?? 0) > 0) {
-              try { await pushToSockets(userId, { type: 'notification', title: 'Routed', body: `You have been subscribed to: ${chName}` }); } catch {}
+            
+            // Also, if we found a verified user, subscribe them too
+            if (verifiedUserId && verifiedUserId !== userId) {
+              console.log('[CHANNEL_CREATE] Also subscribing verified user:', verifiedUserId);
+              const existingVerifiedSub = await client.query(
+                `select 1 from subscriptions where user_id=$1 and topic_id=$2`,
+                [verifiedUserId, topicId]
+              );
+              
+              if (existingVerifiedSub.rows.length === 0) {
+                await client.query(
+                  `insert into subscriptions (tenant_id, user_id, topic_id) values ($1,$2,$3)`,
+                  [pub.tenant_id, verifiedUserId, topicId]
+                );
+                console.log('[CHANNEL_CREATE] Verified user subscribed');
+              }
+            }
+            
+            // Send notification to the appropriate user
+            const notifyUserId = verifiedUserId || userId;
+            if ((sr.rowCount ?? 0) > 0 && notifyUserId) {
+              try { 
+                await pushToSockets(notifyUserId, { 
+                  type: 'notification', 
+                  title: 'Routed', 
+                  body: `You have been subscribed to: ${chName}` 
+                }); 
+              } catch {}
             }
           }
         }
@@ -256,10 +288,33 @@ fastify.post('/v1/channels/create', async (req, reply) => {
       });
       return reply.send({ ok: true, short_id: sid });
     } catch (e: any) {
+      console.error('[CHANNEL_CREATE] Error:', e.message, e.stack);
+      
       if (e.message === 'unauthorized') {
         return reply.status(401).send({ error: 'unauthorized' });
       }
-      return reply.status(500).send({ error: 'internal_error', detail: String(e?.message || e) });
+      
+      if (e.message === 'transaction_state_error') {
+        // Transaction was in error state, client should retry
+        return reply.status(503).send({ 
+          error: 'transaction_error', 
+          message: 'Database transaction error. Please try again.',
+          retry: true 
+        });
+      }
+      
+      // Log detailed error for debugging
+      const errorDetail = String(e?.message || e);
+      if (errorDetail.includes('current transaction is aborted')) {
+        console.error('[CHANNEL_CREATE] Transaction aborted - database connection may need reset');
+        return reply.status(503).send({ 
+          error: 'transaction_aborted', 
+          message: 'Database transaction was aborted. Please try again.',
+          retry: true 
+        });
+      }
+      
+      return reply.status(500).send({ error: 'internal_error', detail: errorDetail });
     }
   });
 
@@ -268,15 +323,27 @@ fastify.post('/v1/channels/create', async (req, reply) => {
     const params = req.params as any;
     const userId = String(params.user_id || '').trim();
     if (!userId) return reply.status(400).send({ error: 'missing_user_id' });
+    
+    console.log(`[CHANNELS_LIST] Loading channels for user ${userId}`);
+    
+    // Get all channels where this user is subscribed to the topic
+    // This handles cross-tenant subscriptions properly
     const { rows } = await pool.query(
-      `select c.short_id, c.name, t.name as topic, c.allow_public
+      `select distinct c.short_id, c.name, t.name as topic, c.allow_public, c.description,
+              c.tenant_id, c.created_at
        from subscriptions s
-       join channels c on c.tenant_id=s.tenant_id and c.topic_id=s.topic_id
-       join topics t on t.id=c.topic_id
-       where s.user_id=$1
+       join topics t on t.id = s.topic_id
+       join channels c on c.topic_id = t.id
+       where s.user_id = $1
        order by c.created_at desc`,
       [userId]
     );
+    
+    console.log(`[CHANNELS_LIST] Found ${rows.length} channels for user ${userId}`);
+    rows.forEach(r => {
+      console.log(`  - ${r.name} (${r.short_id}) in tenant ${r.tenant_id}`);
+    });
+    
     return reply.send({ channels: rows });
   });
 
