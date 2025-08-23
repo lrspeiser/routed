@@ -698,6 +698,11 @@
                 document.getElementById('userPhone').textContent = this.userData.phone || 'Not available';
                 document.getElementById('userId').textContent = this.userData.id?.substring(0, 8) + '...';
                 
+                // Try to provision sandbox early if we don't have API key
+                if (!this.sandboxData.apiKey) {
+                    await this.provisionSandbox();
+                }
+                
                 // Load channels
                 await this.loadChannels();
                 
@@ -815,6 +820,16 @@
 
             async loadMemberCount(shortId) {
                 try {
+                    // Only try to load member count if we have an API key
+                    // Skip if no API key (channels from other tenants won't be accessible)
+                    if (!this.sandboxData.apiKey) {
+                        // Try to provision sandbox if we don't have one
+                        await this.provisionSandbox();
+                        if (!this.sandboxData.apiKey) {
+                            return; // Still no API key, skip
+                        }
+                    }
+                    
                     const response = await this.apiCall(`/v1/channels/${shortId}/users`, 'GET', null, true);
                     const count = response.users?.length || 0;
                     const element = document.getElementById(`members-${shortId}`);
@@ -822,7 +837,15 @@
                         element.textContent = count;
                     }
                 } catch (error) {
-                    console.error(`Failed to load member count for ${shortId}:`, error);
+                    // Only log if it's not a 403 (which is expected for channels from other tenants)
+                    if (!error.message.includes('forbidden')) {
+                        console.error(`Failed to load member count for ${shortId}:`, error);
+                    }
+                    // For forbidden errors, just show a dash
+                    const element = document.getElementById(`members-${shortId}`);
+                    if (element) {
+                        element.textContent = '-';
+                    }
                 }
             }
 
@@ -861,12 +884,26 @@
                 if (!this.currentChannel) return;
                 
                 try {
+                    // Ensure we have an API key before trying to load members
+                    if (!this.sandboxData.apiKey) {
+                        await this.provisionSandbox();
+                        if (!this.sandboxData.apiKey) {
+                            this.showAlert('Unable to load members: No API key available', 'error');
+                            return;
+                        }
+                    }
+                    
                     const response = await this.apiCall(`/v1/channels/${this.currentChannel.short_id}/users`, 'GET', null, true);
                     this.currentMembers = response.users || [];
                     this.renderMembers();
                 } catch (error) {
                     console.error('Failed to load members:', error);
-                    this.showAlert('Failed to load channel members', 'error');
+                    // Provide more specific error messages
+                    if (error.message.includes('forbidden')) {
+                        this.showAlert('Cannot access this channel - it may belong to a different account', 'error');
+                    } else {
+                        this.showAlert('Failed to load channel members', 'error');
+                    }
                 }
             }
 
