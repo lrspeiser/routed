@@ -1041,15 +1041,24 @@
           try {
             sessionStorage.clear();
             localStorage.removeItem('DEV_ID');
+            sessionStorage.removeItem('SANDBOX_READY');
           } catch {}
           
-          // Show toast before reload
-          showToast('Logged out. Reloading...');
+          // Force show login screen immediately without waiting for reload
+          document.getElementById('phone-login-overlay').style.display = 'flex';
+          document.getElementById('tabs-container').style.opacity = 0.3;
+          document.getElementById('content-container').style.opacity = 0.3;
+          document.getElementById('phone-input').value = '';
+          document.getElementById('verify-code-input').value = '';
+          document.getElementById('verify-code-group').style.display = 'none';
           
-          // Force hard reload with a small delay to ensure backend has saved
-          setTimeout(() => {
-            window.location.href = window.location.href;  // Force navigation to same URL
-          }, 100);
+          // Clear channels list
+          document.getElementById('channels-list').innerHTML = '';
+          
+          showToast('Logged out successfully');
+          
+          // Don't call initAuth() - the user needs to login again manually
+          devlog('logout: complete - showing login screen');
         } catch (e) {
           devlog(`logout: invoke error: ${e}`);
           showToast(`Logout failed: ${e.message}`, 'error');
