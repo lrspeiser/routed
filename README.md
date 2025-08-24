@@ -311,6 +311,26 @@ Comprehensive test scripts for admin functionality and message sending/receiving
   node scripts/test_send_message.js
   ```
 
+### UI Button Testing
+- **test-all-buttons.js** - Comprehensive button functionality test
+  - Tests all UI buttons from Playground, Receiver app, and Admin interface
+  - Validates backend endpoints for each button action
+  - WebSocket connection testing
+  - Full coverage of user interactions
+  ```bash
+  npm install ws  # First time only
+  node test-all-buttons.js
+  ```
+
+- **test-essential-buttons.js** - Quick essential button test
+  - Rapid testing of core button functionalities
+  - Health check, channel creation, message sending
+  - User management and channel subscription
+  - Faster execution for quick validation
+  ```bash
+  node test-essential-buttons.js
+  ```
+
 ### Authentication & Configuration
 - **Admin Token**: Set via `HUB_ADMIN_TOKEN` environment variable
   - Default: `33925b5f5b9a2bd3d5a01f2b5857ce73`
