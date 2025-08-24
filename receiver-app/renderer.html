@@ -970,110 +970,8 @@
         document.getElementById('tabs-container').style.opacity = 0.3;
         document.getElementById('content-container').style.opacity = 0.3;
       }
-
-      document.getElementById('submit-phone').addEventListener('click', async () => {
-        const phone = document.getElementById('phone-input').value.trim();
-        if (!phone) { showToast('Phone number is required.', 'error'); return; }
-        
-        // ADMIN BYPASS: Skip Twilio verification for admin phone
-        // Normalize phone number for comparison
-        const normalizedPhone = phone.replace(/[\s\-\(\)\.]/g, '').replace(/^\+?1?/, '');
-        devlog(`auth: checking admin bypass - input: ${phone}, normalized: ${normalizedPhone}`);
-        
-        if (normalizedPhone === '6505551212') {
-          devlog('auth: ADMIN BYPASS ACTIVATED - skipping Twilio verification');
-          showToast('Admin mode activated - Enter code: ADMIN');
-          document.getElementById('verify-code-group').style.display = 'block';
-          // Store the admin phone in standard format for the code check
-          document.getElementById('phone-input').dataset.adminBypass = 'true';
-          return;
-        }
-        
-        devlog('auth: sending phone for verification');
-        const result = await receiver.invoke('verify:start', { phone });
-        if (result.ok) {
-          showToast('Verification code sent.');
-          document.getElementById('verify-code-group').style.display = 'block';
-        } else {
-          showToast(`Error: ${result.error}`, 'error');
-        }
-      });
       
-      document.getElementById('submit-code').addEventListener('click', async () => {
-        const phone = document.getElementById('phone-input').value.trim();
-        const code = document.getElementById('verify-code-input').value.trim();
-        if (!code) { showToast('Verification code is required.', 'error'); return; }
-
-        // ADMIN BYPASS: Accept "ADMIN" code for admin phone
-        const isAdminBypass = document.getElementById('phone-input').dataset.adminBypass === 'true';
-        devlog(`auth: code submission - isAdminBypass: ${isAdminBypass}, code: ${code}`);
-        
-        if (isAdminBypass && code.toUpperCase() === 'ADMIN') {
-          devlog('auth: ADMIN BYPASS - using admin code');
-          // Call special admin verification
-          const result = await receiver.invoke('verify:admin', { phone: '+16505551212' });
-          if (result.ok) {
-            showToast('Admin login successful!');
-            devlog('auth: admin verification successful, re-initializing');
-            // Clear the bypass flag
-            delete document.getElementById('phone-input').dataset.adminBypass;
-            initAuth();
-          } else {
-            showToast(`Admin login failed: ${result.error}`, 'error');
-          }
-          return;
-        }
-
-        devlog('auth: sending code for verification');
-        const result = await receiver.invoke('verify:check', { phone, code });
-        if (result.ok) {
-          showToast('Verification successful!');
-          devlog('auth: verification successful, re-initializing');
-          initAuth();
-        } else {
-          showToast(`Error: ${result.error}`, 'error');
-        }
-      });
-
-      document.getElementById('logout-button').addEventListener('click', async () => {
-        devlog('logout: starting');
-        try {
-          const ok = await receiver.invoke('auth:logout');
-          devlog(`logout: invoke result ok=${ok}`);
-          
-          // Clear all local state immediately
-          confirmedPhone = null;
-          devState = {};
-          document.getElementById('confirmed-phone').textContent = '';
-          document.getElementById('dev-id').textContent = '';
-          
-          // Clear any stored session data
-          try {
-            sessionStorage.clear();
-            localStorage.removeItem('DEV_ID');
-            sessionStorage.removeItem('SANDBOX_READY');
-          } catch {}
-          
-          // Force show login screen immediately without waiting for reload
-          document.getElementById('phone-login-overlay').style.display = 'flex';
-          document.getElementById('tabs-container').style.opacity = 0.3;
-          document.getElementById('content-container').style.opacity = 0.3;
-          document.getElementById('phone-input').value = '';
-          document.getElementById('verify-code-input').value = '';
-          document.getElementById('verify-code-group').style.display = 'none';
-          
-          // Clear channels list
-          document.getElementById('channels-list').innerHTML = '';
-          
-          showToast('Logged out successfully');
-          
-          // Don't call initAuth() - the user needs to login again manually
-          devlog('logout: complete - showing login screen');
-        } catch (e) {
-          devlog(`logout: invoke error: ${e}`);
-          showToast(`Logout failed: ${e.message}`, 'error');
-        }
-      });
+      // Event listeners are now set up in setupEventListeners() to avoid duplicates
     }
 
     // --- Channel Tabs ---
@@ -1269,11 +1167,124 @@
     }
 
     // --- Init ---
+    // Flag to track if event listeners have been added
+    let eventListenersAdded = false;
+    
     document.addEventListener('DOMContentLoaded', () => {
       devlog('DOMContentLoaded: starting init');
+      setupEventListeners();  // Set up event listeners once
       initAuth();
       showTab('channels'); // default tab
     });
+    
+    function setupEventListeners() {
+      if (eventListenersAdded) return;
+      eventListenersAdded = true;
+      devlog('Setting up event listeners (once only)');
+      
+      // Move all the event listener setup here from initAuth
+      document.getElementById('submit-phone').addEventListener('click', async () => {
+        const phone = document.getElementById('phone-input').value.trim();
+        if (!phone) { showToast('Phone number is required.', 'error'); return; }
+        
+        // ADMIN BYPASS: Skip Twilio verification for admin phone
+        // Normalize phone number - remove all non-digits except leading +
+        let normalizedPhone = phone.replace(/[\s\-\(\)\.]/g, '');
+        // Remove country code if present
+        if (normalizedPhone.startsWith('+1')) {
+          normalizedPhone = normalizedPhone.substring(2);
+        } else if (normalizedPhone.startsWith('1') && normalizedPhone.length === 11) {
+          normalizedPhone = normalizedPhone.substring(1);
+        }
+        
+        devlog(`auth: checking admin bypass - input: "${phone}", normalized: "${normalizedPhone}"`);
+        
+        if (normalizedPhone === '6505551212') {
+          devlog('auth: ADMIN BYPASS ACTIVATED - skipping Twilio verification');
+          showToast('🔐 ADMIN MODE - Enter code: ADMIN');
+          document.getElementById('verify-code-group').style.display = 'block';
+          document.getElementById('verify-code-input').placeholder = 'Enter: ADMIN';
+          document.getElementById('phone-input').dataset.adminBypass = 'true';
+          return;
+        }
+        
+        devlog('auth: sending phone for regular verification');
+        const result = await receiver.invoke('verify:start', { phone });
+        if (result.ok) {
+          showToast('Verification code sent.');
+          document.getElementById('verify-code-group').style.display = 'block';
+        } else {
+          showToast(`Error: ${result.error}`, 'error');
+        }
+      });
+      
+      document.getElementById('submit-code').addEventListener('click', async () => {
+        const phone = document.getElementById('phone-input').value.trim();
+        const code = document.getElementById('verify-code-input').value.trim();
+        if (!code) { showToast('Verification code is required.', 'error'); return; }
+
+        // ADMIN BYPASS: Accept "ADMIN" code for admin phone
+        const isAdminBypass = document.getElementById('phone-input').dataset.adminBypass === 'true';
+        devlog(`auth: code submission - isAdminBypass: ${isAdminBypass}, code: ${code}`);
+        
+        if (isAdminBypass && code.toUpperCase() === 'ADMIN') {
+          devlog('auth: ADMIN BYPASS - using admin code');
+          const result = await receiver.invoke('verify:admin', { phone: '+16505551212' });
+          if (result.ok) {
+            showToast('Admin login successful!');
+            devlog('auth: admin verification successful, re-initializing');
+            delete document.getElementById('phone-input').dataset.adminBypass;
+            initAuth();
+          } else {
+            showToast(`Admin login failed: ${result.error}`, 'error');
+          }
+          return;
+        }
+
+        devlog('auth: sending code for verification');
+        const result = await receiver.invoke('verify:check', { phone, code });
+        if (result.ok) {
+          showToast('Verification successful!');
+          devlog('auth: verification successful, re-initializing');
+          initAuth();
+        } else {
+          showToast(`Error: ${result.error}`, 'error');
+        }
+      });
+
+      document.getElementById('logout-button').addEventListener('click', async () => {
+        devlog('logout: starting');
+        try {
+          const ok = await receiver.invoke('auth:logout');
+          devlog(`logout: invoke result ok=${ok}`);
+          
+          confirmedPhone = null;
+          devState = {};
+          document.getElementById('confirmed-phone').textContent = '';
+          document.getElementById('dev-id').textContent = '';
+          
+          try {
+            sessionStorage.clear();
+            localStorage.removeItem('DEV_ID');
+            sessionStorage.removeItem('SANDBOX_READY');
+          } catch {}
+          
+          document.getElementById('phone-login-overlay').style.display = 'flex';
+          document.getElementById('tabs-container').style.opacity = 0.3;
+          document.getElementById('content-container').style.opacity = 0.3;
+          document.getElementById('phone-input').value = '';
+          document.getElementById('verify-code-input').value = '';
+          document.getElementById('verify-code-group').style.display = 'none';
+          document.getElementById('channels-list').innerHTML = '';
+          
+          showToast('Logged out successfully');
+          devlog('logout: complete - showing login screen');
+        } catch (e) {
+          devlog(`logout: invoke error: ${e}`);
+          showToast(`Logout failed: ${e.message}`, 'error');
+        }
+      });
+    }
   </script>
 </body>
 </html>
