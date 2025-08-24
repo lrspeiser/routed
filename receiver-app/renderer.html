@@ -209,9 +209,42 @@
           <div class="form-group">
             <label class="form-label">Add Subscriber</label>
             <div class="input-group">
-              <input class="form-input" type="tel" id="add-subscriber-phone" placeholder="Phone number">
+              <select id="add-subscriber-country" class="form-select" style="flex: 0 0 120px;">
+                <option value="+1" selected>+1 USA</option>
+                <option value="+1">+1 CAN</option>
+                <option value="+44">+44 UK</option>
+                <option value="+61">+61 AUS</option>
+                <option value="+91">+91 IND</option>
+                <option value="+86">+86 CHN</option>
+                <option value="+81">+81 JPN</option>
+                <option value="+49">+49 DEU</option>
+                <option value="+33">+33 FRA</option>
+                <option value="+39">+39 ITA</option>
+                <option value="+34">+34 ESP</option>
+                <option value="+52">+52 MEX</option>
+                <option value="+55">+55 BRA</option>
+                <option value="+7">+7 RUS</option>
+                <option value="+82">+82 KOR</option>
+                <option value="+31">+31 NLD</option>
+                <option value="+46">+46 SWE</option>
+                <option value="+47">+47 NOR</option>
+                <option value="+358">+358 FIN</option>
+                <option value="+45">+45 DNK</option>
+                <option value="+353">+353 IRL</option>
+                <option value="+972">+972 ISR</option>
+                <option value="+65">+65 SGP</option>
+                <option value="+852">+852 HKG</option>
+                <option value="+64">+64 NZL</option>
+                <option value="+27">+27 ZAF</option>
+                <option value="+971">+971 UAE</option>
+                <option value="+966">+966 SAU</option>
+                <option value="+20">+20 EGY</option>
+                <option value="+234">+234 NGA</option>
+              </select>
+              <input class="form-input" type="tel" id="add-subscriber-phone" placeholder="Phone number (e.g., 6502079445)" style="flex: 1;">
               <button class="btn btn-primary input-group-btn" onclick="addSubscriber()">Add</button>
             </div>
+            <p class="form-input-hint">Enter phone number without country code</p>
           </div>
         </div>
       </div>
@@ -288,6 +321,11 @@
         document.getElementById(`${tabName}-tab`).classList.add('active');
         const tabItem = document.querySelector(`.tab-item[onclick="showTab('${tabName}')"]`);
         if (tabItem) tabItem.classList.add('active');
+        
+        // If showing the log tab, fetch the latest logs
+        if (tabName === 'log') {
+          fetchLog();
+        }
       } catch (e) {
         devlog(`showTab error: ${e}`);
       }
@@ -381,17 +419,25 @@
     }
     
     async function addSubscriber() {
-      const phone = document.getElementById('add-subscriber-phone').value.trim();
-      if (!phone) {
+      const phoneInput = document.getElementById('add-subscriber-phone').value.trim();
+      const countryCode = document.getElementById('add-subscriber-country').value;
+      
+      if (!phoneInput) {
         showToast('Phone number is required', 'error');
         return;
       }
       
-      devlog(`addSubscriber: adding ${phone} to ${currentChannelShortId}`);
+      // Clean the phone input - remove any non-digits
+      const cleanPhone = phoneInput.replace(/\D/g, '');
+      
+      // Combine country code with phone number
+      const fullPhone = countryCode + cleanPhone;
+      
+      devlog(`addSubscriber: adding ${fullPhone} to ${currentChannelShortId}`);
       
       const result = await safeInvoke('channels:subscribe', {
         shortId: currentChannelShortId,
-        phone: phone
+        phone: fullPhone
       });
       
       devlog(`addSubscriber: result: ${JSON.stringify(result)}`);
@@ -850,10 +896,6 @@
       devlog('DOMContentLoaded: starting init');
       initAuth();
       showTab('channels'); // default tab
-      
-      // Attach event listeners for log buttons
-      document.querySelector('button[onclick="copyLog()"]').addEventListener('click', copyLog);
-      document.querySelector('button[onclick="clearLog()"]').addEventListener('click', clearLog);
     });
   </script>
 </body>
