@@ -427,8 +427,9 @@ fastify.get('/v1/channels/:short_id/users', async (req, reply) => {
         if (tenant_id !== pub.tenant_id) throw new Error('forbidden');
         // CRITICAL FIX: Query subscriptions by topic_id, not limited to channel tenant
         // This ensures we see ALL users subscribed to the topic, including verified users from 'system' tenant
+        // Use DISTINCT to prevent duplicate users if they have multiple subscription records
         const { rows } = await client.query(
-          `select u.id as user_id, u.email as email, u.phone as phone, u.tenant_id as user_tenant_id
+          `select distinct u.id as user_id, u.email as email, u.phone as phone, u.tenant_id as user_tenant_id
            from subscriptions s
            join users u on s.user_id=u.id
            where s.topic_id=$1

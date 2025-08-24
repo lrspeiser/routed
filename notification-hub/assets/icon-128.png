@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="200" fill="url(#grad)"/>
+  <g transform="translate(512, 512)">
+    <!-- Bell icon -->
+    <path d="M -150 -100 C -150 -200, -100 -250, 0 -250 C 100 -250, 150 -200, 150 -100 L 150 50 L 200 100 L 200 150 L -200 150 L -200 100 L -150 50 Z" 
+          fill="white" opacity="0.95"/>
+    <!-- Bell clapper -->
+    <circle cx="0" cy="200" r="50" fill="white" opacity="0.95"/>
+    <!-- Notification dot -->
+    <circle cx="120" cy="-120" r="40" fill="#ff6b6b"/>
+  </g>
+</svg>

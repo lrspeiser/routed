@@ -46,3 +46,5 @@ receiver-app/resources/bin/
 logs/
 *.log
 README_PRIVATE.md
+notification-hub/dist-electron/
+tmp_deno/
