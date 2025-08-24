@@ -1,0 +1,319 @@
+<!-- Enhanced Channel Management UI Component -->
+<!-- This will be integrated into renderer.html -->
+
+<style>
+  .channel-card {
+    border: 1px solid #e7e9ed;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 12px;
+    background: white;
+    transition: box-shadow 0.2s;
+  }
+  
+  .channel-card:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  }
+  
+  .channel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: start;
+    margin-bottom: 12px;
+  }
+  
+  .channel-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #303742;
+  }
+  
+  .channel-badge {
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+  }
+  
+  .badge-public {
+    background: #e7f5ff;
+    color: #0969da;
+  }
+  
+  .badge-private {
+    background: #fff3cd;
+    color: #856404;
+  }
+  
+  .channel-stats {
+    display: flex;
+    gap: 20px;
+    margin: 12px 0;
+    font-size: 13px;
+    color: #6c757d;
+  }
+  
+  .channel-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  
+  .subscriber-list {
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid #e7e9ed;
+    border-radius: 4px;
+    padding: 8px;
+  }
+  
+  .subscriber-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px;
+    margin-bottom: 4px;
+    background: #f8f9fa;
+    border-radius: 4px;
+  }
+  
+  .message-composer {
+    border: 1px solid #e7e9ed;
+    border-radius: 8px;
+    padding: 16px;
+    background: #f8f9fa;
+    margin-top: 16px;
+  }
+  
+  .quick-actions {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  
+  .stats-overview {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+  
+  .stat-card {
+    background: white;
+    border: 1px solid #e7e9ed;
+    border-radius: 8px;
+    padding: 16px;
+    text-align: center;
+  }
+  
+  .stat-value {
+    font-size: 32px;
+    font-weight: bold;
+    color: #303742;
+  }
+  
+  .stat-label {
+    font-size: 14px;
+    color: #6c757d;
+    margin-top: 4px;
+  }
+</style>
+
+<!-- Channel Management Section -->
+<div id="channel-management">
+  <!-- Stats Overview -->
+  <div class="stats-overview">
+    <div class="stat-card">
+      <div class="stat-value" id="total-channels">0</div>
+      <div class="stat-label">Total Channels</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="total-subscribers">0</div>
+      <div class="stat-label">Total Subscribers</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="messages-sent">0</div>
+      <div class="stat-label">Messages Sent</div>
+    </div>
+  </div>
+
+  <!-- Quick Actions -->
+  <div class="quick-actions">
+    <button class="btn btn-primary" onclick="showCreateChannelModal()">
+      <i class="icon icon-plus"></i> Create Channel
+    </button>
+    <button class="btn" onclick="showJoinChannelModal()">
+      <i class="icon icon-link"></i> Join Public Channel
+    </button>
+    <button class="btn" onclick="refreshChannels()">
+      <i class="icon icon-refresh"></i> Refresh
+    </button>
+  </div>
+
+  <!-- Channels List -->
+  <div id="my-channels">
+    <h5>My Channels</h5>
+    <div id="channels-container">
+      <!-- Channel cards will be inserted here -->
+    </div>
+  </div>
+</div>
+
+<!-- Channel Management Modal -->
+<div class="modal modal-lg" id="manage-channel-modal">
+  <a href="#close" class="modal-overlay" aria-label="Close"></a>
+  <div class="modal-container">
+    <div class="modal-header">
+      <a href="#close" class="btn btn-clear float-right" aria-label="Close" onclick="closeModal('manage-channel-modal')"></a>
+      <div class="modal-title h5" id="manage-channel-title">Manage Channel</div>
+    </div>
+    <div class="modal-body">
+      <!-- Channel Info -->
+      <div class="form-group">
+        <label class="form-label">Channel Details</label>
+        <div class="columns">
+          <div class="column col-6">
+            <p><strong>Name:</strong> <span id="manage-channel-name"></span></p>
+            <p><strong>Short ID:</strong> <code id="manage-channel-id"></code></p>
+          </div>
+          <div class="column col-6">
+            <p><strong>Type:</strong> <span id="manage-channel-type"></span></p>
+            <p><strong>Topic:</strong> <span id="manage-channel-topic"></span></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tabs -->
+      <ul class="tab tab-block">
+        <li class="tab-item active" data-tab="subscribers">
+          <a href="#" onclick="showManageTab('subscribers'); return false;">
+            <i class="icon icon-people"></i> Subscribers
+          </a>
+        </li>
+        <li class="tab-item" data-tab="message">
+          <a href="#" onclick="showManageTab('message'); return false;">
+            <i class="icon icon-message"></i> Send Message
+          </a>
+        </li>
+        <li class="tab-item" data-tab="settings">
+          <a href="#" onclick="showManageTab('settings'); return false;">
+            <i class="icon icon-edit"></i> Settings
+          </a>
+        </li>
+      </ul>
+
+      <!-- Subscribers Tab -->
+      <div id="manage-subscribers-tab" class="manage-tab-content" style="display: block;">
+        <div class="form-group">
+          <label class="form-label">Add Subscriber</label>
+          <div class="input-group">
+            <input type="tel" class="form-input" id="add-subscriber-phone" placeholder="+1 555 123 4567">
+            <button class="btn btn-primary input-group-btn" onclick="addSubscriber()">
+              <i class="icon icon-plus"></i> Add
+            </button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Current Subscribers (<span id="subscriber-count">0</span>)</label>
+          <div class="subscriber-list" id="subscriber-list">
+            <!-- Subscribers will be listed here -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Message Tab -->
+      <div id="manage-message-tab" class="manage-tab-content" style="display: none;">
+        <div class="message-composer">
+          <div class="form-group">
+            <label class="form-label">Message Title</label>
+            <input type="text" class="form-input" id="message-title" placeholder="Important Update">
+          </div>
+          
+          <div class="form-group">
+            <label class="form-label">Message Body</label>
+            <textarea class="form-input" id="message-body" rows="4" 
+                      placeholder="Type your message here..."></textarea>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Quick Templates</label>
+            <div class="btn-group">
+              <button class="btn btn-sm" onclick="useTemplate('update')">Update</button>
+              <button class="btn btn-sm" onclick="useTemplate('alert')">Alert</button>
+              <button class="btn btn-sm" onclick="useTemplate('reminder')">Reminder</button>
+            </div>
+          </div>
+
+          <button class="btn btn-primary btn-block" onclick="sendMessage()">
+            <i class="icon icon-send"></i> Send to All Subscribers
+          </button>
+        </div>
+
+        <!-- Recent Messages -->
+        <div class="form-group mt-2">
+          <label class="form-label">Recent Messages</label>
+          <div id="recent-messages" style="max-height: 200px; overflow-y: auto;">
+            <!-- Recent messages will be shown here -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Settings Tab -->
+      <div id="manage-settings-tab" class="manage-tab-content" style="display: none;">
+        <div class="form-group">
+          <label class="form-label">Channel Name</label>
+          <input type="text" class="form-input" id="edit-channel-name">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Description</label>
+          <textarea class="form-input" id="edit-channel-desc" rows="3"></textarea>
+        </div>
+
+        <div class="form-group">
+          <label class="form-checkbox">
+            <input type="checkbox" id="edit-channel-public">
+            <i class="form-icon"></i> Allow public joining
+          </label>
+        </div>
+
+        <div class="form-group">
+          <button class="btn btn-primary" onclick="updateChannelSettings()">
+            <i class="icon icon-check"></i> Save Changes
+          </button>
+          <button class="btn btn-error float-right" onclick="deleteChannel()">
+            <i class="icon icon-delete"></i> Delete Channel
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Subscribers Modal -->
+<div class="modal" id="add-subscribers-modal">
+  <a href="#close" class="modal-overlay" aria-label="Close"></a>
+  <div class="modal-container">
+    <div class="modal-header">
+      <a href="#close" class="btn btn-clear float-right" aria-label="Close" onclick="closeModal('add-subscribers-modal')"></a>
+      <div class="modal-title h5">Add Multiple Subscribers</div>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Phone Numbers (one per line)</label>
+        <textarea class="form-input" id="bulk-phone-numbers" rows="8" 
+                  placeholder="+1 555 123 4567
++1 555 987 6543
++1 555 555 5555"></textarea>
+        <p class="form-input-hint">Enter phone numbers with country code</p>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="bulkAddSubscribers()">
+        <i class="icon icon-plus"></i> Add All
+      </button>
+      <button class="btn btn-link" onclick="closeModal('add-subscribers-modal')">Cancel</button>
+    </div>
+  </div>
+</div>

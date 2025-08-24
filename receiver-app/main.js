@@ -2176,7 +2176,39 @@ ipcMain.handle('auth:logout', async () => {
       await res.text().catch(() => '');
     }
   } catch {}
+  
+  // Clear session tokens
   await tmClear();
+  
+  // Clear dev store to remove verified phone and ALL user data
+  try {
+    const dev = loadDev() || {};
+    // Clear ALL user-specific fields
+    delete dev.verifiedPhone;
+    delete dev.verifiedUserId;  // CRITICAL: Must clear this for logout to work
+    delete dev.devId;
+    delete dev.userId;
+    delete dev.verifiedTenantId;
+    delete dev.tenantId;  // Also clear tenantId
+    // Keep only apiKey and hubUrl as they are server/config related
+    const cleanDev = {
+      apiKey: dev.apiKey,
+      hubUrl: dev.hubUrl
+    };
+    saveDev(cleanDev);
+    writeLog('auth:logout → cleared all user data from dev store');
+  } catch (e) {
+    writeLog('auth:logout → error clearing dev store: ' + String(e));
+  }
+  
+  // Disconnect WebSocket
+  try {
+    wsManager.disconnect();
+    writeLog('auth:logout → disconnected WebSocket');
+  } catch (e) {
+    writeLog('auth:logout → error disconnecting WebSocket: ' + String(e));
+  }
+  
   writeLog('auth:logout → ok');
   return true;
 });
@@ -2187,7 +2219,39 @@ ipcMain.handle('auth:logoutAll', async () => {
     const res = await fetch(new URL('/auth/logout-all', baseUrl()).toString(), { method: 'POST', headers: { 'Content-Type':'application/json', 'Authorization': `Bearer ${at}` } });
     await res.text().catch(() => '');
   } catch {}
+  
+  // Clear session tokens
   await tmClear();
+  
+  // Clear dev store to remove verified phone and ALL user data (same as auth:logout)
+  try {
+    const dev = loadDev() || {};
+    // Clear ALL user-specific fields
+    delete dev.verifiedPhone;
+    delete dev.verifiedUserId;  // CRITICAL: Must clear this for logout to work
+    delete dev.devId;
+    delete dev.userId;
+    delete dev.verifiedTenantId;
+    delete dev.tenantId;  // Also clear tenantId
+    // Keep only apiKey and hubUrl as they are server/config related
+    const cleanDev = {
+      apiKey: dev.apiKey,
+      hubUrl: dev.hubUrl
+    };
+    saveDev(cleanDev);
+    writeLog('auth:logout-all → cleared all user data from dev store');
+  } catch (e) {
+    writeLog('auth:logout-all → error clearing dev store: ' + String(e));
+  }
+  
+  // Disconnect WebSocket
+  try {
+    wsManager.disconnect();
+    writeLog('auth:logout-all → disconnected WebSocket');
+  } catch (e) {
+    writeLog('auth:logout-all → error disconnecting WebSocket: ' + String(e));
+  }
+  
   writeLog('auth:logout-all → ok');
   return true;
 });
