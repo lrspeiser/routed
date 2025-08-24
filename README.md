@@ -253,6 +253,15 @@ Comprehensive test scripts for admin functionality and message sending/receiving
   node test-admin-apis-simple.js
   ```
 
+- **quick-message-test.js** - Quick production verification
+  - Rapid health check and message test
+  - Developer provisioning with API key generation
+  - Channel creation and message sending
+  - Minimal dependencies, fast execution
+  ```bash
+  node quick-message-test.js
+  ```
+
 - **notification-hub/test-backend-admin.js** - Core backend testing
   - Database operations and schema validation
   - WebSocket connection testing
