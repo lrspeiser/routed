@@ -5,21 +5,26 @@ import { v4 as uuidv4 } from 'uuid';
 
 // Helper to authenticate user from cookie/token
 async function authUser(req: any) {
-  const userToken = req.headers['x-user-token'] || 
-                    req.cookies?.user_token ||
-                    req.headers.authorization?.replace('Bearer ', '');
-  
-  if (!userToken) return null;
-  
-  const { rows } = await pool.query(
-    `SELECT u.*, us.secret 
-     FROM users u 
-     JOIN user_secrets us ON u.id = us.user_id 
-     WHERE us.secret = $1 OR u.dev_id = $1`,
-    [userToken]
-  );
-  
-  return rows[0] || null;
+  try {
+    const userToken = req.headers['x-user-token'] || 
+                      req.cookies?.user_token ||
+                      req.headers.authorization?.replace('Bearer ', '');
+    
+    if (!userToken) return null;
+    
+    const { rows } = await pool.query(
+      `SELECT u.*, us.secret 
+       FROM users u 
+       JOIN user_secrets us ON u.id = us.user_id 
+       WHERE us.secret = $1 OR u.dev_id = $1`,
+      [userToken]
+    );
+    
+    return rows[0] || null;
+  } catch (error) {
+    console.error('Auth lookup error:', error);
+    return null;
+  }
 }
 
 // Generate a short ID for channels
