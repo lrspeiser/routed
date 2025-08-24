@@ -79,6 +79,7 @@
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "mac": {
       "category": "public.app-category.utilities",
+      "icon": "build/routed.icns",
       "target": [
         "dmg"
       ],
@@ -90,7 +91,22 @@
         "teamId": "F25JD2C29Z"
       }
     },
-    "dmg": {}
+    "dmg": {
+      "icon": "build/routed.icns",
+      "iconSize": 128,
+      "contents": [
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    }
   },
   "dependencies": {
     "keytar": "^7.9.0",
