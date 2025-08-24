@@ -21,6 +21,7 @@ Deployed surfaces
 - Environment variables
 - Commands & workflows
 - Testing & CI parity
+- Admin Testing Suite
 - Recent updates
 - Troubleshooting
 
@@ -229,8 +230,92 @@ A convenient command-line interface is available for common tasks:
   export HUB_ADMIN_TOKEN={{HUB_ADMIN_TOKEN}}
   npm run test:integration
   ```
-- Admin test suite: test-backend-admin.js includes retry logic for transaction errors
-- Test messages: New endpoints for testing message delivery and script execution
+
+## Admin Testing Suite
+Comprehensive test scripts for admin functionality and message sending/receiving:
+
+### Primary Admin Test Scripts
+- **test-admin-apis.js** - Complete admin API testing
+  - Tests against production: https://routed.onrender.com
+  - Creates channels, users, sends messages
+  - Tests public/private channels and scripts
+  - Verifies message delivery via WebSocket
+  ```bash
+  export HUB_ADMIN_TOKEN={{HUB_ADMIN_TOKEN}}
+  node test-admin-apis.js
+  ```
+
+- **test-admin-apis-simple.js** - Streamlined admin testing
+  - Simplified test flow with better error handling
+  - Health checks and version verification
+  - Channel creation and user management
+  ```bash
+  node test-admin-apis-simple.js
+  ```
+
+- **notification-hub/test-backend-admin.js** - Core backend testing
+  - Database operations and schema validation
+  - WebSocket connection testing
+  - Message fanout and delivery verification
+  - Includes retry logic for transaction errors
+  ```bash
+  cd notification-hub
+  export HUB_ADMIN_TOKEN={{HUB_ADMIN_TOKEN}}
+  node test-backend-admin.js
+  ```
+
+### Comprehensive Demo & Inspection
+- **full-admin-demo.js** - Complete workflow demonstration
+  - Step-by-step admin API demonstration
+  - Multiple channel configurations
+  - User subscription management
+  - Message sending with detailed logging
+  ```bash
+  node full-admin-demo.js
+  ```
+
+- **inspect-admin-data.js** - Data inspection tool
+  - Tenant data verification
+  - Channel listing and analysis
+  - User subscription inspection
+  - Server configuration status
+  ```bash
+  node inspect-admin-data.js
+  ```
+
+### Interactive & Automated Testing
+- **notification-hub/run-admin-test.js** - Puppeteer-based testing
+  - Automated browser testing
+  - Uses web interface at /test-admin.html
+  - Screenshot capture for results
+  ```bash
+  cd notification-hub
+  node run-admin-test.js
+  ```
+
+- **notification-hub/scripts/test_send_message.js** - Message testing
+  - Direct channel message testing
+  - Script execution with webhooks
+  - Real-time delivery verification
+  ```bash
+  cd notification-hub
+  node scripts/test_send_message.js
+  ```
+
+### Authentication & Configuration
+- **Admin Token**: Set via `HUB_ADMIN_TOKEN` environment variable
+  - Default: `33925b5f5b9a2bd3d5a01f2b5857ce73`
+- **Admin Phone**: `+16505551212` for SMS authentication
+- **API Keys**: Generated through developer sandbox provisioning
+- **Test Endpoints**: `/v1/admin/*` routes require admin authentication
+
+### Testing Capabilities
+- **Database Operations**: User/channel creation, subscriptions, schema validation
+- **Message Delivery**: WebSocket, SMS (Twilio), push notifications
+- **Channel Management**: Public/private channels, member management
+- **Script Execution**: Channel scripts and webhook testing
+- **Queue Operations**: Message fanout, retry mechanisms, DLQ handling
+- **Real-time Features**: WebSocket connections, presence tracking
 
 ## Recent updates (v1.9.9)
 - Added routed CLI wrapper for convenient command-line access
