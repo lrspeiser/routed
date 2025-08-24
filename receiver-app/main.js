@@ -1966,45 +1966,73 @@ ipcMain.handle('channels:list', async (_evt, _tenantId) => {
 });
 
 ipcMain.handle('channels:create', async (_evt, { name, description, allowPublic, topicName, creatorPhone }) => {
-  try {
-    let dev = loadDev();
-    writeLog(`channels:create:init name=${String(name||'')} allowPublic=${!!allowPublic} hasKey=${!!(dev && dev.apiKey)} hasPhone=${!!(dev && dev.verifiedPhone)}`);
-    // Ensure we have a valid key for this hub (handles post-reset DB where old keys are invalid)
-    try { dev = await ensureValidDeveloper(); } catch (e) { writeLog('channels:create: ensure dev error ' + String(e)); }
-    if (!dev || !dev.apiKey) {
-      writeLog('channels:create: provisioning developer first');
-      try { await (async () => ipcMain.handlers?.['dev:provision']?.({}, {}))?.(); } catch (e) { writeLog('channels:create: provision error ' + String(e)); }
-      dev = loadDev();
-      writeLog(`channels:create: post-provision hasKey=${!!(dev && dev.apiKey)} tenantId=${dev && dev.tenantId ? dev.tenantId : 'null'}`);
+  // Retry logic for transaction errors
+  const MAX_RETRIES = 3;
+  let lastError = null;
+  
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      let dev = loadDev();
+      writeLog(`channels:create:init attempt=${attempt} name=${String(name||'')} allowPublic=${!!allowPublic} hasKey=${!!(dev && dev.apiKey)} hasPhone=${!!(dev && dev.verifiedPhone)}`);
+      // Ensure we have a valid key for this hub (handles post-reset DB where old keys are invalid)
+      try { dev = await ensureValidDeveloper(); } catch (e) { writeLog('channels:create: ensure dev error ' + String(e)); }
+      if (!dev || !dev.apiKey) {
+        writeLog('channels:create: provisioning developer first');
+        try { await (async () => ipcMain.handlers?.['dev:provision']?.({}, {}))?.(); } catch (e) { writeLog('channels:create: provision error ' + String(e)); }
+        dev = loadDev();
+        writeLog(`channels:create: post-provision hasKey=${!!(dev && dev.apiKey)} tenantId=${dev && dev.tenantId ? dev.tenantId : 'null'}`);
+      }
+      if (!dev || !dev.apiKey) throw new Error('Developer key not set');
+      
+      // Don't auto-subscribe creator to avoid transaction issues
+      // Let the user manually subscribe after creation
+      if (!creatorPhone && dev && dev.verifiedPhone) {
+        writeLog('channels:create: skipping creator_phone to avoid transaction issues');
+        creatorPhone = undefined; // Explicitly don't send creator_phone
+      }
+      
+      const url = new URL('/v1/channels/create', baseUrl()).toString();
+      // Server expects snake_case keys
+      const body = {
+        name: String(name || '').trim(),
+        description: (description != null && String(description).trim()) ? String(description).trim() : undefined,
+        allow_public: !!allowPublic,
+        topic_name: (topicName && String(topicName).trim()) || 'runs.finished',
+        // Don't send creator_phone to avoid transaction conflicts
+        // creator_phone: (creatorPhone && String(creatorPhone).trim()) || undefined,
+      };
+      writeLog(`channels:create:req url=${url} body=${JSON.stringify(body)}`);
+      const res = await fetchWithApiKeyRetry(url, { method: 'POST', headers: { 'Content-Type':'application/json' }, body: JSON.stringify(body), cache: 'no-store' }, dev);
+      const txt = await res.text().catch(() => '');
+      let j = null; try { j = JSON.parse(txt); } catch {}
+      writeLog(`channels:create:res status=${res.status} ok=${res.ok} body=${txt.slice(0,400)}`);
+      if (!res.ok) {
+        const errMsg = (j && j.error) ? j.error : `status ${res.status}`;
+        const detail = (j && (j.detail || j.hint)) ? `: ${j.detail || j.hint}` : '';
+        const fullError = errMsg + detail;
+        
+        // Check if it's a transaction error
+        if (fullError.toLowerCase().includes('transaction') && attempt < MAX_RETRIES) {
+          writeLog(`channels:create: transaction error on attempt ${attempt}, retrying after delay...`);
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // Exponential backoff
+          lastError = fullError;
+          continue; // Retry
+        }
+        
+        throw new Error(fullError);
+      }
+      writeLog(`channels:create → ok name=${body.name} allow_public=${body.allow_public} attempt=${attempt}`);
+      return j || { ok: true };
+    } catch (e) {
+      lastError = String(e);
+      if (attempt === MAX_RETRIES) {
+        writeLog(`channels:create error after ${MAX_RETRIES} attempts: ${lastError}`);
+        return { ok: false, error: lastError };
+      }
     }
-    if (!dev || !dev.apiKey) throw new Error('Developer key not set');
-    if (!creatorPhone && dev && dev.verifiedPhone) creatorPhone = dev.verifiedPhone;
-    if (!creatorPhone) writeLog('channels:create: warning creatorPhone missing (will still create without auto-subscribe)');
-    const url = new URL('/v1/channels/create', baseUrl()).toString();
-    // Server expects snake_case keys
-    const body = {
-      name: String(name || '').trim(),
-      description: (description != null && String(description).trim()) ? String(description).trim() : undefined,
-      allow_public: !!allowPublic,
-      topic_name: (topicName && String(topicName).trim()) || 'runs.finished',
-      creator_phone: (creatorPhone && String(creatorPhone).trim()) || undefined,
-    };
-    writeLog(`channels:create:req url=${url} body=${JSON.stringify({ ...body, creator_phone: body.creator_phone ? '***' + String(body.creator_phone).slice(-4) : null })}`);
-    const res = await fetchWithApiKeyRetry(url, { method: 'POST', headers: { 'Content-Type':'application/json' }, body: JSON.stringify(body), cache: 'no-store' }, dev);
-    const txt = await res.text().catch(() => '');
-    let j = null; try { j = JSON.parse(txt); } catch {}
-    writeLog(`channels:create:res status=${res.status} ok=${res.ok} body=${txt.slice(0,400)}`);
-    if (!res.ok) {
-      const errMsg = (j && j.error) ? j.error : `status ${res.status}`;
-      const detail = (j && (j.detail || j.hint)) ? `: ${j.detail || j.hint}` : '';
-      throw new Error(errMsg + detail);
-    }
-    writeLog(`channels:create → ok name=${body.name} allow_public=${body.allow_public}`);
-    return j || { ok: true };
-  } catch (e) {
-    writeLog(`channels:create error: ${String(e)}`);
-    return { ok: false, error: String(e) };
   }
+  
+  return { ok: false, error: lastError || 'Channel creation failed after retries' };
 });
 
 ipcMain.handle('admin:channels:users', async (_evt, shortId) => {
