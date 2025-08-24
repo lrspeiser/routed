@@ -975,6 +975,14 @@
         const phone = document.getElementById('phone-input').value.trim();
         if (!phone) { showToast('Phone number is required.', 'error'); return; }
         
+        // ADMIN BYPASS: Skip Twilio verification for admin phone
+        if (phone === '+16505551212' || phone === '6505551212' || phone === '+1 650 555 1212') {
+          devlog('auth: ADMIN BYPASS - skipping Twilio verification');
+          showToast('Admin mode activated - Enter code: ADMIN');
+          document.getElementById('verify-code-group').style.display = 'block';
+          return;
+        }
+        
         devlog('auth: sending phone for verification');
         const result = await receiver.invoke('verify:start', { phone });
         if (result.ok) {
@@ -989,6 +997,22 @@
         const phone = document.getElementById('phone-input').value.trim();
         const code = document.getElementById('verify-code-input').value.trim();
         if (!code) { showToast('Verification code is required.', 'error'); return; }
+
+        // ADMIN BYPASS: Accept "ADMIN" code for admin phone
+        const isAdminPhone = phone === '+16505551212' || phone === '6505551212' || phone === '+1 650 555 1212';
+        if (isAdminPhone && code.toUpperCase() === 'ADMIN') {
+          devlog('auth: ADMIN BYPASS - using admin code');
+          // Call special admin verification
+          const result = await receiver.invoke('verify:admin', { phone: '+16505551212' });
+          if (result.ok) {
+            showToast('Admin login successful!');
+            devlog('auth: admin verification successful, re-initializing');
+            initAuth();
+          } else {
+            showToast(`Admin login failed: ${result.error}`, 'error');
+          }
+          return;
+        }
 
         devlog('auth: sending code for verification');
         const result = await receiver.invoke('verify:check', { phone, code });
@@ -1009,8 +1033,11 @@
           confirmedPhone = null;
           devState = {};
           document.getElementById('confirmed-phone').textContent = '';
-          initAuth();
-          showToast('Logged out.');
+          document.getElementById('dev-id').textContent = '';
+          
+          // Force reload the page to ensure clean state
+          // This will trigger DOMContentLoaded again and reinitialize everything
+          window.location.reload();
         } catch (e) {
           devlog(`logout: invoke error: ${e}`);
           showToast(`Logout failed: ${e.message}`, 'error');

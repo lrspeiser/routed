@@ -1652,6 +1652,68 @@ ipcMain.handle('verify:check', async (_evt, { phone, code }) => {
     return { ok: false, error: String(e), rawError: e.message || String(e) };
   }
 });
+
+// ADMIN BYPASS: Special handler for admin verification without Twilio
+ipcMain.handle('verify:admin', async (_evt, { phone }) => {
+  writeLog(`verify:admin BYPASS for phone: ${phone}`);
+  try {
+    if (phone !== '+16505551212') {
+      throw new Error('Admin bypass only available for admin phone');
+    }
+    
+    // Set up admin user in dev store
+    const d = loadDev() || {};
+    d.verifiedPhone = '+16505551212';
+    d.verifiedUserId = 'admin-bypass-user';
+    d.verifiedTenantId = d.tenantId || 'admin-tenant';
+    
+    // Ensure we have a dev ID
+    if (!d.devId) {
+      // Provision if needed
+      try {
+        const admin = isAdminMode();
+        const url = new URL(admin ? '/v1/admin/sandbox/provision' : '/v1/dev/sandbox/provision', baseUrl()).toString();
+        const opts = { 
+          method: 'POST', 
+          cache: 'no-store', 
+          headers: admin ? { ...adminAuthHeaders(), 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' },
+          body: JSON.stringify({})
+        };
+        const res = await fetch(url, opts);
+        if (res.ok) {
+          const j = await res.json();
+          d.tenantId = j.tenantId;
+          d.apiKey = j.apiKey;
+          d.devId = j.publisherId || j.devId;
+          writeLog(`verify:admin provisioned admin sandbox: tenantId=${d.tenantId} apiKey=${d.apiKey}`);
+        }
+      } catch (e) {
+        writeLog(`verify:admin provision error: ${String(e)}`);
+      }
+    }
+    
+    saveDev(d);
+    writeLog(`verify:admin → ok ADMIN BYPASS ACTIVATED`);
+    
+    // Connect WebSocket for admin
+    const b = baseUrl();
+    writeLog(`verify:admin → connecting WebSocket for admin base=${b}`);
+    wsManager.connect('admin-bypass-user', b);
+    
+    try { await postInitIfNeeded(); } catch {}
+    try {
+      if (!mainWindow) { await createWindow(); }
+      if (verifyWindow) { try { verifyWindow.close(); } catch {} verifyWindow = null; }
+      try { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } } catch {}
+    } catch (e) { writeLog('verify:admin window error: ' + String(e)); }
+    
+    return { ok: true, userId: 'admin-bypass-user', tenantId: d.tenantId, apiKey: d.apiKey || null, devId: d.devId || null };
+  } catch (e) {
+    writeLog('verify:admin error: ' + String(e));
+    return { ok: false, error: String(e) };
+  }
+});
+
 ipcMain.handle('dev:get', async () => {
   const d = loadDev();
   writeLog(`dev:get → ${d ? 'ok' : 'none'}`);
@@ -2169,6 +2231,8 @@ ipcMain.handle('auth:completeSms', async (_evt, { phone, deviceName, wantDefault
 });
 
 ipcMain.handle('auth:logout', async () => {
+  writeLog('auth:logout → starting logout process');
+  
   try {
     const at = await getAccessToken().catch(() => null);
     if (at) {
@@ -2180,36 +2244,50 @@ ipcMain.handle('auth:logout', async () => {
   // Clear session tokens
   await tmClear();
   
+  // Clear ALL session data
+  _session = {};
+  
   // Clear dev store to remove verified phone and ALL user data
   try {
     const dev = loadDev() || {};
-    // Clear ALL user-specific fields
+    // Clear ALL user-specific fields (including admin bypass)
     delete dev.verifiedPhone;
     delete dev.verifiedUserId;  // CRITICAL: Must clear this for logout to work
     delete dev.devId;
     delete dev.userId;
     delete dev.verifiedTenantId;
     delete dev.tenantId;  // Also clear tenantId
-    // Keep only apiKey and hubUrl as they are server/config related
+    delete dev.publisherId;  // Clear publisher ID too
+    
+    // For admin bypass, only keep the bare minimum
     const cleanDev = {
-      apiKey: dev.apiKey,
-      hubUrl: dev.hubUrl
+      hubUrl: dev.hubUrl || baseUrl()
+      // Removed apiKey to force re-provisioning on next login
     };
     saveDev(cleanDev);
-    writeLog('auth:logout → cleared all user data from dev store');
+    
+    // Force immediate notification to renderer
+    notifyDevUpdated(cleanDev);
+    
+    writeLog('auth:logout → cleared all user data from dev store (including apiKey)');
   } catch (e) {
     writeLog('auth:logout → error clearing dev store: ' + String(e));
   }
   
-  // Disconnect WebSocket
+  // Disconnect WebSocket with force flag
   try {
     wsManager.disconnect();
-    writeLog('auth:logout → disconnected WebSocket');
+    // Force clear any WebSocket state
+    if (wsManager.ws) {
+      wsManager.ws.close();
+      wsManager.ws = null;
+    }
+    writeLog('auth:logout → forcefully disconnected WebSocket');
   } catch (e) {
     writeLog('auth:logout → error disconnecting WebSocket: ' + String(e));
   }
   
-  writeLog('auth:logout → ok');
+  writeLog('auth:logout → ok - complete logout successful');
   return true;
 });
 
