@@ -2249,27 +2249,38 @@ ipcMain.handle('auth:logout', async () => {
   
   // Clear dev store to remove verified phone and ALL user data
   try {
+    // Load current dev state
     const dev = loadDev() || {};
-    // Clear ALL user-specific fields (including admin bypass)
-    delete dev.verifiedPhone;
-    delete dev.verifiedUserId;  // CRITICAL: Must clear this for logout to work
-    delete dev.devId;
-    delete dev.userId;
-    delete dev.verifiedTenantId;
-    delete dev.tenantId;  // Also clear tenantId
-    delete dev.publisherId;  // Clear publisher ID too
     
-    // For admin bypass, only keep the bare minimum
+    // Log what we're clearing for debugging
+    writeLog(`auth:logout → clearing dev store with phone=${dev.verifiedPhone} userId=${dev.verifiedUserId}`);
+    
+    // Create completely clean dev object - ONLY keep hubUrl
     const cleanDev = {
       hubUrl: dev.hubUrl || baseUrl()
-      // Removed apiKey to force re-provisioning on next login
+      // Everything else removed - no apiKey, no IDs, no phone
     };
+    
+    // Save the clean state
     saveDev(cleanDev);
     
-    // Force immediate notification to renderer
+    // Double-check it was saved by reloading
+    const verifyClean = loadDev();
+    if (verifyClean && verifyClean.verifiedPhone) {
+      writeLog('auth:logout → WARNING: verifiedPhone still present after clear!');
+      // Force write empty file
+      try {
+        fs.writeFileSync(devStorePath(), JSON.stringify({ hubUrl: baseUrl() }, null, 2));
+        writeLog('auth:logout → force wrote clean dev store');
+      } catch (e) {
+        writeLog('auth:logout → failed to force write: ' + String(e));
+      }
+    }
+    
+    // Force immediate notification to renderer with clean state
     notifyDevUpdated(cleanDev);
     
-    writeLog('auth:logout → cleared all user data from dev store (including apiKey)');
+    writeLog('auth:logout → cleared all user data from dev store');
   } catch (e) {
     writeLog('auth:logout → error clearing dev store: ' + String(e));
   }

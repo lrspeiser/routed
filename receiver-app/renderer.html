@@ -1030,14 +1030,26 @@
         try {
           const ok = await receiver.invoke('auth:logout');
           devlog(`logout: invoke result ok=${ok}`);
+          
+          // Clear all local state immediately
           confirmedPhone = null;
           devState = {};
           document.getElementById('confirmed-phone').textContent = '';
           document.getElementById('dev-id').textContent = '';
           
-          // Force reload the page to ensure clean state
-          // This will trigger DOMContentLoaded again and reinitialize everything
-          window.location.reload();
+          // Clear any stored session data
+          try {
+            sessionStorage.clear();
+            localStorage.removeItem('DEV_ID');
+          } catch {}
+          
+          // Show toast before reload
+          showToast('Logged out. Reloading...');
+          
+          // Force hard reload with a small delay to ensure backend has saved
+          setTimeout(() => {
+            window.location.href = window.location.href;  // Force navigation to same URL
+          }, 100);
         } catch (e) {
           devlog(`logout: invoke error: ${e}`);
           showToast(`Logout failed: ${e.message}`, 'error');
