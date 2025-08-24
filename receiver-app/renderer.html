@@ -976,10 +976,16 @@
         if (!phone) { showToast('Phone number is required.', 'error'); return; }
         
         // ADMIN BYPASS: Skip Twilio verification for admin phone
-        if (phone === '+16505551212' || phone === '6505551212' || phone === '+1 650 555 1212') {
-          devlog('auth: ADMIN BYPASS - skipping Twilio verification');
+        // Normalize phone number for comparison
+        const normalizedPhone = phone.replace(/[\s\-\(\)\.]/g, '').replace(/^\+?1?/, '');
+        devlog(`auth: checking admin bypass - input: ${phone}, normalized: ${normalizedPhone}`);
+        
+        if (normalizedPhone === '6505551212') {
+          devlog('auth: ADMIN BYPASS ACTIVATED - skipping Twilio verification');
           showToast('Admin mode activated - Enter code: ADMIN');
           document.getElementById('verify-code-group').style.display = 'block';
+          // Store the admin phone in standard format for the code check
+          document.getElementById('phone-input').dataset.adminBypass = 'true';
           return;
         }
         
@@ -999,14 +1005,18 @@
         if (!code) { showToast('Verification code is required.', 'error'); return; }
 
         // ADMIN BYPASS: Accept "ADMIN" code for admin phone
-        const isAdminPhone = phone === '+16505551212' || phone === '6505551212' || phone === '+1 650 555 1212';
-        if (isAdminPhone && code.toUpperCase() === 'ADMIN') {
+        const isAdminBypass = document.getElementById('phone-input').dataset.adminBypass === 'true';
+        devlog(`auth: code submission - isAdminBypass: ${isAdminBypass}, code: ${code}`);
+        
+        if (isAdminBypass && code.toUpperCase() === 'ADMIN') {
           devlog('auth: ADMIN BYPASS - using admin code');
           // Call special admin verification
           const result = await receiver.invoke('verify:admin', { phone: '+16505551212' });
           if (result.ok) {
             showToast('Admin login successful!');
             devlog('auth: admin verification successful, re-initializing');
+            // Clear the bypass flag
+            delete document.getElementById('phone-input').dataset.adminBypass;
             initAuth();
           } else {
             showToast(`Admin login failed: ${result.error}`, 'error');
