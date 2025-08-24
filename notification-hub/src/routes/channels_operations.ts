@@ -234,13 +234,14 @@ export default async function routes(fastify: FastifyInstance) {
 
           // Push via WebSocket if online
           try {
-            await pushToSockets(subscriber.id, {
+            const pushed = await pushToSockets(subscriber.id, {
               type: 'notification',
               ...notification
             });
-            sentCount++;
+            if (pushed) sentCount++;
           } catch (err) {
             // User offline, message stored for later
+            console.log(`[CHANNEL] User ${subscriber.id} offline, message stored`);
           }
         }
 
